@@ -1,17 +1,27 @@
 ---
-status: FUTURE
+status: IMPLEMENTING
 ticket: null
 parent_chunk: null
-code_paths: []
+code_paths:
+- .claude-plugin/plugin.json
+- .claude-plugin/marketplace.json
+- commands/ve-status.md
+- skills/.gitkeep
+- agents/.gitkeep
+- hooks/.gitkeep
+- docs/trunk/DECISIONS.md
+- README.md
+- tests/test_plugin_manifest.py
 code_references: []
 narrative: claude_plugin_port
 investigation: null
 subsystems: []
 friction_entries: []
 depends_on: []
-created_after: ["orch_max_turns_config", "watch_handshake_timeout_retry"]
+created_after:
+- orch_max_turns_config
+- watch_handshake_timeout_retry
 ---
-
 <!--
 ╔══════════════════════════════════════════════════════════════════════════════╗
 ║  DO NOT DELETE THIS COMMENT BLOCK until the chunk complete command is run.   ║

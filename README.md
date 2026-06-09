@@ -56,7 +56,35 @@ To uninstall:
 uv tool uninstall vibe-engineer
 ```
 
+### Claude Code Plugin
+
+This repository is also a Claude Code plugin marketplace. The plugin is the
+distribution channel for the agent-facing workflow content (slash commands,
+skills, hooks, subagents); the `ve` CLI installed above remains the workflow
+engine that the plugin shells out to.
+
+Install the plugin from within Claude Code:
+
+```
+/plugin marketplace add netguy204/vibe-engineer
+/plugin install vibe-engineer
+```
+
+Or from a local checkout:
+
+```
+/plugin marketplace add /path/to/vibe-engineer
+/plugin install vibe-engineer
+```
+
+Both the plugin and the `ve` CLI are required: install the CLI with uv/pip
+(see above), install the plugin through Claude Code, and run `ve init` in
+your project to scaffold the workflow documentation. Plugin updates arrive
+through `/plugin update vibe-engineer` — no re-rendering into your
+repository.
+
 ## Usage (Building with the Vibe Engineering workflow)
+
 
 ### Initialize a Project
 

@@ -1,0 +1,13 @@
+{
+  "name": "vibe-engineer",
+  "owner": {
+    "name": "Brian Taylor"
+  },
+  "plugins": [
+    {
+      "name": "vibe-engineer",
+      "source": "./",
+      "description": "Documentation-driven development workflow: chunks, narratives, investigations, and orchestration backed by the ve CLI."
+    }
+  ]
+}

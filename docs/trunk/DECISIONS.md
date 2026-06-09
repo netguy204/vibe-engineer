@@ -314,3 +314,32 @@ By always resolving to HEAD, we:
 - The pattern is explicit—reading `ArtifactManager` reveals the lifecycle contract
 
 **Revisit If**: If artifact types diverge significantly in their lifecycle needs (e.g., one needs async operations, another needs caching), the Template Method may become a constraint rather than an enabler.
+
+---
+
+### DEC-010: Plugin-based distribution replaces render-based distribution
+
+**Date**: 2026-06-09
+
+**Status**: ACCEPTED
+
+**Decision**: Agent-facing workflow content (commands, skills, hooks, subagents) is distributed as a Claude Code plugin hosted in this repository. `.claude-plugin/plugin.json` defines the plugin, `.claude-plugin/marketplace.json` makes the repository an installable marketplace, and the plugin content lives in `commands/`, `skills/`, `agents/`, and `hooks/` at the repository root. This fully replaces the render-based channel where `ve init` wrote 36 Jinja2-rendered command skills into each consuming repository's `.agents/skills/` directory with `.claude/commands/` symlinks. The `ve` Python CLI remains separately installed (uv/pip) and remains the workflow engine; the plugin is the agent-facing layer that shells out to it.
+
+**Context**: Before Claude Code had a plugin system, the only way to put workflow commands in front of an agent was to render them into each project. That approach has accumulated real costs: every consuming repository carries ~40 rendered files and symlinks that are not project-specific content; command updates only reach projects when someone re-runs `ve init` and commits the churn; and templates branch on `task_context`/`ve_config` at render time, so the same logical command exists in multiple rendered variants across repositories. Claude Code's plugin and marketplace system now provides a native distribution surface: users run `/plugin marketplace add <owner>/vibe-engineer` followed by `/plugin install vibe-engineer`, and command updates arrive through the plugin manager.
+
+**Alternatives Considered**:
+- *Dual-mode (plugin alongside rendering)*: Keep `ve init` rendering as a fallback while also shipping the plugin. Rejected — two distribution channels means two sources of truth for every command, doubling maintenance and guaranteeing drift. The operator chose full replacement.
+- *Separate plugin repository*: A dedicated vibe-engineer-plugin repo that this repo publishes into. Rejected — co-versioning the plugin with the Python source keeps a single history, and marketplace.json can point at this repository directly; a publish pipeline adds moving parts with no current benefit.
+- *MCP server exposing ve operations*: Expose chunk list / board send / etc. as MCP tools instead of shelling out. Rejected as out of scope — commands shell out to the `ve` CLI, which must be installed anyway; an MCP layer adds surface without removing that dependency.
+
+**Rationale**: Native plugin distribution makes adoption a per-user install and updates a plugin-manager concern, leaving only genuinely project-owned documentation in consuming repositories. This directly serves the trunk goal's adoption properties: retrofitting a legacy project no longer means committing ~40 rendered files, and engineers who don't use the workflow no longer carry its artifacts in their checkouts. Hosting the plugin at the repository root (marketplace `source: "./"`) keeps the plugin and the CLI co-versioned with zero release machinery.
+
+**Consequences**:
+- Command distribution is tied to Claude Code's plugin system. The agent-agnostic `.agents/skills/` (agentskills.io) layout is dropped; non-Claude-Code agent support narrows to the AGENTS.md pointer file. This trade-off is accepted; if multi-agent support becomes a requirement later, a render channel can be reintroduced from the plugin sources.
+- Command and skill updates reach users through plugin updates; re-running `ve init` ceases to be part of the upgrade story for commands.
+- Plugin command files are static, so render-time conditionals must become runtime context detection (`.ve-task.yaml`, `.ve-config.yaml`) — established by the plugin_runtime_context chunk.
+- `ve init` shrinks to project scaffolding only (trunk docs, artifact directories, .gitignore hygiene) — the plugin_init_slimdown chunk.
+- A plugin install pulls the whole repository (Python source included), making installs larger than a dedicated plugin repo would be. Accepted for co-versioning simplicity.
+- The plugin version and the Python package version can drift; a version-compatibility policy is defined by the plugin_session_hooks chunk.
+
+**Revisit If**: Multi-agent (non-Claude-Code) support becomes a requirement, plugin install size becomes a practical friction point, or Claude Code's plugin system changes in ways that break repository-root marketplace hosting.
