@@ -5,6 +5,7 @@ allowed-tools: Bash(ve --help:*), Bash(cat:*), Bash(ve chunk create:*), Bash(ve 
 ---
 
 <!-- Chunk: docs/chunks/plugin_core_commands - Static plugin port of narrative-execute -->
+<!-- Chunk: docs/chunks/plugin_subagents - Wave execution delegates to the chunk-executor plugin agent -->
 <!-- Chunk: docs/chunks/skill_narrative_execute - Execute narrative chunks in dependency order -->
 
 ## Context
@@ -140,24 +141,14 @@ For each wave (in order):
 
 1. For each chunk in the wave:
    - Run `ve chunk activate <chunk_name>` to set it to IMPLEMENTING status
-   - Launch a **background Agent** with the following prompt (adapt the chunk name):
+   - Launch the **chunk-executor plugin agent** as a background Agent
+     (subagent type `chunk-executor`). The agent's lifecycle behavior —
+     plan → implement → review (up to 3 implement/review cycles) →
+     complete — is defined in the plugin's `agents/chunk-executor.md`; do
+     not restate it. The task message only needs the per-invocation values:
 
      ```
-     You are executing chunk `<chunk_name>` as part of the `<narrative_name>` narrative.
-
-     Run these steps in order:
-     1. Run `/chunk-plan` to create the implementation plan
-     2. Run `/chunk-implement` to implement the plan
-     3. Run `/chunk-review` to review the implementation
-        - If the review finds issues, run `/chunk-implement` again to address
-          the feedback, then `/chunk-review` again
-        - Repeat this implement/review cycle up to 3 times maximum
-        - If still failing after 3 review cycles, report the remaining issues
-     4. Run `/chunk-complete` to finalize the chunk
-
-     Report your final status:
-     - SUCCESS: if all steps completed and the chunk is marked ACTIVE
-     - FAILURE: with details of what went wrong and at which step
+     Execute chunk `<chunk_name>` as part of the `<narrative_name>` narrative.
      ```
 
 2. **Launch ALL chunks in the current wave as parallel Agent calls in a single
