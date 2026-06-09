@@ -1,17 +1,34 @@
 ---
-status: FUTURE
+status: IMPLEMENTING
 ticket: null
 parent_chunk: null
-code_paths: []
+code_paths:
+- commands/orchestrator-inject.md
+- commands/orchestrator-monitor.md
+- commands/orchestrator-investigate.md
+- commands/orchestrator-submit-future.md
+- commands/steward-setup.md
+- commands/steward-watch.md
+- commands/steward-send.md
+- commands/steward-changelog.md
+- commands/swarm-monitor.md
+- commands/swarm-request-response.md
+- commands/entity-startup.md
+- commands/entity-shutdown.md
+- commands/entity-episodic.md
+- commands/audit-intent.md
+- commands/migrate-managed-claude-md.md
 code_references: []
 narrative: claude_plugin_port
 investigation: null
 subsystems: []
 friction_entries: []
-depends_on: ["plugin_runtime_context"]
-created_after: ["orch_max_turns_config", "watch_handshake_timeout_retry"]
+depends_on:
+- plugin_runtime_context
+created_after:
+- orch_max_turns_config
+- watch_handshake_timeout_retry
 ---
-
 <!--
 ╔══════════════════════════════════════════════════════════════════════════════╗
 ║  DO NOT DELETE THIS COMMENT BLOCK until the chunk complete command is run.   ║

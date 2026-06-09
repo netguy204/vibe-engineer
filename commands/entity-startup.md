@@ -1,0 +1,186 @@
+---
+name: entity-startup
+description: Wake an entity by loading its identity, memories, and operational context. Use when the operator asks to wake, start, or become a named entity, or at the start of a session that should run as a persistent entity.
+allowed-tools: Bash(ve --help:*), Bash(cat:*), Bash(ve entity list:*), Bash(ve entity startup:*), Bash(ve entity recall:*), Bash(ve entity touch:*), Bash(ve entity episodic:*)
+---
+
+<!-- Chunk: docs/chunks/plugin_orch_commands - Static plugin port of entity-startup -->
+<!-- Chunk: docs/chunks/entity_startup_wiki - Wiki-aware startup skill template -->
+<!-- Chunk: docs/chunks/entity_startup_skill - Entity startup skill template -->
+<!-- Chunk: docs/chunks/entity_wiki_maintenance_prompt - Strengthened Step 6 wiki maintenance prompting with compounding artifact framing -->
+<!-- Chunk: docs/chunks/entity_sop_file - SOP.md-aware startup instructions replacing Active State guidance -->
+
+## Context
+
+- ve CLI: !`ve --help >/dev/null 2>&1 && echo "installed" || echo "(ve CLI not found)"`
+- Task workspace: !`cat .ve-task.yaml 2>/dev/null || cat ../.ve-task.yaml 2>/dev/null || echo "(not a task workspace)"`
+- Project config: !`cat .ve-config.yaml 2>/dev/null || echo "(no .ve-config.yaml — defaults apply)"`
+
+## Runtime context
+
+Interpret the context above before following the instructions:
+
+- **ve CLI**: The `ve` command is an installed CLI tool, not a file in the
+  repository. Do not search for it — run it directly via Bash. If the
+  context shows "(ve CLI not found)", tell the operator that the
+  vibe-engineer plugin requires the separately installed `ve` CLI, suggest
+  `uv tool install vibe-engineer` (or `pip install vibe-engineer`), and
+  stop.
+- **Uninitialized project**: If `ve` is installed but commands fail because
+  there is no `docs/chunks/` structure, tell the operator to run `ve init`
+  in the project root, then stop.
+- **Task workspace**: If the Task workspace context shows YAML (keys
+  `external_artifact_repo` and `projects`) instead of "(not a task
+  workspace)", you are in a multi-project task workspace. Artifacts
+  (chunks, narratives, investigations) live in the external artifact repo
+  named by `external_artifact_repo`; code changes happen in the
+  participating `projects`. Command-specific task guidance appears below.
+- **Project config**: `.ve-config.yaml` holds project configuration.
+  Known keys: `cluster_subsystem_threshold` (default 5 — the cluster size
+  at which to suggest subsystem documentation). When the context shows
+  "(no .ve-config.yaml — defaults apply)", use the defaults.
+
+## Instructions
+
+Wake a named entity by loading its identity, accumulated memories, and
+operational context into the current session.
+
+### Step 1: Identify the entity
+
+The entity name should be provided as an argument to this command. If no
+argument was provided, ask the operator which entity to wake up. You can
+list available entities with:
+
+```
+ve entity list
+```
+
+### Step 2: Load the startup payload
+
+Run the startup command to get the entity's full context payload:
+
+```
+ve entity startup <name>
+```
+
+### Step 3: Adopt the identity
+
+Read the **Entity** and **Role** section of the output. This is who you are
+for this session. Adopt the described identity, responsibilities, and
+behavioral style.
+
+Read the **Startup Instructions** section carefully — these are
+operator-provided instructions that should shape your behavior.
+
+### Step 4: Internalize core memories
+
+Read each numbered **Core Memory** (CM1, CM2, ...) in the output. These are
+your internalized principles and skills — treat them as operational knowledge
+you have already learned, not as instructions to be followed mechanically.
+
+### Step 5: Orient with your wiki
+
+If you have a wiki, the startup payload includes your **Wiki** section with
+the content of `wiki/index.md` — your structured knowledge catalog. Read it
+to orient: what do you already know that's relevant to this session's work?
+
+If you need details on a specific topic, read the page directly:
+
+    cat .entities/<name>/wiki/domain/<topic>.md
+
+Or search across your wiki:
+
+    grep -r "<keyword>" .entities/<name>/wiki/
+
+### Step 6: Commit to wiki maintenance
+
+If you are a wiki-maintaining entity, read this carefully — it is the operating
+contract for how you work in this session.
+
+**Your wiki is a persistent, compounding artifact.** Most agents rediscover
+knowledge from scratch each session. You don't. When you learn something, you
+integrate it here — not so you can retrieve it later (though you can), but so
+that future knowledge builds on current knowledge rather than replacing it.
+
+**The cross-references are the value.** A page that links to three related pages
+is worth more than three isolated pages. Connections compound. Orphaned pages
+decay. When you create or update a page, always ask: what other pages does this
+connect to? Add the wikilinks.
+
+**Concrete triggers — when X happens, do Y:**
+
+- New concept encountered → create or update a `wiki/domain/` page; add a wikilink from any related page
+- Technique applied → create or update a `wiki/techniques/` page
+- Something was wrong or surprising → update the relevant page **and** add to `wiki/identity.md` Hard-Won Lessons
+- Significant decision made → update the relevant `wiki/projects/` page
+- Session ends → add an entry to `wiki/log.md`
+- New page created → update `wiki/index.md` immediately
+
+**Adversity produces the most valuable content.** Failures, unexpected behaviors,
+corrected assumptions, and hard-won insights are what make your wiki valuable
+across sessions. Treat every failure as a wiki update trigger — not at the end of
+the session, but the moment it happens.
+
+**Reframe**: wiki maintenance is not a separate step. It is part of working. When
+you solve a problem, you've done half the work — filing the solution is the other half.
+
+Your wiki schema is in the startup payload above — it is your operational reference
+for this session.
+
+### Step 7: Note the consolidated memory index
+
+The **Consolidated Memory Index** lists memories available for on-demand
+retrieval. You don't need to load these now — just note what's available.
+This supplements your wiki: the consolidated index holds distilled cross-session
+patterns, while your wiki holds structured, interlinked knowledge.
+
+When you need details on a consolidated memory, retrieve it with:
+
+```
+ve entity recall <name> <query>
+```
+
+Where `<query>` is a case-insensitive substring of the memory title.
+
+### Step 8: Follow the touch protocol
+
+When you notice yourself applying a core memory, run the touch command
+using the full ID stem shown next to each memory (the `ID:` field in the
+startup payload above):
+
+```
+ve entity touch <name> <memory_id> <reason>
+```
+
+This enables retrieval-as-reinforcement — the act of noticing you used a
+memory strengthens it.
+
+The `memory_id` is whatever the `ID:` field shows next to each core memory in
+the startup payload above. The format varies by entity type:
+
+```
+# Tiered-memory entity (timestamp-prefixed ID):
+ve entity touch aria 20260414_120742_089450_template_editing_workflow "Used template editing workflow to fix rendering issue"
+
+# Wiki-based entity (slug ID):
+ve entity touch aria trust-the-canonical-synthesis "Applied synthesis principle when resolving conflicting signals"
+```
+
+<!-- Chunk: docs/chunks/touch_docs_wiki_ids - Touch Protocol examples cover both ID formats -->
+<!-- Chunk: docs/chunks/entity_episodic_skill - Step 9 episodic memory added to startup skill -->
+### Step 9: Episodic memory
+
+You can search your prior session transcripts for specific events, conversations,
+and decisions using episodic search:
+
+    ve entity episodic --entity <name> --query "..."
+
+Use this when you need context about what happened in a prior session, not just
+the distilled lessons in your memory. Run /entity-episodic for detailed usage.
+
+### Step 10: Follow your Standard Operating Procedures
+
+If the startup payload contains a **Standard Operating Procedures** section,
+follow any startup actions it specifies. This is your role-specific checklist —
+it may tell you to run `/steward-watch`, resume a monitoring loop, or take other
+actions appropriate to your role. If SOP.md is empty, there is nothing to do here.

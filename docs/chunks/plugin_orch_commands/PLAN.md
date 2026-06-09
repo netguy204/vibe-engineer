@@ -10,170 +10,177 @@ to hand to an agent.
 
 ## Approach
 
-<!--
-How will you build this? Describe the strategy at a high level.
-What patterns or techniques will you use?
-What existing code will you build on?
+Apply the mechanical porting recipe from
+`docs/chunks/plugin_runtime_context/PORTING_GUIDE.md` to the 15
+orchestrator/steward/swarm/entity/migration command templates, producing
+static plugin commands in `commands/` (DEC-010: plugin command files are
+static markdown; render-time resolution becomes runtime context detection).
 
-Reference docs/trunk/DECISIONS.md entries where relevant.
-If this approach represents a new significant decision, ask the user
-if we should add it to DECISIONS.md and reference it here.
+The worked example is `commands/chunk-create.md`. Each port follows the same
+shape:
 
-Always include tests in your implementation plan and adhere to
-docs/trunk/TESTING_PHILOSOPHY.md in your planning.
+1. **Frontmatter**: `name` matches the file stem; `description` is expanded
+   so it works for proactive/skill invocation — it states what the command
+   does AND its trigger conditions ("Use when ..."). `allowed-tools` lists
+   the two preamble probes (`Bash(ve --help:*)`, `Bash(cat:*)`) plus one
+   `Bash(ve <subcommand>:*)` entry per distinct `ve` invocation the body
+   instructs.
+2. **Drop render machinery**: the `{% set source_template %}` line, the
+   auto-generated-header include, the common-tips include (its content is
+   already in the canonical Runtime context section), and the
+   `{% raw %}`/`{% endraw %}` markers. Jinja2 `{# Chunk: ... #}` comments
+   from prior chunks become HTML comments so historical backreferences
+   survive.
+3. **Backreference + canonical preamble**: immediately after the
+   frontmatter, add
+   `<!-- Chunk: docs/chunks/plugin_orch_commands - Static plugin port of <name> -->`,
+   then the canonical `## Context` (three `!`-probe lines) and
+   `## Runtime context` sections verbatim from the porting guide.
+4. **Body verbatim**: the numbered instructions, `$ARGUMENTS`, and embedded
+   examples carry over without behavioral change. Exception required by the
+   recipe: bodies reference bare `ve ...`, never `uv run ve` — the
+   "if working in the vibe-engineer source repo, use `uv run`" asides in
+   entity-startup/entity-episodic and the `uv run ve chunk list` invocation
+   in audit-intent are converted to bare `ve`.
 
-Remember to update code_paths in the chunk's GOAL.md (e.g., docs/chunks/plugin_orch_commands/GOAL.md)
-with references to the files that you expect to touch.
--->
+None of the 15 templates contain `{% if task_context %}` blocks or
+`ve_config` interpolation, so steps 4–5 of the porting recipe (runtime
+conditionals) are no-ops here; the canonical preamble still ships verbatim
+on every command for convention uniformity.
 
-## Subsystem Considerations
+**Cross-project messaging guidance travels with the command bodies.** The
+guidance currently in the AGENTS.md managed block (derive the channel name
+from the TARGET project — `<target-project>-steward` — not the sender's
+local steward channel, including the documented common mistake of reading
+the local STEWARD.md `channel` field) is embedded directly in the bodies of
+`steward-send`, `swarm-request-response`, and `swarm-monitor`, because the
+AGENTS.md block shrinks in `plugin_init_slimdown`.
 
-<!--
-Before designing your implementation, check docs/subsystems/ for relevant
-cross-cutting patterns.
+Tests: `tests/test_plugin_commands.py#TestCommandInvariants` is
+parameterized over every `commands/*.md` file and automatically covers all
+15 new files (frontmatter name/description, no Jinja2 syntax, no
+AUTO-GENERATED header). No new test code is needed; the suite must pass.
+This honors docs/trunk/TESTING_PHILOSOPHY.md by reusing the standing
+invariant coverage built for the mass ports rather than duplicating
+per-file assertions.
 
-QUESTIONS TO CONSIDER:
-- Does this chunk touch any existing subsystem's scope?
-- Will this chunk implement part of a subsystem (contribute code) or use it
-  (depend on it)?
-- Did you discover code during exploration that should be part of a subsystem
-  but doesn't follow its patterns?
-
-If no subsystems are relevant, delete this section.
-
-WHEN SUBSYSTEMS ARE RELEVANT:
-List each relevant subsystem with its status and your relationship:
-- **docs/subsystems/validation** (DOCUMENTED): This chunk USES the validation
-  subsystem to check input
-- **docs/subsystems/error_handling** (REFACTORING): This chunk IMPLEMENTS a
-  new error type following the subsystem's patterns
-
-HOW SUBSYSTEM STATUS AFFECTS YOUR WORK:
-
-DOCUMENTED subsystems: The subsystem's patterns are captured but deviations are not
-being actively fixed. If you discover code that deviates from the subsystem's
-patterns, add it to the subsystem's Known Deviations section. Do NOT prioritize
-fixing those deviations—your chunk has its own goals.
-
-REFACTORING subsystems: The subsystem is being actively consolidated. If your chunk
-work touches code that deviates from the subsystem's patterns, attempt to bring it
-into compliance as part of your work. This is "opportunistic improvement"—improve
-what you touch, but don't expand scope to fix unrelated deviations.
-
-WHEN YOU DISCOVER DEVIATING CODE:
-- Add it to the subsystem's Known Deviations section
-- Note whether you will address it (REFACTORING status + relevant to your work)
-  or leave it for future work (DOCUMENTED status or outside your chunk's scope)
-
-Example:
-- **Discovered deviation**: src/legacy/parser.py#validate_input does its own
-  validation instead of using the validation subsystem
-  - Added to docs/subsystems/validation Known Deviations
-  - Action: Will not address (subsystem is DOCUMENTED; deviation outside chunk scope)
--->
+Out of scope (owned by sibling chunks): core workflow commands
+(`plugin_core_commands`), deleting `src/templates/commands/`
+(`plugin_init_slimdown`), promoting inline agent prompts to named subagents
+(`plugin_subagents`).
 
 ## Sequence
 
-<!--
-Ordered steps to implement this chunk. Each step should be:
-- Small enough to reason about in isolation
-- Large enough to be meaningful
-- Clear about its inputs and outputs
+### Step 1: Port the orchestrator commands
 
-This sequence is your contract with yourself (and with agents).
-Work through it in order. Don't skip ahead.
+Create from their `src/templates/commands/*.md.jinja2` sources:
 
-Example:
+- `commands/orchestrator-inject.md` — ve invocations: `ve chunk list`,
+  `ve orch status`, `ve orch start`, `ve orch inject`
+- `commands/orchestrator-monitor.md` — `ve orch ps`,
+  `ve orch work-unit`, `ve board send`
+- `commands/orchestrator-investigate.md` — `ve orch status`,
+  `ve orch work-unit`, `ve orch attention`, `ve orch stop`,
+  `ve orch start`, `ve chunk activate`
+- `commands/orchestrator-submit-future.md` — `ve orch status`,
+  `ve orch start`, `ve chunk list`, `ve orch ps`, `ve orch inject`
 
-### Step 1: Define the SegmentHeader struct
+Expand each description with trigger conditions (e.g. monitor: "Use when
+the operator asks to monitor injected chunks, track background work, or
+after injecting a chunk").
 
-Create the struct that represents a segment's header with fields for:
-- magic number (4 bytes)
-- version (2 bytes)
-- segment_id (8 bytes)
-- message_count (4 bytes)
-- checksum (4 bytes)
+### Step 2: Port the steward commands, embedding channel-naming guidance
 
-Location: src/segment/format.rs
+- `commands/steward-setup.md` — `ve board channels`, `ve board send`
+- `commands/steward-watch.md` — `ve board watch`, `ve board send`,
+  `ve board ack`, `ve orch inject`, `ve orch ps`
+- `commands/steward-send.md` — `ve board send`; embed the full
+  cross-project channel-naming guidance (target-project convention +
+  common-mistake warning) in the body's target-resolution step
+- `commands/steward-changelog.md` — `ve board watch`, `ve board ack`
 
-### Step 2: Implement header serialization
+### Step 3: Port the swarm commands, embedding channel-naming guidance
 
-Add `to_bytes()` and `from_bytes()` methods to SegmentHeader.
-Use little-endian encoding per SPEC.md Section 3.1.
+- `commands/swarm-monitor.md` — `ve board channels`,
+  `ve board watch-multi`; note the target-project channel-naming
+  convention in Key Concepts
+- `commands/swarm-request-response.md` — `ve board channels`,
+  `ve board watch`, `ve board send`, `ve board ack`; embed the
+  target-project guidance where the channel pair is derived
 
-### Step 3: ...
+### Step 4: Port the entity commands
 
----
+- `commands/entity-startup.md` — `ve entity list`, `ve entity startup`,
+  `ve entity recall`, `ve entity touch`, `ve entity episodic`
+- `commands/entity-shutdown.md` — `ve entity list`, `ve entity shutdown`
+- `commands/entity-episodic.md` — `ve entity episodic`,
+  `ve entity recall`
 
-**BACKREFERENCE COMMENTS**
+Drop the "use `uv run` in the vibe-engineer source repo" asides per the
+bare-`ve` rule.
 
-When implementing code, add backreference comments to help future agents trace
-code back to its governing documentation.
+### Step 5: Port the migration/audit commands
 
-**Valid backreference types:**
-- `# Subsystem: docs/subsystems/<name>` - For architectural patterns
-- `# Chunk: docs/chunks/<name>` - For implementation work
+- `commands/audit-intent.md` — `ve chunk list` (the body's
+  `uv run ve chunk list` becomes `ve chunk list`). The inline sub-agent
+  prompt template ports verbatim — plugin_subagents will survey it later.
+- `commands/migrate-managed-claude-md.md` — `ve migration create`,
+  `ve init`
 
-Place comments at the appropriate level:
-- **Module-level**: If this code implements the subsystem/chunk's core functionality
-- **Class-level**: If this class is part of the pattern
-- **Method-level**: If this method implements a specific behavior
+### Step 6: Verify
 
-Format (place immediately before the symbol):
-```
-# Subsystem: docs/subsystems/workflow_artifacts - Workflow artifact manager pattern
-# Chunk: docs/chunks/auth_refactor - Authentication system redesign
-```
+- `grep -nE '\{%|\{\{|\{#' commands/*.md` matches nothing
+- `uv run pytest tests/test_plugin_commands.py` passes (all parameterized
+  invariants over the now-17 command files)
+- Spot-check rendering of the `!`-probe lines and frontmatter parse
 
-Do NOT add narrative backreferences. Narratives decompose into chunks; reference
-the implementing chunk instead.
+### Step 7: Update chunk metadata and commit
 
-**Task context note**: In multi-project tasks, always use local paths (e.g.,
-`docs/chunks/chunk_name`) for chunk backreferences, not paths to the external
-artifact repo. Each project has `external.yaml` pointers that resolve to the
-actual chunk content.
--->
+Populate `code_paths`/`code_references` in GOAL.md and commit the 15 new
+command files plus chunk docs.
 
 ## Dependencies
 
-<!--
-What must exist before this chunk can be implemented?
-- Other chunks that must be complete
-- External libraries to add
-- Infrastructure or configuration
-
-If there are no dependencies, delete this section.
--->
+- `plugin_runtime_context` (ACTIVE, merged at main) — supplies the
+  canonical preamble, the porting guide, and the standing test invariants.
+- `plugin_scaffold` (ACTIVE) — supplies the `commands/` directory and
+  plugin manifest.
 
 ## Risks and Open Questions
 
-<!--
-What might go wrong? What are you unsure about?
-Being explicit about uncertainty helps you (and agents) know where to
-be careful and when to stop and ask questions.
-
-Example:
-- fsync behavior may differ across filesystems; need to verify on ext4 and APFS
-- Unclear whether concurrent reads during write are safe; may need mutex
-- Performance target is aggressive; may need to iterate on buffer sizes
--->
+- The canonical preamble includes the `.ve-config.yaml` probe even though
+  none of these 15 commands consume config keys. The porting guide says the
+  preamble ships verbatim on every command; uniformity wins over trimming.
+- `audit-intent`'s prerequisite checks reference vibe-engineer-source paths
+  (`src/templates/chunk/GOAL.md.jinja2`, `from models import ChunkStatus`).
+  These are pre-existing content concerns, not porting concerns — the body
+  ports verbatim per recipe step 6 (the port changes how context is
+  resolved, not what the command does).
+- Several commands embed inline agent/loop prompt templates
+  (orchestrator-monitor's `/loop` prompt, audit-intent's sub-agent prompt,
+  steward-setup's autonomous behavior template). They port verbatim;
+  `plugin_subagents` decides later which deserve promotion.
 
 ## Deviations
 
-<!--
-POPULATE DURING IMPLEMENTATION, not at planning time.
-
-When reality diverges from the plan, document it here:
-- What changed?
-- Why?
-- What was the impact?
-
-Minor deviations (renamed a function, used a different helper) don't need
-documentation. Significant deviations (changed the approach, skipped a step,
-added steps) do.
-
-Example:
-- Step 4: Originally planned to use std::fs::rename for atomic swap.
-  Testing revealed this isn't atomic across filesystems. Changed to
-  write-fsync-rename-fsync sequence per platform best practices.
--->
+- **steward-changelog cursor path corrected.** The template said cursors live
+  at `.ve/cursors/<channel>.cursor`; the code
+  (`src/board/storage.py`) stores them at
+  `.ve/board/cursors/<channel>.cursor` (the path swarm-monitor already
+  uses). Propagating a known-wrong path into the new canonical source was
+  worse than a verbatim port, so the ported file carries the verified path.
+- **audit-intent prerequisite checks rewritten for consuming projects.** The
+  template's checks (2) and (3) probed vibe-engineer-source paths
+  (`grep src/templates/chunk/GOAL.md.jinja2`,
+  `python3 -c "from models import ChunkStatus..."`) that fail in every
+  consuming project — the plugin's actual audience. Replaced with
+  equivalent checks that work where the command runs:
+  `grep COMPOSITE docs/trunk/CHUNKS.md` and
+  `ve chunk list --status COMPOSITE` (verified: exits 0 when supported,
+  1 for an unknown status). The check's intent (refuse to audit an
+  unprepared project) is unchanged.
+- **`uv run ve` asides removed** (planned): entity-startup, entity-episodic,
+  and audit-intent now use bare `ve` per the porting recipe.
+- **Prior chunk backreferences preserved** as HTML comments (the
+  chunk-create pilot dropped them; keeping them preserves archaeology and
+  costs nothing).
