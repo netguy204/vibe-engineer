@@ -1,17 +1,25 @@
 ---
-status: FUTURE
+status: IMPLEMENTING
 ticket: null
 parent_chunk: null
-code_paths: []
+code_paths:
+- hooks/hooks.json
+- hooks/session_start.sh
+- src/cli/__init__.py
+- tests/test_session_hook.py
+- docs/trunk/DECISIONS.md
+- README.md
 code_references: []
 narrative: claude_plugin_port
 investigation: null
 subsystems: []
 friction_entries: []
-depends_on: ["plugin_scaffold"]
-created_after: ["orch_max_turns_config", "watch_handshake_timeout_retry"]
+depends_on:
+- plugin_scaffold
+created_after:
+- orch_max_turns_config
+- watch_handshake_timeout_retry
 ---
-
 <!--
 ╔══════════════════════════════════════════════════════════════════════════════╗
 ║  DO NOT DELETE THIS COMMENT BLOCK until the chunk complete command is run.   ║

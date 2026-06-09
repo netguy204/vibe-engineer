@@ -11,7 +11,10 @@ import click
 from cli.dotenv_loader import load_dotenv_from_project_root
 
 
+# Chunk: docs/chunks/plugin_session_hooks - ve --version sources the installed
+# package version so the plugin SessionStart hook can check compatibility (DEC-011)
 @click.group()
+@click.version_option(package_name="vibe-engineer", prog_name="ve")
 def cli():
     """Vibe Engineer"""
     load_dotenv_from_project_root()

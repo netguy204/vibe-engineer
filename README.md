@@ -83,6 +83,16 @@ your project to scaffold the workflow documentation. Plugin updates arrive
 through `/plugin update vibe-engineer` — no re-rendering into your
 repository.
 
+#### Session hook
+
+The plugin installs a SessionStart hook that runs whenever you open a session
+inside a ve project (detected by `docs/trunk/GOAL.md`). It surfaces the
+currently IMPLEMENTING chunk, prints a one-line install hint if the `ve` CLI
+is missing, and warns when the plugin and CLI versions diverge. The plugin
+and the `ve` package are co-versioned: they are compatible when their
+major.minor versions match (see DEC-011 in `docs/trunk/DECISIONS.md`). Check
+your CLI version with `ve --version`. Outside ve projects the hook is silent.
+
 ## Usage (Building with the Vibe Engineering workflow)
 
 
