@@ -369,3 +369,44 @@ By always resolving to HEAD, we:
 - A breaking CLI change within a minor release would evade the policy; the policy assumes semver discipline in this repository.
 
 **Revisit If**: The plugin and CLI move to separate repositories or release cadences, the plugin grows features that genuinely need a version *range* (e.g., supporting older CLIs deliberately), or warning fatigue is observed in practice.
+
+### DEC-012: Session-local parallel execution preferred over orchestrator background execution
+
+**Status**: Accepted (2026-06-09)
+
+**Context**: The orchestrator (`ve orch`) executes chunks as background
+agents via the Agent SDK. Anthropic's billing change requires Agent SDK
+consumers to pay standard API token rates, while sub-agents spawned inside an
+interactive Claude Code session are covered by the operator's subscription
+(Max plan). Separately, the claude_plugin_port narrative was executed
+end-to-end with an interactive-session pattern — dependency-ordered waves of
+sub-agents, git-worktree isolation for parallel chunks, per-wave merge-back
+and verification — and the operator judged that execution preferable to the
+orchestrator's worktree/injection machinery.
+
+**Decision**: Session-local parallel execution via `/chunk-execute-all`
+(waves of chunk-executor sub-agents, worktree isolation, per-wave merges) is
+the preferred way to execute chunk batches. The orchestrator remains
+functional but is no longer the recommended path; its deprecation is
+contemplated as future work once `/chunk-execute-all` has proven itself on
+real batches.
+
+**Consequences**:
+- Chunk batches execute inside the operator's session and bill under their
+  subscription rather than at API token rates.
+- The conflict oracle is not consulted on this path: `depends_on: null`
+  chunks are serialized conservatively by the executing agent's own analysis.
+- Execution occupies the interactive session for the duration of the run
+  (waves are observable, and the operator is consulted at failures), whereas
+  the orchestrator ran fully detached.
+- Deprecating the orchestrator would follow the close-the-on-ramp pattern:
+  stop recommending and injecting first, remove machinery later.
+
+**Alternatives considered**:
+- *Keep the orchestrator as the primary batch executor*: rejected — standard
+  token rates make unattended SDK execution materially more expensive than
+  subscription-covered session execution, and the operator prefers the
+  session-local workflow.
+- *Deprecate the orchestrator immediately*: rejected for now — large surface
+  (daemon, scheduler, merge machinery, docs) and `/chunk-execute-all` should
+  prove itself first.

@@ -135,6 +135,7 @@ The workflow slash commands ship with the [vibe-engineer Claude Code plugin](#cl
 | `/chunk-implement` | Apply the plan to the code |
 | `/chunk-complete` | Update code references and mark the current chunk as complete |
 | `/chunk-commit` | Create a conventional git commit for the just completed chunk |
+| `/chunk-execute-all` | Execute a batch of chunks in dependency-ordered waves of parallel sub-agents (session-local; preferred over `ve orch`, see DEC-012) |
 
 ```
 >>> /chunk-create a way to log points of friction as i encounter them
