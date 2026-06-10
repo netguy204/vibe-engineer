@@ -4,6 +4,7 @@ description: Investigate and resolve a stuck orchestrator work unit. Use when a 
 allowed-tools: Bash(ve --help:*), Bash(cat:*), Bash(ve orch status:*), Bash(ve orch work-unit:*), Bash(ve orch attention:*), Bash(ve orch stop:*), Bash(ve orch start:*), Bash(ve chunk activate:*)
 ---
 
+<!-- GENERATED from src/templates/plugin/commands/orchestrator-investigate.md.jinja2 — edit that template and run `ve plugin render`; direct edits here will be overwritten. -->
 <!-- Chunk: docs/chunks/plugin_orch_commands - Static plugin port of orchestrator-investigate -->
 
 ## Context

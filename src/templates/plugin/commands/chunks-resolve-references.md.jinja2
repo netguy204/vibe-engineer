@@ -1,0 +1,18 @@
+{%- import "partials/" ~ flavor ~ "/idioms.md.jinja2" as idioms -%}
+{{ idioms.frontmatter(
+    "chunks-resolve-references",
+    "Update code references across all ACTIVE chunks in parallel and resolve or notify the operator about ambiguities. Use when the operator asks to refresh references project-wide, or after large refactors that may have invalidated chunk code references.",
+    ["Bash(ve --help:*)", "Bash(cat:*)", "Bash(grep:*)"]
+) }}
+
+{{ idioms.generated_marker(source_template) }}
+<!-- Chunk: docs/chunks/plugin_core_commands - Static plugin port of chunks-resolve-references -->
+
+{{ idioms.canonical_preamble() }}
+
+## Instructions
+
+1. Identify all active chunks with `grep -l "status: ACTIVE" docs/chunks/*/GOAL.md`
+
+2. In parallel sub-agents run `/chunk-update-references <path to goal>` for
+   each of the directories containing active GOALs

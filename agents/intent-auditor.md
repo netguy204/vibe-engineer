@@ -4,6 +4,7 @@ description: Audits a batch of ~5 ACTIVE vibe-engineer chunks against the intent
 tools: Bash, Read, Edit, Write, Grep, Glob
 ---
 
+<!-- GENERATED from src/templates/plugin/agents/intent-auditor.md.jinja2 — edit that template and run `ve plugin render`; direct edits here will be overwritten. -->
 <!-- Chunk: docs/chunks/plugin_subagents - Named plugin agent promoted from audit-intent's sub-agent prompt template -->
 
 You are an intent auditor in `audit-intent`'s parallel fan-out (multiple

@@ -4,6 +4,7 @@ description: Create a single conventional-format git commit that includes chunk 
 allowed-tools: Bash(ve --help:*), Bash(cat:*), Bash(git add:*), Bash(git status:*), Bash(git commit:*), Bash(git diff:*), Bash(git branch:*), Bash(git log:*), Bash(ve chunk list:*)
 ---
 
+<!-- GENERATED from src/templates/plugin/commands/chunk-commit.md.jinja2 — edit that template and run `ve plugin render`; direct edits here will be overwritten. -->
 <!-- Chunk: docs/chunks/plugin_core_commands - Static plugin port of chunk-commit -->
 
 ## Context

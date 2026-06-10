@@ -4,6 +4,7 @@ description: Discover and document subsystems from whole-codebase analysis using
 allowed-tools: Bash(ve --help:*), Bash(cat:*), Bash(ve migration status:*), Bash(ve migration create:*), Bash(ve migration pause:*)
 ---
 
+<!-- GENERATED from src/templates/plugin/commands/discover-subsystems.md.jinja2 — edit that template and run `ve plugin render`; direct edits here will be overwritten. -->
 <!-- Chunk: docs/chunks/plugin_core_commands - Static plugin port of discover-subsystems -->
 <!-- Chunk: docs/chunks/claudemd_uv_examples - Plain ve commands for migration CLI examples -->
 

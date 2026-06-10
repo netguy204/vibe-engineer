@@ -4,6 +4,7 @@ description: Execute a narrative's proposed chunks in dependency order, running 
 allowed-tools: Bash(ve --help:*), Bash(cat:*), Bash(ve chunk create:*), Bash(ve chunk activate:*)
 ---
 
+<!-- GENERATED from src/templates/plugin/commands/narrative-execute.md.jinja2 — edit that template and run `ve plugin render`; direct edits here will be overwritten. -->
 <!-- Chunk: docs/chunks/plugin_core_commands - Static plugin port of narrative-execute -->
 <!-- Chunk: docs/chunks/plugin_subagents - Wave execution delegates to the chunk-executor plugin agent -->
 <!-- Chunk: docs/chunks/skill_narrative_execute - Execute narrative chunks in dependency order -->

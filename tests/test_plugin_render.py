@@ -45,6 +45,45 @@ class TestCollectionLayout:
         for pilot in PILOT_TEMPLATES:
             assert pilot in names
 
+    def test_collection_covers_every_committed_render(self):
+        """1:1 mapping between collection templates and committed renders,
+        in both directions. A committed commands/*.md or agents/*.md without
+        a template would silently escape drift coverage (hand edits to it
+        would survive); a template without a committed render is caught by
+        the drift test itself, but is asserted here too for symmetry.
+
+        # Chunk: docs/chunks/dualplugin_content_migration - Full-surface template coverage
+        """
+        templates = set(_template_names())
+        committed = {
+            f"{kind}/{path.name}.jinja2"
+            for kind in ("commands", "agents")
+            for path in (REPO_ROOT / kind).glob("*.md")
+        }
+        missing_templates = committed - templates
+        assert not missing_templates, (
+            "committed renders without a source template (hand-added file?): "
+            f"{sorted(missing_templates)}"
+        )
+        orphan_templates = templates - committed
+        assert not orphan_templates, (
+            "templates without a committed render — run `uv run ve plugin "
+            f"render`: {sorted(orphan_templates)}"
+        )
+
+    def test_collection_spans_full_plugin_surface(self):
+        """dualplugin_content_migration success criterion: all 38 commands
+        and both agents render from templates."""
+        names = _template_names()
+        commands = [n for n in names if n.startswith("commands/")]
+        agents = [n for n in names if n.startswith("agents/")]
+        assert len(commands) == 38, (
+            f"expected all 38 commands in the collection, found {len(commands)}"
+        )
+        assert "agents/chunk-executor.md.jinja2" in agents
+        assert "agents/intent-auditor.md.jinja2" in agents
+        assert len(agents) == 2
+
     def test_partials_are_not_rendered(self):
         for name in _template_names():
             assert not name.startswith("partials/"), (

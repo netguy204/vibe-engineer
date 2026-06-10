@@ -4,6 +4,7 @@ description: "Run a chunk's full plan → implement → complete cycle in the cu
 allowed-tools: Bash(ve --help:*), Bash(cat:*), Bash(ve chunk list:*)
 ---
 
+<!-- GENERATED from src/templates/plugin/commands/chunk-execute.md.jinja2 — edit that template and run `ve plugin render`; direct edits here will be overwritten. -->
 <!-- Chunk: docs/chunks/plugin_core_commands - Static plugin port of chunk-execute -->
 <!-- Chunk: docs/chunks/skill_chunk_execute - Chunk-execute slash command template -->
 <!-- Chunk: docs/chunks/skill_chunk_execute_review_loop - Review → implement feedback loop (steps 5-7) -->

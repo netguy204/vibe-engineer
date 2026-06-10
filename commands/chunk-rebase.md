@@ -4,6 +4,7 @@ description: Merge trunk into a chunk worktree branch and resolve conflicts befo
 allowed-tools: Bash(ve --help:*), Bash(cat:*), Bash(git status:*), Bash(git merge:*), Bash(git add:*), Bash(git commit:*), Bash(uv run pytest:*)
 ---
 
+<!-- GENERATED from src/templates/plugin/commands/chunk-rebase.md.jinja2 — edit that template and run `ve plugin render`; direct edits here will be overwritten. -->
 <!-- Chunk: docs/chunks/plugin_core_commands - Static plugin port of chunk-rebase -->
 
 ## Context

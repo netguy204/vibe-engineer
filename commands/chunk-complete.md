@@ -4,6 +4,7 @@ description: Update code references in the current chunk and move both the PLAN.
 allowed-tools: Bash(ve --help:*), Bash(cat:*), Bash(ve chunk list:*), Bash(ve chunk validate:*), Bash(ve chunk overlap:*), Bash(ve subsystem overlap:*), Bash(ve friction list:*)
 ---
 
+<!-- GENERATED from src/templates/plugin/commands/chunk-complete.md.jinja2 — edit that template and run `ve plugin render`; direct edits here will be overwritten. -->
 <!-- Chunk: docs/chunks/plugin_core_commands - Static plugin port of chunk-complete -->
 
 ## Context

@@ -4,6 +4,7 @@ description: Iteratively run ve validate and fix auto-fixable referential-integr
 allowed-tools: Bash(ve --help:*), Bash(cat:*), Bash(ve validate:*)
 ---
 
+<!-- GENERATED from src/templates/plugin/commands/validate-fix.md.jinja2 — edit that template and run `ve plugin render`; direct edits here will be overwritten. -->
 <!-- Chunk: docs/chunks/plugin_core_commands - Static plugin port of validate-fix -->
 <!-- Chunk: docs/chunks/integrity_validate_fix_command - Iterative fix loop logic and error classification -->
 

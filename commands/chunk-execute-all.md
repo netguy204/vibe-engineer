@@ -4,6 +4,7 @@ description: Execute a batch of chunks (all FUTURE chunks, a narrative's chunks,
 allowed-tools: Bash(ve --help:*), Bash(cat:*), Bash(ve chunk list:*), Bash(ve chunk activate:*), Bash(git status:*), Bash(git log:*), Bash(git branch:*), Bash(git merge:*), Bash(git worktree:*)
 ---
 
+<!-- GENERATED from src/templates/plugin/commands/chunk-execute-all.md.jinja2 — edit that template and run `ve plugin render`; direct edits here will be overwritten. -->
 <!-- Chunk: docs/chunks/localexec_chunk_execute_all - Session-local parallel chunk execution command -->
 
 ## Context

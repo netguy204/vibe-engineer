@@ -4,6 +4,7 @@ description: Batch-submit all FUTURE chunks to the orchestrator. Use when the op
 allowed-tools: Bash(ve --help:*), Bash(cat:*), Bash(ve orch status:*), Bash(ve orch start:*), Bash(ve chunk list:*), Bash(ve orch ps:*), Bash(ve orch inject:*)
 ---
 
+<!-- GENERATED from src/templates/plugin/commands/orchestrator-submit-future.md.jinja2 — edit that template and run `ve plugin render`; direct edits here will be overwritten. -->
 <!-- Chunk: docs/chunks/plugin_orch_commands - Static plugin port of orchestrator-submit-future -->
 
 ## Context

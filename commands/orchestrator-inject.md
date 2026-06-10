@@ -4,6 +4,7 @@ description: Commit and inject a chunk into the orchestrator for background exec
 allowed-tools: Bash(ve --help:*), Bash(cat:*), Bash(ve chunk list:*), Bash(ve orch status:*), Bash(ve orch start:*), Bash(ve orch inject:*)
 ---
 
+<!-- GENERATED from src/templates/plugin/commands/orchestrator-inject.md.jinja2 — edit that template and run `ve plugin render`; direct edits here will be overwritten. -->
 <!-- Chunk: docs/chunks/plugin_orch_commands - Static plugin port of orchestrator-inject -->
 <!-- Chunk: docs/chunks/skill_orchestrator_inject - Orchestrator inject slash command -->
 

@@ -4,6 +4,7 @@ description: Send a request and wait for the response on a channel pair. Use whe
 allowed-tools: Bash(ve --help:*), Bash(cat:*), Bash(ve board channels:*), Bash(ve board watch:*), Bash(ve board send:*), Bash(ve board ack:*)
 ---
 
+<!-- GENERATED from src/templates/plugin/commands/swarm-request-response.md.jinja2 — edit that template and run `ve plugin render`; direct edits here will be overwritten. -->
 <!-- Chunk: docs/chunks/plugin_orch_commands - Static plugin port of swarm-request-response -->
 <!-- Chunk: docs/chunks/swarm_request_response - Request-response pattern over swarm channel pairs -->
 

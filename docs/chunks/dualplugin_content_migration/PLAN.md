@@ -10,170 +10,188 @@ to hand to an agent.
 
 ## Approach
 
-<!--
-How will you build this? Describe the strategy at a high level.
-What patterns or techniques will you use?
-What existing code will you build on?
+Mechanical migration of the remaining 36 commands and 2 agents into
+`src/templates/plugin/`, following
+`docs/chunks/dualplugin_template_source/TEMPLATING_GUIDE.md` §6 per file. The
+render contract, idiom macros, marker convention, and byte-stability rules
+are all inherited from dualplugin_template_source — this chunk adds content
+only and touches no renderer code (`src/plugin_render.py` and
+`src/cli/plugin.py` are owned by the concurrently-running
+dualplugin_cursor_scaffold and already handle the `agents/` subdirectory
+generically via `output_path`).
 
-Reference docs/trunk/DECISIONS.md entries where relevant.
-If this approach represents a new significant decision, ask the user
-if we should add it to DECISIONS.md and reference it here.
+Because the migration standard is byte-stability (each Claude render must be
+identical to the committed file except the added generated marker), the
+templates are produced by a **one-time generation script** kept as a chunk
+artifact (`docs/chunks/dualplugin_content_migration/migrate_templates.py`).
+The script derives each template from its committed render and self-verifies:
+after writing a template, it renders it through
+`plugin_render.render_plugin_template` and asserts the output equals the
+committed file with exactly one inserted marker line. Any other diff aborts
+the migration for that file. This turns the byte-stability bar into an
+executable check instead of a hand-eyeballed one.
 
-Always include tests in your implementation plan and adhere to
-docs/trunk/TESTING_PHILOSOPHY.md in your planning.
+A pre-migration survey of all 38 files classified the corpus:
 
-Remember to update code_paths in the chunk's GOAL.md (e.g., docs/chunks/dualplugin_content_migration/GOAL.md)
-with references to the files that you expect to touch.
--->
+| Class | Files | Template shape |
+|---|---|---|
+| Canonical preamble, no command-specific bullets | 26 commands | `{{ idioms.canonical_preamble() }}` |
+| Canonical preamble + trailing task-workspace bullets | 8 commands (chunk-complete, chunk-execute, chunk-implement, chunk-plan, discover-subsystems, investigation-create, narrative-compact, subsystem-discover) | `{% call idioms.canonical_preamble() -%} ... {%- endcall %}` |
+| Nonstandard context block (extra probes beyond the standard three) | 2 commands (chunk-commit, chunk-execute-all) | own `## Context` heading, `{{ idioms.probe(...) }}` per probe line, runtime-context prose verbatim (the ve-status pilot pattern) |
+| Agents (no context block, `tools:` frontmatter key) | 2 (chunk-executor, intent-auditor) | literal frontmatter + `{{ idioms.generated_marker(source_template) }}` + body verbatim |
+
+Survey facts the plan relies on:
+
+- No command or agent body contains `{{`, `{%`, or `{#` — no `{% raw %}`
+  wrapping is needed anywhere (the friction-log/validate-fix brace history
+  flagged in the wave-1 handoff concerns only single-brace placeholders like
+  `{chunk_name}`, which are Jinja2-inert).
+- No file references `${CLAUDE_PLUGIN_ROOT}`, so `idioms.plugin_root()` is
+  unused by this wave.
+- Every command frontmatter is exactly `name` / `description` /
+  `allowed-tools` (single-line each); both agents are `name` / `description`
+  / `tools`. `chunk-execute.md`'s description is YAML-double-quoted in the
+  committed file; the quotes are part of the verbatim line and are passed
+  through the `frontmatter` macro inside the description argument.
+- Chunk backreference HTML comments, task-workspace guidance, chunk-review's
+  verbatim ReviewDecision references, and steward/swarm channel-naming
+  guidance all live in the verbatim body and survive untouched by
+  construction.
+
+**Agent frontmatter deviation (decided at planning time):** the
+`idioms.frontmatter` macro emits an `allowed-tools:` line and cannot emit the
+agents' `tools:` key. Extending the macro vocabulary mid-flight is off the
+table — `partials/claude/idioms.md.jinja2` documents the five-macro signature
+set as the flavor-substitution interface, and dualplugin_cursor_scaffold is
+concurrently implementing `partials/cursor/` against exactly that set. The
+two agent templates therefore carry their frontmatter as literal text and use
+only `generated_marker` from the idiom vocabulary. Consequence for
+dualplugin_cursor_render: agent frontmatter does NOT flavor-substitute; if
+Cursor needs a different agent frontmatter shape, that chunk must either add
+an `agent_frontmatter` macro to both partials or post-process. Recorded in
+Deviations and in the executor handoff.
+
+Testing follows docs/trunk/TESTING_PHILOSOPHY.md by extending the existing
+parametrized drift suite (which auto-covers every new template) with a
+completeness check, rather than per-file assertions: the new test fails when
+a committed `commands/*.md` or `agents/*.md` exists without a corresponding
+template (a hand-added rendered file would otherwise silently escape drift
+coverage).
 
 ## Subsystem Considerations
 
-<!--
-Before designing your implementation, check docs/subsystems/ for relevant
-cross-cutting patterns.
-
-QUESTIONS TO CONSIDER:
-- Does this chunk touch any existing subsystem's scope?
-- Will this chunk implement part of a subsystem (contribute code) or use it
-  (depend on it)?
-- Did you discover code during exploration that should be part of a subsystem
-  but doesn't follow its patterns?
-
-If no subsystems are relevant, delete this section.
-
-WHEN SUBSYSTEMS ARE RELEVANT:
-List each relevant subsystem with its status and your relationship:
-- **docs/subsystems/validation** (DOCUMENTED): This chunk USES the validation
-  subsystem to check input
-- **docs/subsystems/error_handling** (REFACTORING): This chunk IMPLEMENTS a
-  new error type following the subsystem's patterns
-
-HOW SUBSYSTEM STATUS AFFECTS YOUR WORK:
-
-DOCUMENTED subsystems: The subsystem's patterns are captured but deviations are not
-being actively fixed. If you discover code that deviates from the subsystem's
-patterns, add it to the subsystem's Known Deviations section. Do NOT prioritize
-fixing those deviations—your chunk has its own goals.
-
-REFACTORING subsystems: The subsystem is being actively consolidated. If your chunk
-work touches code that deviates from the subsystem's patterns, attempt to bring it
-into compliance as part of your work. This is "opportunistic improvement"—improve
-what you touch, but don't expand scope to fix unrelated deviations.
-
-WHEN YOU DISCOVER DEVIATING CODE:
-- Add it to the subsystem's Known Deviations section
-- Note whether you will address it (REFACTORING status + relevant to your work)
-  or leave it for future work (DOCUMENTED status or outside your chunk's scope)
-
-Example:
-- **Discovered deviation**: src/legacy/parser.py#validate_input does its own
-  validation instead of using the validation subsystem
-  - Added to docs/subsystems/validation Known Deviations
-  - Action: Will not address (subsystem is DOCUMENTED; deviation outside chunk scope)
--->
+- **docs/subsystems/template_system** (DOCUMENTED): this chunk USES the
+  subsystem — all templates render through the shared `plugin` Jinja2
+  environment via `plugin_render.render_plugin_template`. No environment
+  changes (the byte-stability rules in TEMPLATING_GUIDE §7 forbid
+  `trim_blocks`/`lstrip_blocks` flips). No new deviations discovered.
 
 ## Sequence
 
-<!--
-Ordered steps to implement this chunk. Each step should be:
-- Small enough to reason about in isolation
-- Large enough to be meaningful
-- Clear about its inputs and outputs
+### Step 1: Write the migration script (chunk artifact)
 
-This sequence is your contract with yourself (and with agents).
-Work through it in order. Don't skip ahead.
+`docs/chunks/dualplugin_content_migration/migrate_templates.py`:
 
-Example:
+1. For each of the 36 commands and 2 agents, read the committed file and
+   split frontmatter from body.
+2. Emit the template per the class table above:
+   - import line (TEMPLATING_GUIDE §3) as line 1;
+   - `{{ idioms.frontmatter(...) }}` (commands) or literal frontmatter
+     (agents), copying name/description/tools verbatim;
+   - `{{ idioms.generated_marker(source_template) }}` as the first body
+     line, then the body verbatim;
+   - for canonical files, the exact canonical-preamble text (rendered once
+     from the macro for comparison) is replaced with the macro call /
+     `{% call %}` block; for chunk-commit and chunk-execute-all, only the
+     probe lines are replaced with `idioms.probe(...)` calls.
+   - String arguments are emitted as Jinja literals with quote style chosen
+     per content (double-quoted, single-quoted, or escaped).
+3. Self-verify: render each written template (claude flavor) and assert it
+   equals the committed file with exactly the one marker line inserted after
+   the frontmatter. Abort loudly on any other diff.
 
-### Step 1: Define the SegmentHeader struct
+Output: 36 files in `src/templates/plugin/commands/`, 2 in
+`src/templates/plugin/agents/`.
 
-Create the struct that represents a segment's header with fields for:
-- magic number (4 bytes)
-- version (2 bytes)
-- segment_id (8 bytes)
-- message_count (4 bytes)
-- checksum (4 bytes)
+### Step 2: Run the script and spot-check
 
-Location: src/segment/format.rs
+Run the script; manually inspect representative templates from each class
+(one canonical-empty, one `{% call %}`, chunk-commit, one agent) against the
+pilots for style consistency (multi-line frontmatter call formatting).
 
-### Step 2: Implement header serialization
+### Step 3: Re-render the committed outputs
 
-Add `to_bytes()` and `from_bytes()` methods to SegmentHeader.
-Use little-endian encoding per SPEC.md Section 3.1.
+`uv run ve plugin render` — rewrites all of `commands/*.md` and
+`agents/*.md`. Verify `git diff` shows, for every pre-existing file, exactly
+one added line (the marker) and nothing else. The two pilots must show no
+diff at all.
 
-### Step 3: ...
+### Step 4: Extend the drift suite's collection-layout coverage
 
----
+In `tests/test_plugin_render.py`, extend `TestCollectionLayout` (per the
+wave-1 handoff: extend, don't rewrite `test_pilot_templates_exist`):
 
-**BACKREFERENCE COMMENTS**
+- a completeness test asserting a 1:1 mapping between collection templates
+  and committed `commands/*.md` / `agents/*.md` files in both directions;
+- an explicit count/membership assertion that the collection now covers all
+  38 commands and 2 agents.
 
-When implementing code, add backreference comments to help future agents trace
-code back to its governing documentation.
+The parametrized `TestDrift` class picks up all 38 new templates
+automatically — no edits there.
 
-**Valid backreference types:**
-- `# Subsystem: docs/subsystems/<name>` - For architectural patterns
-- `# Chunk: docs/chunks/<name>` - For implementation work
+### Step 5: Verify suites and baseline
 
-Place comments at the appropriate level:
-- **Module-level**: If this code implements the subsystem/chunk's core functionality
-- **Class-level**: If this class is part of the pattern
-- **Method-level**: If this method implements a specific behavior
+- `uv run pytest tests/test_plugin_render.py tests/test_plugin_commands.py
+  tests/test_plugin_agents.py tests/test_plugin_manifest.py` — all green,
+  including the pinned chunk-executor lifecycle invariants ("/chunk-plan" …
+  "3 times maximum", SUCCESS/FAILURE) and intent-auditor rules.
+- `uv run ve validate` — chunk backreference integrity unchanged.
+- Full `uv run pytest tests/` — failures must not exceed the inherited
+  baseline (32 failures / 4036 passed after wave 1).
 
-Format (place immediately before the symbol):
-```
-# Subsystem: docs/subsystems/workflow_artifacts - Workflow artifact manager pattern
-# Chunk: docs/chunks/auth_refactor - Authentication system redesign
-```
+### Step 6: Update GOAL.md code references and commit
 
-Do NOT add narrative backreferences. Narratives decompose into chunks; reference
-the implementing chunk instead.
-
-**Task context note**: In multi-project tasks, always use local paths (e.g.,
-`docs/chunks/chunk_name`) for chunk backreferences, not paths to the external
-artifact repo. Each project has `external.yaml` pointers that resolve to the
-actual chunk content.
--->
+Populate `code_references`, commit templates + re-rendered outputs + test
+extension + chunk docs on this worktree branch (never staging the forbidden
+paths: .entities/, idea.md, src/psutil*, watch_20260415-180006,
+docs/articles/).
 
 ## Dependencies
 
-<!--
-What must exist before this chunk can be implemented?
-- Other chunks that must be complete
-- External libraries to add
-- Infrastructure or configuration
-
-If there are no dependencies, delete this section.
--->
+- **dualplugin_template_source** (ACTIVE, merged as 775fce5): collection
+  layout, claude idioms partial, renderer, drift suite, marker convention.
+- Runs concurrently with **dualplugin_cursor_scaffold**, which owns
+  `src/plugin_render.py`, `src/cli/plugin.py`, `partials/cursor/`, the two
+  pilot templates, `.cursor-plugin/`, `docs/trunk/DECISIONS.md`, `README.md`,
+  and `tests/test_plugin_manifest.py` — none of which this chunk touches.
 
 ## Risks and Open Questions
 
-<!--
-What might go wrong? What are you unsure about?
-Being explicit about uncertainty helps you (and agents) know where to
-be careful and when to stop and ask questions.
-
-Example:
-- fsync behavior may differ across filesystems; need to verify on ext4 and APFS
-- Unclear whether concurrent reads during write are safe; may need mutex
-- Performance target is aggressive; may need to iterate on buffer sizes
--->
+- **Canonical-preamble false positives**: a file might contain the canonical
+  text plus subtle whitespace variation that the survey's exact-substring
+  match missed in the runtime bullets. Mitigated by the script's per-file
+  render-and-compare verification — any mismatch aborts that file's
+  migration rather than committing a lossy template.
+- **Jinja string-literal escaping** for descriptions containing both quote
+  characters (chunk-execute). Mitigated by the same self-verification.
+- **Merge adjacency with dualplugin_cursor_scaffold**: both branches add
+  tests to `tests/test_plugin_render.py`. This chunk only extends
+  `TestCollectionLayout`; scaffold work centers on flavors/CLI tests.
+  Textual conflicts are possible but semantically orthogonal.
+- The migration script is a one-time artifact; it is not maintained code and
+  lives in the chunk directory per the chunk-artifact convention.
 
 ## Deviations
 
-<!--
-POPULATE DURING IMPLEMENTATION, not at planning time.
+<!-- POPULATE DURING IMPLEMENTATION, not at planning time. -->
 
-When reality diverges from the plan, document it here:
-- What changed?
-- Why?
-- What was the impact?
-
-Minor deviations (renamed a function, used a different helper) don't need
-documentation. Significant deviations (changed the approach, skipped a step,
-added steps) do.
-
-Example:
-- Step 4: Originally planned to use std::fs::rename for atomic swap.
-  Testing revealed this isn't atomic across filesystems. Changed to
-  write-fsync-rename-fsync sequence per platform best practices.
--->
+- **Agent frontmatter is literal, not macro-emitted** (decided at planning
+  time, confirmed during implementation): `idioms.frontmatter` emits
+  `allowed-tools:`; agents need `tools:`. Extending the five-macro
+  flavor-substitution interface mid-flight would race
+  dualplugin_cursor_scaffold's `partials/cursor/` implementation of the same
+  signatures. The two agent templates carry literal frontmatter and use only
+  `generated_marker`. Flagged as a handoff for dualplugin_cursor_render.
+- **Byte-stability outcome**: all 38 pre-existing rendered files differ from
+  their pre-chunk state by exactly the one added marker line; the two pilot
+  renders are byte-identical to their wave-1 state. No other diffs.

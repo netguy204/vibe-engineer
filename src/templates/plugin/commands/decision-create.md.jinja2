@@ -1,0 +1,25 @@
+{%- import "partials/" ~ flavor ~ "/idioms.md.jinja2" as idioms -%}
+{{ idioms.frontmatter(
+    "decision-create",
+    "Update docs/trunk/DECISIONS.md with a new decision. Use when the operator asks to record, add, or document an architectural decision (ADR), or when a significant choice is made that future work must respect.",
+    ["Bash(ve --help:*)", "Bash(cat:*)"]
+) }}
+
+{{ idioms.generated_marker(source_template) }}
+<!-- Chunk: docs/chunks/plugin_core_commands - Static plugin port of decision-create -->
+
+{{ idioms.canonical_preamble() }}
+
+## Instructions
+
+The operator has requested that we add a decision based on:
+
+$ARGUMENTS
+
+---
+
+1. Read the existing decisions in docs/trunk/DECISIONS.md
+
+2. Synthesize what the operator has requested into a new decision that follows
+   the template. It is important that decisions be clear, concrete, relatively
+   terse, and easy to interpret.

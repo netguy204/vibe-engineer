@@ -4,6 +4,7 @@ description: Migrate legacy CLAUDE.md to use magic markers for VE-managed conten
 allowed-tools: Bash(ve --help:*), Bash(cat:*), Bash(ve migration create:*), Bash(ve init:*)
 ---
 
+<!-- GENERATED from src/templates/plugin/commands/migrate-managed-claude-md.md.jinja2 — edit that template and run `ve plugin render`; direct edits here will be overwritten. -->
 <!-- Chunk: docs/chunks/plugin_orch_commands - Static plugin port of migrate-managed-claude-md -->
 
 ## Context

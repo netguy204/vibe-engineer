@@ -4,6 +4,7 @@ description: Monitor injected chunks through the orchestrator lifecycle to compl
 allowed-tools: Bash(ve --help:*), Bash(cat:*), Bash(ve orch ps:*), Bash(ve orch work-unit:*), Bash(ve board send:*)
 ---
 
+<!-- GENERATED from src/templates/plugin/commands/orchestrator-monitor.md.jinja2 — edit that template and run `ve plugin render`; direct edits here will be overwritten. -->
 <!-- Chunk: docs/chunks/plugin_orch_commands - Static plugin port of orchestrator-monitor -->
 <!-- Chunk: docs/chunks/orchestrator_monitor_skill - Orchestrator monitor slash command -->
 <!-- Chunk: docs/chunks/orch_monitor_guardrails - Monitoring guardrails against anti-patterns -->

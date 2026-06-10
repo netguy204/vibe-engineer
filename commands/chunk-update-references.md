@@ -4,6 +4,7 @@ description: Verify and refresh the code references in a chunk's GOAL.md, keepin
 allowed-tools: Bash(ve --help:*), Bash(cat:*)
 ---
 
+<!-- GENERATED from src/templates/plugin/commands/chunk-update-references.md.jinja2 — edit that template and run `ve plugin render`; direct edits here will be overwritten. -->
 <!-- Chunk: docs/chunks/plugin_core_commands - Static plugin port of chunk-update-references -->
 <!-- Chunk: docs/chunks/code_to_docs_backrefs - Backreference maintenance during reference reconciliation -->
 

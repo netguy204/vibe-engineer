@@ -1,17 +1,24 @@
 ---
-status: FUTURE
+status: IMPLEMENTING
 ticket: null
 parent_chunk: null
-code_paths: []
+code_paths:
+- src/templates/plugin/commands/
+- src/templates/plugin/agents/
+- commands/
+- agents/
+- tests/test_plugin_render.py
+- docs/chunks/dualplugin_content_migration/migrate_templates.py
 code_references: []
 narrative: cursor_plugin_port
 investigation: null
 subsystems: []
 friction_entries: []
-depends_on: ["dualplugin_template_source"]
-created_after: ["plugin_hook_cli_bootstrap"]
+depends_on:
+- dualplugin_template_source
+created_after:
+- plugin_hook_cli_bootstrap
 ---
-
 <!--
 ╔══════════════════════════════════════════════════════════════════════════════╗
 ║  DO NOT DELETE THIS COMMENT BLOCK until the chunk complete command is run.   ║

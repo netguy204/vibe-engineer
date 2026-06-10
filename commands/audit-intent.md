@@ -4,6 +4,7 @@ description: Migrate the project's ACTIVE chunks to the present-tense, intent-ow
 allowed-tools: Bash(ve --help:*), Bash(cat:*), Bash(ve chunk list:*)
 ---
 
+<!-- GENERATED from src/templates/plugin/commands/audit-intent.md.jinja2 — edit that template and run `ve plugin render`; direct edits here will be overwritten. -->
 <!-- Chunk: docs/chunks/plugin_orch_commands - Static plugin port of audit-intent -->
 <!-- Chunk: docs/chunks/plugin_subagents - Fan-out delegates to the intent-auditor plugin agent -->
 

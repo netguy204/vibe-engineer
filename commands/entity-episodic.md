@@ -4,6 +4,7 @@ description: Search prior session transcripts for specific events, conversations
 allowed-tools: Bash(ve --help:*), Bash(cat:*), Bash(ve entity episodic:*), Bash(ve entity recall:*)
 ---
 
+<!-- GENERATED from src/templates/plugin/commands/entity-episodic.md.jinja2 — edit that template and run `ve plugin render`; direct edits here will be overwritten. -->
 <!-- Chunk: docs/chunks/plugin_orch_commands - Static plugin port of entity-episodic -->
 <!-- Chunk: docs/chunks/entity_episodic_skill - Episodic memory search skill -->
 

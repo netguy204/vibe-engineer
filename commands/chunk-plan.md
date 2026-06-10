@@ -4,6 +4,7 @@ description: Create a chunk PLAN.md file containing the technical breakdown for 
 allowed-tools: Bash(ve --help:*), Bash(cat:*), Bash(ve chunk list:*), Bash(ve chunk suggest-prefix:*), Bash(ve chunk cluster-list:*)
 ---
 
+<!-- GENERATED from src/templates/plugin/commands/chunk-plan.md.jinja2 — edit that template and run `ve plugin render`; direct edits here will be overwritten. -->
 <!-- Chunk: docs/chunks/plugin_core_commands - Static plugin port of chunk-plan -->
 
 ## Context

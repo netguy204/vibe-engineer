@@ -4,6 +4,7 @@ description: Monitor all changelog channels in a swarm. Use when the operator wa
 allowed-tools: Bash(ve --help:*), Bash(cat:*), Bash(ve board channels:*), Bash(ve board watch-multi:*)
 ---
 
+<!-- GENERATED from src/templates/plugin/commands/swarm-monitor.md.jinja2 — edit that template and run `ve plugin render`; direct edits here will be overwritten. -->
 <!-- Chunk: docs/chunks/plugin_orch_commands - Static plugin port of swarm-monitor -->
 <!-- Chunk: docs/chunks/swarm_monitor_command - Swarm monitor slash command -->
 <!-- Chunk: docs/chunks/watchmulti_exit_on_message - Event-driven loop pattern using --count 1 with run_in_background -->

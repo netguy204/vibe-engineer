@@ -4,6 +4,7 @@ description: Demote a cross-repo chunk to a single project, collapsing all exter
 allowed-tools: Bash(ve --help:*), Bash(cat:*), Bash(ve chunk list:*), Bash(ve chunk demote:*)
 ---
 
+<!-- GENERATED from src/templates/plugin/commands/chunk-demote.md.jinja2 — edit that template and run `ve plugin render`; direct edits here will be overwritten. -->
 <!-- Chunk: docs/chunks/plugin_core_commands - Static plugin port of chunk-demote -->
 <!-- Chunk: docs/chunks/chunk_demote - /chunk-demote skill template -->
 

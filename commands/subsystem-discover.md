@@ -4,6 +4,7 @@ description: Guide collaborative discovery of an emergent subsystem through patt
 allowed-tools: Bash(ve --help:*), Bash(cat:*), Bash(ve subsystem discover:*), Bash(ve subsystem status:*)
 ---
 
+<!-- GENERATED from src/templates/plugin/commands/subsystem-discover.md.jinja2 — edit that template and run `ve plugin render`; direct edits here will be overwritten. -->
 <!-- Chunk: docs/chunks/plugin_core_commands - Static plugin port of subsystem-discover -->
 
 ## Context

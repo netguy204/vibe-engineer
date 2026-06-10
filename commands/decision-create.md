@@ -4,6 +4,7 @@ description: Update docs/trunk/DECISIONS.md with a new decision. Use when the op
 allowed-tools: Bash(ve --help:*), Bash(cat:*)
 ---
 
+<!-- GENERATED from src/templates/plugin/commands/decision-create.md.jinja2 — edit that template and run `ve plugin render`; direct edits here will be overwritten. -->
 <!-- Chunk: docs/chunks/plugin_core_commands - Static plugin port of decision-create -->
 
 ## Context

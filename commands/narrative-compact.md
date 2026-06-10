@@ -4,6 +4,7 @@ description: Consolidate multiple chunks into a narrative to reduce backreferenc
 allowed-tools: Bash(ve --help:*), Bash(cat:*), Bash(ve chunk backrefs:*), Bash(ve chunk cluster:*), Bash(ve narrative compact:*), Bash(grep:*)
 ---
 
+<!-- GENERATED from src/templates/plugin/commands/narrative-compact.md.jinja2 — edit that template and run `ve plugin render`; direct edits here will be overwritten. -->
 <!-- Chunk: docs/chunks/plugin_core_commands - Static plugin port of narrative-compact -->
 <!-- Chunk: docs/chunks/scratchpad_docs_cleanup - Removed scratchpad references from background and Phase 4 sections -->
 

@@ -4,6 +4,7 @@ description: Run the sleep cycle for an entity — extract memories and consolid
 allowed-tools: Bash(ve --help:*), Bash(cat:*), Bash(ve entity list:*), Bash(ve entity shutdown:*)
 ---
 
+<!-- GENERATED from src/templates/plugin/commands/entity-shutdown.md.jinja2 — edit that template and run `ve plugin render`; direct edits here will be overwritten. -->
 <!-- Chunk: docs/chunks/plugin_orch_commands - Static plugin port of entity-shutdown -->
 <!-- Chunk: docs/chunks/entity_shutdown_skill - Entity shutdown skill template -->
 

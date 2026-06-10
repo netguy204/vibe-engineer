@@ -4,6 +4,7 @@ description: Set up a project steward via interactive interview. Use when the op
 allowed-tools: Bash(ve --help:*), Bash(cat:*), Bash(ve board channels:*), Bash(ve board send:*)
 ---
 
+<!-- GENERATED from src/templates/plugin/commands/steward-setup.md.jinja2 — edit that template and run `ve plugin render`; direct edits here will be overwritten. -->
 <!-- Chunk: docs/chunks/plugin_orch_commands - Static plugin port of steward-setup -->
 <!-- Chunk: docs/chunks/leader_board_steward_skills - Steward skill templates -->
 <!-- Chunk: docs/chunks/steward_setup_bootstrap - Board.toml auto-suggest defaults and bootstrap channel messages -->

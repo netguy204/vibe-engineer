@@ -4,6 +4,7 @@ description: Executes a single vibe-engineer chunk through its full lifecycle (p
 tools: Bash, Read, Edit, Write, Grep, Glob, SlashCommand
 ---
 
+<!-- GENERATED from src/templates/plugin/agents/chunk-executor.md.jinja2 — edit that template and run `ve plugin render`; direct edits here will be overwritten. -->
 <!-- Chunk: docs/chunks/plugin_subagents - Named plugin agent promoted from narrative-execute's inline prompt -->
 <!-- Chunk: docs/chunks/localexec_chunk_execute_all - Worktree mode for parallel wave execution -->
 

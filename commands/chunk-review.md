@@ -4,6 +4,7 @@ description: Review chunk implementation for alignment with documented intent, p
 allowed-tools: Bash(ve --help:*), Bash(cat:*), Bash(ve chunk list:*), Bash(ve reviewer decisions:*), Bash(ve reviewer decision create:*)
 ---
 
+<!-- GENERATED from src/templates/plugin/commands/chunk-review.md.jinja2 — edit that template and run `ve plugin render`; direct edits here will be overwritten. -->
 <!-- Chunk: docs/chunks/plugin_core_commands - Static plugin port of chunk-review -->
 <!-- Chunk: docs/chunks/chunk_review_skill - Complete chunk-review skill template with four-phase review workflow -->
 <!-- Chunk: docs/chunks/reviewer_use_decision_files - Updated to use per-file decision system -->

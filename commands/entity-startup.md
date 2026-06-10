@@ -4,6 +4,7 @@ description: Wake an entity by loading its identity, memories, and operational c
 allowed-tools: Bash(ve --help:*), Bash(cat:*), Bash(ve entity list:*), Bash(ve entity startup:*), Bash(ve entity recall:*), Bash(ve entity touch:*), Bash(ve entity episodic:*)
 ---
 
+<!-- GENERATED from src/templates/plugin/commands/entity-startup.md.jinja2 — edit that template and run `ve plugin render`; direct edits here will be overwritten. -->
 <!-- Chunk: docs/chunks/plugin_orch_commands - Static plugin port of entity-startup -->
 <!-- Chunk: docs/chunks/entity_startup_wiki - Wiki-aware startup skill template -->
 <!-- Chunk: docs/chunks/entity_startup_skill - Entity startup skill template -->

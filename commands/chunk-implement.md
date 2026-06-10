@@ -4,6 +4,7 @@ description: Implement the active chunk by following its PLAN.md, addressing any
 allowed-tools: Bash(ve --help:*), Bash(cat:*), Bash(ve chunk list:*)
 ---
 
+<!-- GENERATED from src/templates/plugin/commands/chunk-implement.md.jinja2 — edit that template and run `ve plugin render`; direct edits here will be overwritten. -->
 <!-- Chunk: docs/chunks/plugin_core_commands - Static plugin port of chunk-implement -->
 
 ## Context

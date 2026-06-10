@@ -4,6 +4,7 @@ description: Rename all chunks matching a prefix to use a new prefix, updating f
 allowed-tools: Bash(ve --help:*), Bash(cat:*), Bash(ve chunk cluster-rename:*), Bash(ve chunk list:*), Bash(grep:*)
 ---
 
+<!-- GENERATED from src/templates/plugin/commands/cluster-rename.md.jinja2 — edit that template and run `ve plugin render`; direct edits here will be overwritten. -->
 <!-- Chunk: docs/chunks/plugin_core_commands - Static plugin port of cluster-rename -->
 <!-- Chunk: docs/chunks/cluster_rename - Slash command template for /cluster-rename -->
 
