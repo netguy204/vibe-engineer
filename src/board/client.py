@@ -234,6 +234,8 @@ class BoardClient:
     # Chunk: docs/chunks/websocket_reconnect_tuning - Backoff reset and keepalive tuning
     # Chunk: docs/chunks/board_watch_stale_reconnect - Stale connection detection via re-registration
     # Chunk: docs/chunks/watch_idle_reconnect_budget - Idle reconnects exempt from budget
+    # Chunk: docs/chunks/watch_handshake_timeout_retry - asyncio.TimeoutError now retryable via _connect_with_retry
+    # Chunk: docs/chunks/watch_reconnect_counter_reset - Resets attempt counter to 0 after successful reconnect (consecutive-failure ceiling only)
     async def watch_with_reconnect(
         self,
         channel: str,
@@ -398,6 +400,7 @@ class BoardClient:
     # Chunk: docs/chunks/watchmulti_exit_on_message - Count-limited watch_multi
     # Chunk: docs/chunks/watchmulti_manual_ack - Manual ack mode
     # Chunk: docs/chunks/board_watch_stale_reconnect - Stale connection detection via re-registration
+    # Chunk: docs/chunks/watch_idle_reconnect_budget - Raises StaleWatchError on stale timeout enabling budget-exempt idle reconnect
     async def watch_multi(
         self,
         channels: dict[str, int],
@@ -553,6 +556,8 @@ class BoardClient:
     # Chunk: docs/chunks/watchmulti_manual_ack - Manual ack mode
     # Chunk: docs/chunks/board_watch_stale_reconnect - Stale connection detection via re-registration
     # Chunk: docs/chunks/watch_idle_reconnect_budget - Idle reconnects exempt from budget
+    # Chunk: docs/chunks/watch_handshake_timeout_retry - asyncio.TimeoutError now retryable via _connect_with_retry
+    # Chunk: docs/chunks/watch_reconnect_counter_reset - Same attempt-reset logic for the multi-channel watch variant
     async def watch_multi_with_reconnect(
         self,
         channels: dict[str, int],
