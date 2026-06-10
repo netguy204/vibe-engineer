@@ -87,11 +87,16 @@ repository.
 
 The plugin installs a SessionStart hook that runs whenever you open a session
 inside a ve project (detected by `docs/trunk/GOAL.md`). It surfaces the
-currently IMPLEMENTING chunk, prints a one-line install hint if the `ve` CLI
-is missing, and warns when the plugin and CLI versions diverge. The plugin
-and the `ve` package are co-versioned: they are compatible when their
-major.minor versions match (see DEC-011 in `docs/trunk/DECISIONS.md`). Check
-your CLI version with `ve --version`. Outside ve projects the hook is silent.
+currently IMPLEMENTING chunk, and when the `ve` CLI is missing it installs it
+for you from the plugin's own checkout (`uv tool install`), announcing what it
+is doing first — so on a machine with uv, installing the plugin is the only
+setup step (see DEC-013 in `docs/trunk/DECISIONS.md`). Installs the hook
+created this way are kept version-synced with the plugin automatically; a
+`ve` you installed yourself is never touched — the hook only warns when the
+versions diverge. The plugin and the `ve` package are co-versioned: they are
+compatible when their major.minor versions match (DEC-011). Check your CLI
+version with `ve --version`. Without uv the hook falls back to a one-line
+install hint, and outside ve projects it is silent.
 
 ## Usage (Building with the Vibe Engineering workflow)
 

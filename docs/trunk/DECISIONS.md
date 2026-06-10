@@ -410,3 +410,43 @@ real batches.
 - *Deprecate the orchestrator immediately*: rejected for now — large surface
   (daemon, scheduler, merge machinery, docs) and `/chunk-execute-all` should
   prove itself first.
+
+### DEC-013: SessionStart hook bootstraps the ve CLI from the plugin checkout
+
+**Status**: Accepted (2026-06-09)
+
+**Context**: DEC-010 split distribution into two installs — the plugin (via
+Claude Code) and the ve CLI (via uv/pip) — leaving one manual step between a
+new user and a working workflow. The plugin install pulls the entire
+repository, which IS the Python package, so the hook always has an
+installable, version-matched source at `$CLAUDE_PLUGIN_ROOT`.
+
+**Decision**: When a session opens in a ve project and the CLI is missing,
+the SessionStart hook installs it with `uv tool install "$CLAUDE_PLUGIN_ROOT"`
+— the "polite, conscientious" variant: it announces what it is doing before
+acting, records a `managed-install` marker for installs it owns, retries a
+failed install at most once per plugin version (a `bootstrap-attempt` marker
+suppresses repeats), and degrades to the DEC-011 one-line hint whenever uv,
+the plugin root, or its pyproject.toml is unavailable. DEC-011 version drift
+is auto-corrected by reinstalling from the checkout only for marker-managed
+installs; user-managed installs are warned about, never modified. State lives
+under `${XDG_STATE_HOME:-$HOME/.local/state}/vibe-engineer`.
+
+**Consequences**:
+- Installing the plugin is the only manual step on a machine with uv; the
+  CLI appears (and stays version-synced) via the hook.
+- Managed installs make the DEC-011 drift warning structurally unreachable;
+  the warning remains for user-managed installs.
+- First session on a fresh machine pays the `uv tool install` latency once.
+- The hook gains writable state; everything else in its contract (silent
+  outside ve projects, <= 3 output lines, always exit 0) is unchanged.
+
+**Alternatives considered**:
+- *`uvx --from $CLAUDE_PLUGIN_ROOT ve` everywhere (zero install)*: rejected —
+  changes the bare-`ve` convention across all commands and agents and leaves
+  nothing on PATH for sub-agents or the operator's shell.
+- *Interactive consent before installing*: rejected — SessionStart hooks
+  cannot block on input; the announce line plus the managed-marker boundary
+  provide the protection consent would.
+- *Auto-sync all installs on drift*: rejected — reinstalling a user-managed
+  ve would be a surprising side effect.
