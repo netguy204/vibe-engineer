@@ -1,17 +1,18 @@
----
-name: ve-status
-description: Report the current vibe-engineering workflow status for this project
-allowed-tools: Bash(ve chunk list:*), Bash(ve --help:*)
----
+{%- import "partials/" ~ flavor ~ "/idioms.md.jinja2" as idioms -%}
+{{ idioms.frontmatter(
+    "ve-status",
+    "Report the current vibe-engineering workflow status for this project",
+    ["Bash(ve chunk list:*)", "Bash(ve --help:*)"]
+) }}
 
-<!-- GENERATED from src/templates/plugin/commands/ve-status.md.jinja2 — edit that template and run `ve plugin render`; direct edits here will be overwritten. -->
+{{ idioms.generated_marker(source_template) }}
 <!-- Chunk: docs/chunks/plugin_scaffold - Claude Code plugin scaffold pilot command -->
 
 ## Context
 
-- ve CLI: !`ve --help >/dev/null 2>&1 && echo "installed" || echo "(ve CLI not found)"`
-- Current chunk: !`ve chunk list --current 2>/dev/null || ve chunk list --last-active 2>/dev/null || echo "(no active chunk)"`
-- Recent chunks: !`ve chunk list --recent 2>/dev/null || echo "(no chunks)"`
+{{ idioms.probe("ve CLI", 've --help >/dev/null 2>&1 && echo "installed" || echo "(ve CLI not found)"') }}
+{{ idioms.probe("Current chunk", 've chunk list --current 2>/dev/null || ve chunk list --last-active 2>/dev/null || echo "(no active chunk)"') }}
+{{ idioms.probe("Recent chunks", 've chunk list --recent 2>/dev/null || echo "(no chunks)"') }}
 
 ## Your task
 

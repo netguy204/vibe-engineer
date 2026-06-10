@@ -38,6 +38,7 @@ from cli.reviewer import reviewer
 from cli.board import board
 from cli.entity import entity
 from cli.wiki import wiki
+from cli.plugin import plugin
 
 # Add top-level commands
 cli.add_command(init)
@@ -58,3 +59,4 @@ cli.add_command(reviewer)
 cli.add_command(board)
 cli.add_command(entity)
 cli.add_command(wiki)
+cli.add_command(plugin)

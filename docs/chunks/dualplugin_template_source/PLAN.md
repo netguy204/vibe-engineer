@@ -10,170 +10,196 @@ to hand to an agent.
 
 ## Approach
 
-<!--
-How will you build this? Describe the strategy at a high level.
-What patterns or techniques will you use?
-What existing code will you build on?
+Build a new build-time template collection `src/templates/plugin/` that holds
+plugin command bodies once, with editor-specific idioms factored into a
+per-flavor partial of Jinja2 macros (`partials/claude/idioms.md.jinja2`). A
+new `src/plugin_render.py` module reuses the existing template machinery
+(`src/template_system.py#get_environment` / `render_template` — per the
+template_system subsystem, no second renderer) to render the Claude flavor of
+every collection template into `commands/`. A new `ve plugin render` CLI
+group (`src/cli/plugin.py`) exposes this; it refuses to run outside the
+plugin source repo (guard: `.claude-plugin/plugin.json` must exist at the
+target root).
 
-Reference docs/trunk/DECISIONS.md entries where relevant.
-If this approach represents a new significant decision, ask the user
-if we should add it to DECISIONS.md and reference it here.
+Key design points:
 
-Always include tests in your implementation plan and adhere to
-docs/trunk/TESTING_PHILOSOPHY.md in your planning.
+- **Flavor substitution via macro import**: each command template starts with
+  `{% import "partials/" ~ flavor ~ "/idioms.md.jinja2" as idioms %}`. The
+  renderer passes `flavor` ("claude" for this chunk) and `source_template`
+  (the collection-relative template path). dualplugin_cursor_scaffold adds
+  `partials/cursor/idioms.md.jinja2` implementing the same macro signatures —
+  that signature set is the substitution interface.
+- **Macro vocabulary** (the partial vocabulary the migration chunk reuses):
+  - `frontmatter(name, description, allowed_tools=None)` — YAML frontmatter;
+    Claude emits `allowed-tools:` as a comma-joined list; other flavors may
+    omit/map it.
+  - `generated_marker()` — the generated-from-template comment; interpolates
+    `source_template`. Wording deliberately avoids the legacy
+    "AUTO-GENERATED" substring (see Marker collision risk in GOAL.md).
+  - `probe(label, command)` — one context-probe line; Claude renders the
+    `` !`...` `` preprocessing idiom.
+  - `canonical_preamble()` — the canonical `## Context` + `## Runtime
+    context` block from PORTING_GUIDE.md section 2, built on `probe()`.
+    Command-specific task-workspace guidance is supplied via Jinja `{% call
+    %}` body and lands as trailing bullets inside Runtime context.
+  - `plugin_root()` — the plugin-root environment reference
+    (`${CLAUDE_PLUGIN_ROOT}` for Claude). Neither pilot uses it, but the
+    vocabulary must exist for the 36-command migration (several commands
+    reference plugin files).
+- **Marker convention**: rendered files carry, immediately after the
+  frontmatter, `<!-- GENERATED from src/templates/plugin/<path>.jinja2 — edit
+  that template and run `ve plugin render`; direct edits here will be
+  overwritten. -->`. This does not contain "AUTO-GENERATED", so
+  `_is_ve_generated_file()` legacy cleanup and the existing
+  no-AUTO-GENERATED invariant tests are unaffected.
+- **Byte stability**: Jinja2 strips one trailing newline; the writer
+  normalizes output to end with exactly one `\n`. Pilot templates are
+  authored so `uv run ve plugin render` reproduces the committed
+  `commands/ve-status.md` and `commands/chunk-create.md` byte-for-byte
+  *after* the marker line is added to them (the marker is the single
+  deliberate diff — see Deviations). Verified with `git diff` /
+  `cmp` during implementation and enforced forever by the drift test.
+- **Drift test**: `tests/test_plugin_render.py` parametrizes over every
+  template in the collection; for each, a fresh in-process render must equal
+  the committed file's bytes, and the rendered text must carry the marker.
+  This fails when (a) a template is edited without re-rendering, or (b) a
+  committed render is hand-edited.
 
-Remember to update code_paths in the chunk's GOAL.md (e.g., docs/chunks/dualplugin_template_source/GOAL.md)
-with references to the files that you expect to touch.
--->
+Testing follows docs/trunk/TESTING_PHILOSOPHY.md: the drift test and marker
+tests are written first (red against the unmodified commands/ files), then
+the collection + renderer turn them green. The existing invariant suites
+(test_plugin_commands.py, test_plugin_agents.py, test_plugin_manifest.py,
+test_session_hook.py) continue to pass — the new marker wording is chosen so
+`test_no_auto_generated_header` needs no semantic change.
+
+This is deliberately not a relitigation of DEC-010: the old
+`src/templates/commands/` collection rendered per-consuming-project at `ve
+init` time; this collection renders once, at build time, in this repository,
+and the outputs are committed. Consuming repos still receive nothing. The
+marker text and the templating guide record this kind distinction.
 
 ## Subsystem Considerations
 
-<!--
-Before designing your implementation, check docs/subsystems/ for relevant
-cross-cutting patterns.
-
-QUESTIONS TO CONSIDER:
-- Does this chunk touch any existing subsystem's scope?
-- Will this chunk implement part of a subsystem (contribute code) or use it
-  (depend on it)?
-- Did you discover code during exploration that should be part of a subsystem
-  but doesn't follow its patterns?
-
-If no subsystems are relevant, delete this section.
-
-WHEN SUBSYSTEMS ARE RELEVANT:
-List each relevant subsystem with its status and your relationship:
-- **docs/subsystems/validation** (DOCUMENTED): This chunk USES the validation
-  subsystem to check input
-- **docs/subsystems/error_handling** (REFACTORING): This chunk IMPLEMENTS a
-  new error type following the subsystem's patterns
-
-HOW SUBSYSTEM STATUS AFFECTS YOUR WORK:
-
-DOCUMENTED subsystems: The subsystem's patterns are captured but deviations are not
-being actively fixed. If you discover code that deviates from the subsystem's
-patterns, add it to the subsystem's Known Deviations section. Do NOT prioritize
-fixing those deviations—your chunk has its own goals.
-
-REFACTORING subsystems: The subsystem is being actively consolidated. If your chunk
-work touches code that deviates from the subsystem's patterns, attempt to bring it
-into compliance as part of your work. This is "opportunistic improvement"—improve
-what you touch, but don't expand scope to fix unrelated deviations.
-
-WHEN YOU DISCOVER DEVIATING CODE:
-- Add it to the subsystem's Known Deviations section
-- Note whether you will address it (REFACTORING status + relevant to your work)
-  or leave it for future work (DOCUMENTED status or outside your chunk's scope)
-
-Example:
-- **Discovered deviation**: src/legacy/parser.py#validate_input does its own
-  validation instead of using the validation subsystem
-  - Added to docs/subsystems/validation Known Deviations
-  - Action: Will not address (subsystem is DOCUMENTED; deviation outside chunk scope)
--->
+- **docs/subsystems/template_system** (status: see OVERVIEW.md): this chunk
+  USES the subsystem — `src/plugin_render.py` builds on
+  `template_system.get_environment`/`render_template` and the
+  `src/templates/<collection>/` layout (collection with `partials/`
+  excluded from direct rendering) rather than introducing a second renderer.
+  The new collection follows the existing pattern; no deviations introduced.
 
 ## Sequence
 
-<!--
-Ordered steps to implement this chunk. Each step should be:
-- Small enough to reason about in isolation
-- Large enough to be meaningful
-- Clear about its inputs and outputs
+### Step 1: Failing drift/marker tests (red)
 
-This sequence is your contract with yourself (and with agents).
-Work through it in order. Don't skip ahead.
+Create `tests/test_plugin_render.py`:
 
-Example:
+- `list_plugin_templates()`-driven parametrized drift test: fresh render of
+  each collection template equals the committed output file bytes.
+- Marker tests: rendered output contains `GENERATED from
+  src/templates/plugin/...` pointing at its own template; rendered output
+  does NOT contain `AUTO-GENERATED` (collision guard).
+- Pilot coverage test: the collection covers exactly
+  `commands/ve-status.md.jinja2` and `commands/chunk-create.md.jinja2` for
+  now (asserts the two pilots exist; the migration chunk will extend, not
+  rewrite, this test).
+- CLI tests (CliRunner): `ve plugin render` outside a plugin source repo
+  fails with a clear error; inside a scratch copy with
+  `.claude-plugin/plugin.json` it writes the rendered files and reports them.
 
-### Step 1: Define the SegmentHeader struct
+These fail initially (module and collection don't exist).
 
-Create the struct that represents a segment's header with fields for:
-- magic number (4 bytes)
-- version (2 bytes)
-- segment_id (8 bytes)
-- message_count (4 bytes)
-- checksum (4 bytes)
+### Step 2: The collection and Claude idiom partial
 
-Location: src/segment/format.rs
+Create `src/templates/plugin/partials/claude/idioms.md.jinja2` with the five
+macros above, and the two pilot templates:
 
-### Step 2: Implement header serialization
+- `src/templates/plugin/commands/ve-status.md.jinja2` — uses
+  `frontmatter(...)`, `generated_marker()`, and `probe(...)` for its three
+  custom context lines; body verbatim from the committed file.
+- `src/templates/plugin/commands/chunk-create.md.jinja2` — uses
+  `frontmatter(...)`, `generated_marker()`, and `canonical_preamble()` with
+  the chunk-create task-workspace bullet supplied via `{% call %}`; the
+  Instructions body verbatim.
 
-Add `to_bytes()` and `from_bytes()` methods to SegmentHeader.
-Use little-endian encoding per SPEC.md Section 3.1.
+### Step 3: src/plugin_render.py
 
-### Step 3: ...
+Renderer module reusing template_system:
 
----
+- `list_plugin_templates() -> list[str]` — collection-relative names
+  (`commands/*.md.jinja2`), partials excluded, sorted.
+- `output_path(template_name, repo_root) -> pathlib.Path` — strips
+  `.jinja2`, maps `commands/x.md.jinja2` → `<repo_root>/commands/x.md`.
+- `render_plugin_template(template_name, flavor="claude") -> str` — calls
+  `template_system.render_template("plugin", ...)` with `flavor` and
+  `source_template` context; normalizes to a single trailing newline.
+- `render_plugin_collection(repo_root, flavor="claude") -> RenderResult`-like
+  summary of written paths.
 
-**BACKREFERENCE COMMENTS**
+### Step 4: ve plugin render CLI
 
-When implementing code, add backreference comments to help future agents trace
-code back to its governing documentation.
+`src/cli/plugin.py`: `plugin` click group with `render` command
+(`--flavor claude` choice, default claude). Guard: error out unless
+`.claude-plugin/plugin.json` exists under the target root (cwd). Register
+the group in `src/cli/__init__.py`.
 
-**Valid backreference types:**
-- `# Subsystem: docs/subsystems/<name>` - For architectural patterns
-- `# Chunk: docs/chunks/<name>` - For implementation work
+### Step 5: Render, verify byte-stability, commit the marker diff
 
-Place comments at the appropriate level:
-- **Module-level**: If this code implements the subsystem/chunk's core functionality
-- **Class-level**: If this class is part of the pattern
-- **Method-level**: If this method implements a specific behavior
+Run `uv run ve plugin render`. Verify with `git diff commands/` that the
+ONLY change to each pilot file is the added marker line (the deliberate
+diff), and that re-running the command is idempotent. Then the drift test
+goes green.
 
-Format (place immediately before the symbol):
-```
-# Subsystem: docs/subsystems/workflow_artifacts - Workflow artifact manager pattern
-# Chunk: docs/chunks/auth_refactor - Authentication system redesign
-```
+### Step 6: Invariant-suite adjustment
 
-Do NOT add narrative backreferences. Narratives decompose into chunks; reference
-the implementing chunk instead.
+Run test_plugin_commands.py / test_plugin_agents.py / test_plugin_manifest.py
+/ test_session_hook.py. Expected: no behavioral change needed because the
+marker avoids the `AUTO-GENERATED` substring; add a clarifying comment to
+`test_no_auto_generated_header` noting the legacy header it guards against
+and that the new `GENERATED from` marker is required separately by
+test_plugin_render.py. Adjust only if something actually fails.
 
-**Task context note**: In multi-project tasks, always use local paths (e.g.,
-`docs/chunks/chunk_name`) for chunk backreferences, not paths to the external
-artifact repo. Each project has `external.yaml` pointers that resolve to the
-actual chunk content.
--->
+### Step 7: Templating guide for the migration chunk
+
+Write `docs/chunks/dualplugin_template_source/TEMPLATING_GUIDE.md` (chunk
+artifact, mirroring the PORTING_GUIDE.md precedent): collection layout, the
+macro vocabulary and signatures, the `flavor`/`source_template` render
+context contract, marker convention, byte-stability rules (trailing-newline
+normalization, whitespace-control conventions), and the mechanical recipe
+for porting one of the remaining 36 commands into the collection.
+
+### Step 8: Full test run and backreferences
+
+Add `# Chunk: docs/chunks/dualplugin_template_source` backreferences to the
+new modules. Run `uv run pytest tests/` and compare against the inherited
+baseline (32 failures / 4020 passes on main); no new failures allowed.
 
 ## Dependencies
 
-<!--
-What must exist before this chunk can be implemented?
-- Other chunks that must be complete
-- External libraries to add
-- Infrastructure or configuration
-
-If there are no dependencies, delete this section.
--->
+- None beyond what exists: Jinja2 is already a dependency;
+  `src/template_system.py` provides the renderer; the committed
+  `commands/ve-status.md` and `commands/chunk-create.md` are the
+  byte-stability references.
 
 ## Risks and Open Questions
 
-<!--
-What might go wrong? What are you unsure about?
-Being explicit about uncertainty helps you (and agents) know where to
-be careful and when to stop and ask questions.
-
-Example:
-- fsync behavior may differ across filesystems; need to verify on ext4 and APFS
-- Unclear whether concurrent reads during write are safe; may need mutex
-- Performance target is aggressive; may need to iterate on buffer sizes
--->
+- **Byte-exactness vs Jinja whitespace control**: macros and `{% call %}`
+  blocks make whitespace fiddly. Mitigation: drift test compares bytes, and
+  implementation iterates with `git diff` until only the marker line
+  changes.
+- **Marker substring collisions**: the chosen wording must never contain
+  `AUTO-GENERATED` (legacy cleanup in `src/project.py#_is_ve_generated_file`
+  and the invariant tests key on it). Guarded by an explicit test.
+- **CLI guard**: `ve plugin render` must not scaffold a `commands/` dir in
+  arbitrary consuming projects. Guard on `.claude-plugin/plugin.json`.
+- **Wheel build**: renders are committed, so the hatch force-include of
+  `commands/` as orchestrator phase prompts is unaffected; no packaging-time
+  render step.
 
 ## Deviations
 
-<!--
-POPULATE DURING IMPLEMENTATION, not at planning time.
-
-When reality diverges from the plan, document it here:
-- What changed?
-- Why?
-- What was the impact?
-
-Minor deviations (renamed a function, used a different helper) don't need
-documentation. Significant deviations (changed the approach, skipped a step,
-added steps) do.
-
-Example:
-- Step 4: Originally planned to use std::fs::rename for atomic swap.
-  Testing revealed this isn't atomic across filesystems. Changed to
-  write-fsync-rename-fsync sequence per platform best practices.
--->
+- **Deliberate diff to the pilot commands (planned, executed in Step 5)**:
+  `commands/ve-status.md` and `commands/chunk-create.md` each gain one line —
+  the `<!-- GENERATED from src/templates/plugin/... -->` marker immediately
+  after the frontmatter. Everything else renders byte-identical to the
+  previously committed content. This is required by the success criterion
+  that rendered files carry the marker; it is the only diff.

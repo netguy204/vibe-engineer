@@ -59,7 +59,17 @@ class TestCommandInvariants:
             )
 
     def test_no_auto_generated_header(self, command_file):
-        """Plugin files are the source, not render output."""
+        """Plugin files must never carry the legacy init-render header.
+
+        src/project.py#_is_ve_generated_file keys on the old
+        "AUTO-GENERATED FILE - DO NOT EDIT DIRECTLY" header for legacy
+        cleanup, so the substring is rejected wholesale. Files rendered at
+        build time from src/templates/plugin/ carry the distinct
+        "GENERATED from src/templates/plugin/..." marker instead, which
+        tests/test_plugin_render.py requires per rendered file.
+
+        # Chunk: docs/chunks/dualplugin_template_source - Marker collision guard
+        """
         assert "AUTO-GENERATED" not in command_file.read_text(), (
             f"{command_file.name}: carries the obsolete auto-generated header"
         )

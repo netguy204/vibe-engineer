@@ -1,218 +1,48 @@
 ---
-status: FUTURE
+status: ACTIVE
 ticket: null
 parent_chunk: null
-code_paths: []
-code_references: []
+code_paths:
+- src/templates/plugin/partials/claude/idioms.md.jinja2
+- src/templates/plugin/commands/ve-status.md.jinja2
+- src/templates/plugin/commands/chunk-create.md.jinja2
+- src/plugin_render.py
+- src/cli/plugin.py
+- src/cli/__init__.py
+- commands/ve-status.md
+- commands/chunk-create.md
+- tests/test_plugin_render.py
+- tests/test_plugin_commands.py
+- docs/chunks/dualplugin_template_source/TEMPLATING_GUIDE.md
+code_references:
+- ref: src/plugin_render.py#render_plugin_template
+  implements: "Single-template render with the flavor/source_template contract and trailing-newline normalization"
+- ref: src/plugin_render.py#list_plugin_templates
+  implements: "Collection discovery (partials excluded) that the drift test and CLI parametrize over"
+- ref: src/plugin_render.py#render_plugin_collection
+  implements: "Whole-collection render into the plugin source repo"
+- ref: src/plugin_render.py#is_plugin_source_repo
+  implements: "Render-target guard: only the repo carrying .claude-plugin/plugin.json"
+- ref: src/cli/plugin.py#render
+  implements: "The `ve plugin render` command (Claude flavor)"
+- ref: src/templates/plugin/partials/claude/idioms.md.jinja2
+  implements: "Claude idiom macros — the flavor-substitution interface (frontmatter, generated_marker, probe, canonical_preamble, plugin_root)"
+- ref: src/templates/plugin/commands/ve-status.md.jinja2
+  implements: "Pilot template with custom context probes"
+- ref: src/templates/plugin/commands/chunk-create.md.jinja2
+  implements: "Pilot template using the canonical preamble with task guidance via {% call %}"
+- ref: tests/test_plugin_render.py#TestDrift
+  implements: "Drift test: committed renders must match fresh renders byte-for-byte and carry the marker"
+- ref: tests/test_plugin_render.py#TestRenderCli
+  implements: "CLI behavior: source-repo guard, render output, idempotence"
 narrative: cursor_plugin_port
 investigation: null
 subsystems: []
 friction_entries: []
 depends_on: []
-created_after: ["plugin_hook_cli_bootstrap"]
+created_after:
+- plugin_hook_cli_bootstrap
 ---
-
-<!--
-╔══════════════════════════════════════════════════════════════════════════════╗
-║  DO NOT DELETE THIS COMMENT BLOCK until the chunk complete command is run.   ║
-║                                                                              ║
-║  AGENT INSTRUCTIONS: When editing this file, preserve this entire comment    ║
-║  block. Only modify the frontmatter YAML and the content sections below      ║
-║  (Minor Goal, Success Criteria, Relationship to Parent). Use targeted edits  ║
-║  that replace specific sections rather than rewriting the entire file.       ║
-╚══════════════════════════════════════════════════════════════════════════════╝
-
-This comment describes schema information that needs to be adhered
-to throughout the process.
-
-STATUS VALUES (status answers: how much of the intent does this chunk own?):
-- FUTURE: Not yet owned. Queued for later.
-- IMPLEMENTING: Being taken into ownership. At most one per worktree.
-- ACTIVE: Fully owns the intent that governs the code.
-- COMPOSITE: Shares ownership with other chunks. Must be read alongside its co-owners.
-- HISTORICAL: No longer owns intent. Kept for archaeological context.
-
-See docs/trunk/CHUNKS.md for the full principle.
-
-FUTURE CHUNK APPROVAL REQUIREMENT:
-ALL FUTURE chunks require operator approval before committing or injecting.
-After refining this GOAL.md, you MUST present it to the operator and wait for
-explicit approval. Do NOT commit or inject until the operator approves.
-This applies whether triggered by "in the background", "create a future chunk",
-or any other mechanism that creates a FUTURE chunk.
-
-COMMIT BOTH FILES: When committing a FUTURE chunk after approval, add the entire
-chunk directory (both GOAL.md and PLAN.md) to the commit, not just GOAL.md. The
-`ve chunk create` command creates both files, and leaving PLAN.md untracked will
-cause merge conflicts when the orchestrator creates a worktree for the PLAN phase.
-
-PARENT_CHUNK:
-- null for new work
-- chunk directory name (e.g., "006-segment-compaction") for corrections or modifications
-
-CODE_PATHS:
-- Populated at planning time
-- List files you expect to create or modify
-- Example: ["src/segment/writer.rs", "src/segment/format.rs"]
-
-CODE_REFERENCES:
-- Populated after implementation, before PR
-- Uses symbolic references to identify code locations
-
-- Format: {file_path}#{symbol_path} where symbol_path uses :: as nesting separator
-- Example:
-  code_references:
-    - ref: src/segment/writer.rs#SegmentWriter
-      implements: "Core write loop and buffer management"
-    - ref: src/segment/writer.rs#SegmentWriter::fsync
-      implements: "Durability guarantees"
-    - ref: src/utils.py#validate_input
-      implements: "Input validation logic"
-
-
-NARRATIVE:
-- If this chunk was derived from a narrative document, reference the narrative directory name.
-- When setting this field during /chunk-create, also update the narrative's OVERVIEW.md
-  frontmatter to add this chunk to its `chunks` array with the prompt and chunk_directory.
-- If this is the final chunk of a narrative, the narrative status should be set to COMPLETED
-  when this chunk is completed.
-
-INVESTIGATION:
-- If this chunk was derived from an investigation's proposed_chunks, reference the investigation
-  directory name (e.g., "memory_leak" for docs/investigations/memory_leak/).
-- This provides traceability from implementation work back to exploratory findings.
-- When implementing, read the referenced investigation's OVERVIEW.md for context on findings,
-  hypotheses tested, and decisions made during exploration.
-- Validated by `ve chunk validate` to ensure referenced investigations exist.
-
-
-SUBSYSTEMS:
-- Optional list of subsystem references that this chunk relates to
-- Format: subsystem_id is the subsystem directory name, relationship is "implements" or "uses"
-- "implements": This chunk directly implements part of the subsystem's functionality
-- "uses": This chunk depends on or uses the subsystem's functionality
-- Example:
-  subsystems:
-    - subsystem_id: "validation"
-      relationship: implements
-    - subsystem_id: "frontmatter"
-      relationship: uses
-- Validated by `ve chunk validate` to ensure referenced subsystems exist
-- When a chunk that implements a subsystem is completed, a reference should be added to
-  that chunk in the subsystems OVERVIEW.md file front matter and relevant section.
-
-FRICTION_ENTRIES:
-- Optional list of friction entries that this chunk addresses
-- Provides "why did we do this work?" traceability from implementation back to accumulated pain points
-- Format: entry_id is the friction entry ID (e.g., "F001"), scope is "full" or "partial"
-  - "full": This chunk fully resolves the friction entry
-  - "partial": This chunk partially addresses the friction entry
-- When to populate: During /chunk-create if this chunk addresses known friction from FRICTION.md
-- Example:
-  friction_entries:
-    - entry_id: F001
-      scope: full
-    - entry_id: F003
-      scope: partial
-- Validated by `ve chunk validate` to ensure referenced friction entries exist in FRICTION.md
-- When a chunk addresses friction entries and is completed, those entries are considered RESOLVED
-
-CHUNK ARTIFACTS:
-- Single-use scripts, migration tools, or one-time utilities created for this chunk
-  should be stored in the chunk directory (e.g., docs/chunks/foo/migrate.py)
-- These artifacts help future archaeologists understand what the chunk did
-- Unlike code in src/, chunk artifacts are not expected to be maintained long-term
-- Examples: data migration scripts, one-time fixups, analysis tools used during implementation
-
-CREATED_AFTER:
-- Auto-populated by `ve chunk create` - DO NOT MODIFY manually
-- Lists the "tips" of the chunk DAG at creation time (chunks with no dependents yet)
-- Tips must be ACTIVE chunks (shipped work that has been merged)
-- Example: created_after: ["auth_refactor", "api_cleanup"]
-
-IMPORTANT - created_after is NOT implementation dependencies:
-- created_after tracks CAUSAL ORDERING (what work existed when this chunk was created)
-- It does NOT mean "chunks that must be implemented before this one can work"
-- FUTURE chunks can NEVER be tips (they haven't shipped yet)
-
-COMMON MISTAKE: Setting created_after to reference FUTURE chunks because they
-represent design dependencies. This is WRONG. If chunk B conceptually depends on
-chunk A's implementation, but A is still FUTURE, B's created_after should still
-reference the current ACTIVE tips, not A.
-
-WHERE TO TRACK IMPLEMENTATION DEPENDENCIES:
-- Investigation proposed_chunks ordering (earlier = implement first)
-- Narrative chunk sequencing in OVERVIEW.md
-- Design documents describing the intended build order
-- The `created_after` field will naturally reflect this once chunks ship
-
-DEPENDS_ON:
-- Declares explicit implementation dependencies that affect orchestrator scheduling
-- Format: list of chunk directory name strings, or null
-- Default: [] (empty list - explicitly no dependencies)
-
-VALUE SEMANTICS (how the orchestrator interprets this field):
-
-| Value             | Meaning                              | Oracle behavior   |
-|-------------------|--------------------------------------|-------------------|
-| `null` or omitted | "I don't know my dependencies"       | Consult oracle    |
-| `[]` (empty list) | "I explicitly have no dependencies"  | Bypass oracle     |
-| `["chunk_a"]`     | "I depend on these specific chunks"  | Bypass oracle     |
-
-CRITICAL: The default `[]` means "I have analyzed this chunk and it has no dependencies."
-This is an explicit assertion, not a placeholder. If you haven't analyzed dependencies yet,
-change the value to `null` (or remove the field entirely) to trigger oracle consultation.
-
-WHEN TO USE EACH VALUE:
-- Use `[]` when you have analyzed the chunk and determined it has no implementation dependencies
-  on other chunks in the same batch. This tells the orchestrator to skip conflict detection.
-- Use `null` when you haven't analyzed dependencies yet and want the orchestrator's conflict
-  oracle to determine if this chunk conflicts with others.
-- Use `["chunk_a", "chunk_b"]` when you know specific chunks must complete before this one.
-
-WHY THIS MATTERS:
-The orchestrator's conflict oracle adds latency and cost to detect potential conflicts.
-When you declare `[]`, you're asserting independence and enabling the orchestrator to
-schedule immediately. When you declare `null`, you're requesting conflict analysis.
-
-PURPOSE AND BEHAVIOR:
-- When a list is provided (empty or not), the orchestrator uses it directly for scheduling
-- When null, the orchestrator consults its conflict oracle to detect dependencies heuristically
-- Dependencies express order within a single injection batch (intra-batch scheduling)
-- The chunks listed in depends_on will be scheduled to complete before this chunk starts
-
-CONTRAST WITH created_after:
-- `created_after` tracks CAUSAL ORDERING (what work existed when this chunk was created)
-- `depends_on` tracks IMPLEMENTATION DEPENDENCIES (what must complete before this chunk runs)
-- `created_after` is auto-populated at creation time and should NOT be modified manually
-- `depends_on` is agent-populated based on design requirements and may be edited
-
-WHEN TO DECLARE EXPLICIT DEPENDENCIES:
-- When you know chunk B requires chunk A's implementation to exist before B can work
-- When the conflict oracle would otherwise miss a subtle dependency
-- When you want to enforce a specific execution order within a batch injection
-- When a narrative or investigation explicitly defines chunk sequencing
-
-EXAMPLE:
-  # Chunk has no dependencies (explicit assertion - bypasses oracle)
-  depends_on: []
-
-  # Chunk dependencies unknown (triggers oracle consultation)
-  depends_on: null
-
-  # Chunk B depends on chunk A completing first
-  depends_on: ["auth_api"]
-
-  # Chunk C depends on both A and B completing first
-  depends_on: ["auth_api", "auth_client"]
-
-VALIDATION:
-- `null` is valid and triggers oracle consultation
-- `[]` is valid and means "explicitly no dependencies" (bypasses oracle)
-- Referenced chunks should exist in docs/chunks/ (warning if not found)
-- Circular dependencies will be detected at injection time
-- Dependencies on ACTIVE chunks are allowed (they've already completed)
--->
 
 # Chunk Goal
 
@@ -234,29 +64,32 @@ documented diffs.
 
 - Narrative: docs/narratives/cursor_plugin_port. The operator's directive:
   build skills from templates with common idioms substituted differently for
-  Claude and Cursor renderings. This chunk builds the layer and the Claude
+  Claude and Cursor renderings. This chunk owns the layer and the Claude
   target; dualplugin_cursor_scaffold adds the Cursor target.
-- Current state: `commands/*.md` (38 files) and `agents/*.md` (2) are
-  hand-maintained static files. The Claude idioms to factor into partials:
-  the canonical `## Context`/`## Runtime context` preamble (documented
-  verbatim in docs/chunks/plugin_runtime_context/PORTING_GUIDE.md section 2),
-  `allowed-tools` frontmatter, and `$CLAUDE_PLUGIN_ROOT` references.
-- Template machinery already exists: src/template_system.py
-  (`render_template`, collections under src/templates/); Jinja2 is a
-  dependency. Reuse it rather than inventing a second renderer.
-- Kind distinction (record it in the rendered marker and command docs): the
+- The Claude idioms factored into partials
+  (src/templates/plugin/partials/claude/idioms.md.jinja2): the canonical
+  `## Context`/`## Runtime context` preamble (documented verbatim in
+  docs/chunks/plugin_runtime_context/PORTING_GUIDE.md section 2),
+  `allowed-tools` frontmatter, and `${CLAUDE_PLUGIN_ROOT}` references. The
+  remaining 36 `commands/*.md` and 2 `agents/*.md` stay hand-maintained
+  until dualplugin_content_migration moves them into the collection;
+  docs/chunks/dualplugin_template_source/TEMPLATING_GUIDE.md is the recipe.
+- The renderer (src/plugin_render.py) reuses src/template_system.py
+  (`render_template`, collections under src/templates/) — there is no second
+  renderer.
+- Kind distinction (recorded in the rendered marker and command docs): the
   old `src/templates/commands/` collection (deleted by plugin_init_slimdown)
   rendered per-consuming-project at `ve init` time; this collection renders
   once, at build time, in this repository, and the outputs are COMMITTED —
   consuming repos still receive nothing. This is not a relitigation of
   DEC-010.
-- Marker collision risk: `tests/test_plugin_commands.py` asserts commands do
-  NOT contain "AUTO-GENERATED FILE - DO NOT EDIT DIRECTLY" (the old
-  init-rendered header that `_is_ve_generated_file()` keys on for legacy
-  cleanup — do not reuse that string). Choose distinct wording, e.g.
-  "GENERATED from src/templates/plugin/<name>.md.jinja2 — edit the template
-  and run `ve plugin render`", and update the invariant tests to require the
-  new marker while still rejecting the old header.
+- Marker collision rule: `tests/test_plugin_commands.py` asserts commands do
+  NOT contain "AUTO-GENERATED" (the old init-rendered header that
+  `_is_ve_generated_file()` keys on for legacy cleanup — that string is
+  never reused). The marker wording is "GENERATED from
+  src/templates/plugin/<path> — edit that template and run `ve plugin
+  render`; direct edits here will be overwritten."; the drift test requires
+  it while the invariant tests keep rejecting the old header.
 - Wheel interplay: pyproject's hatch force-include ships `commands/` as
   orchestrator phase-prompt package data. Renders being committed means the
   wheel build is unaffected; no render step at packaging time.
