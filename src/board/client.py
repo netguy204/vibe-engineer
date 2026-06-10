@@ -123,6 +123,48 @@ class BoardClient:
             await self._ws.close()
             self._ws = None
 
+    # Chunk: docs/chunks/watch_handshake_stale_retry - Shared reconnect-with-retry
+    async def _connect_with_retry(
+        self,
+        attempt: int,
+        backoff: float,
+        max_retries: int | None,
+        max_backoff: float,
+    ) -> tuple[int, float]:
+        """Close, then connect with retry on retryable errors.
+
+        Returns ``(0, 1.0)`` on success (attempt and backoff both reset).
+        Raises the last retryable exception once the failure budget is exhausted.
+
+        Callers that want a no-sleep first attempt (stale path: network was
+        reachable) call this directly.  Callers that want a pre-sleep before
+        the first attempt (spontaneous disconnect path) apply the sleep and
+        backoff update themselves before calling.
+        """
+        while True:
+            try:
+                await self.close()
+            except Exception:
+                pass
+            try:
+                await self.connect()
+                return 0, 1.0  # reset on successful connect
+            except _RETRYABLE_ERRORS as connect_exc:
+                attempt += 1
+                if max_retries is not None and attempt > max_retries:
+                    raise connect_exc
+                jitter = random.uniform(0, backoff * 0.5)
+                wait_time = min(backoff + jitter, max_backoff)
+                logger.warning(
+                    "Handshake failed during reconnect in %.1fs "
+                    "(attempt %d) exc=%s",
+                    wait_time,
+                    attempt,
+                    type(connect_exc).__name__,
+                )
+                await asyncio.sleep(wait_time)
+                backoff = min(backoff * 2, max_backoff)
+
     async def register_swarm(self, public_key: bytes) -> None:
         """Register a swarm (unauthenticated — separate connection).
 
@@ -300,35 +342,12 @@ class BoardClient:
                     "Idle reconnect (not counted against budget) channel=%s cursor=%d",
                     channel, cursor,
                 )
-                # Reconnect without backoff sleep — the network is fine.
-                # If the opening handshake times out, route through the failure budget.
-                try:
-                    await self.close()
-                except Exception:
-                    pass
-                # Chunk: docs/chunks/watch_handshake_timeout_retry - Catch opening-handshake timeout on idle reconnect
-                while True:
-                    try:
-                        await self.connect()
-                        break  # Connected successfully
-                    except _RETRYABLE_ERRORS as connect_exc:
-                        attempt += 1
-                        if max_retries is not None and attempt > max_retries:
-                            raise connect_exc
-                        jitter = random.uniform(0, backoff * 0.5)
-                        wait_time = min(backoff + jitter, max_backoff)
-                        logger.warning(
-                            "Handshake timeout on idle reconnect, retrying in %.1fs "
-                            "(attempt %d) exc=%s",
-                            wait_time,
-                            attempt,
-                            type(connect_exc).__name__,
-                        )
-                        await asyncio.sleep(wait_time)
-                        backoff = min(backoff * 2, max_backoff)
-                backoff = 1.0  # reset failure backoff after successful connect
-                # Chunk: docs/chunks/watch_reconnect_counter_reset - Reset attempt counter after demonstrated-healthy reconnect
-                attempt = 0
+                # Chunk: docs/chunks/watch_handshake_stale_retry - Stale-driven reconnect;
+                # handshake TimeoutError routes through shared retry loop (same budget as
+                # spontaneous disconnects).
+                attempt, backoff = await self._connect_with_retry(
+                    attempt, backoff, max_retries, max_backoff
+                )
             # Chunk: docs/chunks/board_watch_handshake_retry - Widen exception tuple to catch handshake errors
             except _RETRYABLE_ERRORS as exc:
                 attempt += 1
@@ -358,31 +377,11 @@ class BoardClient:
                 await asyncio.sleep(wait_time)
                 backoff = min(backoff * 2, max_backoff)
 
-                # Re-establish connection and re-authenticate
-                # Chunk: docs/chunks/board_watch_handshake_retry - Retry connect() on handshake errors
-                while True:
-                    try:
-                        await self.close()
-                    except Exception:
-                        pass
-                    try:
-                        await self.connect()
-                        break  # Connected successfully
-                    except _RETRYABLE_ERRORS as connect_exc:
-                        attempt += 1
-                        if max_retries is not None and attempt > max_retries:
-                            raise connect_exc
-                        jitter = random.uniform(0, backoff * 0.5)
-                        wait_time = min(backoff + jitter, max_backoff)
-                        logger.warning(
-                            "Handshake failed during reconnect in %.1fs "
-                            "(attempt %d) exc=%s",
-                            wait_time,
-                            attempt,
-                            type(connect_exc).__name__,
-                        )
-                        await asyncio.sleep(wait_time)
-                        backoff = min(backoff * 2, max_backoff)
+                # Chunk: docs/chunks/watch_handshake_stale_retry - Shared retry loop (same
+                # path used by stale-driven reconnect).
+                attempt, backoff = await self._connect_with_retry(
+                    attempt, backoff, max_retries, max_backoff
+                )
                 # Chunk: docs/chunks/board_watch_reconnect_delivery - Log re-poll after reconnect
                 logger.info(
                     "Reconnected, re-polling channel=%s from cursor=%d",
@@ -394,10 +393,6 @@ class BoardClient:
                     "Re-subscribing to channel=%s after reconnect",
                     channel,
                 )
-                # Chunk: docs/chunks/websocket_reconnect_tuning - Reset backoff after successful reconnect
-                backoff = 1.0
-                # Chunk: docs/chunks/watch_reconnect_counter_reset - Reset attempt counter after successful reconnect
-                attempt = 0
 
     # Chunk: docs/chunks/multichannel_watch - Multi-channel watch support
     # Chunk: docs/chunks/watchmulti_exit_on_message - Count-limited watch_multi
@@ -633,35 +628,12 @@ class BoardClient:
                 logger.info(
                     "Idle reconnect (not counted against budget) channels=%s", list(cursors)
                 )
-                # Reconnect without backoff sleep — the network is fine.
-                # If the opening handshake times out, route through the failure budget.
-                try:
-                    await self.close()
-                except Exception:
-                    pass
-                # Chunk: docs/chunks/watch_handshake_timeout_retry - Catch opening-handshake timeout on idle reconnect
-                while True:
-                    try:
-                        await self.connect()
-                        break  # Connected successfully
-                    except _RETRYABLE_ERRORS as connect_exc:
-                        attempt += 1
-                        if max_retries is not None and attempt > max_retries:
-                            raise connect_exc
-                        jitter = random.uniform(0, backoff * 0.5)
-                        wait_time = min(backoff + jitter, max_backoff)
-                        logger.warning(
-                            "Handshake timeout on idle reconnect, retrying in %.1fs "
-                            "(attempt %d) exc=%s",
-                            wait_time,
-                            attempt,
-                            type(connect_exc).__name__,
-                        )
-                        await asyncio.sleep(wait_time)
-                        backoff = min(backoff * 2, max_backoff)
-                backoff = 1.0  # reset failure backoff after successful connect
-                # Chunk: docs/chunks/watch_reconnect_counter_reset - Reset attempt counter after demonstrated-healthy reconnect
-                attempt = 0
+                # Chunk: docs/chunks/watch_handshake_stale_retry - Stale-driven reconnect;
+                # handshake TimeoutError routes through shared retry loop (same budget as
+                # spontaneous disconnects).
+                attempt, backoff = await self._connect_with_retry(
+                    attempt, backoff, max_retries, max_backoff
+                )
             # Chunk: docs/chunks/board_watch_handshake_retry - Widen exception tuple to catch handshake errors
             except _RETRYABLE_ERRORS:
                 attempt += 1
@@ -678,30 +650,11 @@ class BoardClient:
                 await asyncio.sleep(wait_time)
                 backoff = min(backoff * 2, max_backoff)
 
-                # Chunk: docs/chunks/board_watch_handshake_retry - Retry connect() on handshake errors
-                while True:
-                    try:
-                        await self.close()
-                    except Exception:
-                        pass
-                    try:
-                        await self.connect()
-                        break  # Connected successfully
-                    except _RETRYABLE_ERRORS as connect_exc:
-                        attempt += 1
-                        if max_retries is not None and attempt > max_retries:
-                            raise connect_exc
-                        jitter = random.uniform(0, backoff * 0.5)
-                        wait_time = min(backoff + jitter, max_backoff)
-                        logger.warning(
-                            "Handshake failed during reconnect in %.1fs "
-                            "(attempt %d) exc=%s",
-                            wait_time,
-                            attempt,
-                            type(connect_exc).__name__,
-                        )
-                        await asyncio.sleep(wait_time)
-                        backoff = min(backoff * 2, max_backoff)
+                # Chunk: docs/chunks/watch_handshake_stale_retry - Shared retry loop (same
+                # path used by stale-driven reconnect).
+                attempt, backoff = await self._connect_with_retry(
+                    attempt, backoff, max_retries, max_backoff
+                )
                 # Chunk: docs/chunks/board_watch_reconnect_delivery - Log re-poll after reconnect
                 logger.info(
                     "Reconnected, re-polling %d channel(s) from cursors=%s",
@@ -714,9 +667,6 @@ class BoardClient:
                     len(cursors),
                     cursors,
                 )
-                backoff = 1.0
-                # Chunk: docs/chunks/watch_reconnect_counter_reset - Reset attempt counter after successful reconnect
-                attempt = 0
 
     # Chunk: docs/chunks/board_channel_delete - Delete a channel and all its messages
     async def delete_channel(self, channel: str) -> None:

@@ -1,19 +1,37 @@
 ---
-status: FUTURE
+status: IMPLEMENTING
 ticket: null
 parent_chunk: watch_handshake_timeout_retry
 code_paths:
-  - src/board/client.py
-  - tests/test_board_client.py
-code_references: []
+- src/board/client.py
+- tests/test_board_client.py
+code_references:
+  - ref: src/board/client.py#BoardClient::_connect_with_retry
+    implements: "Shared connect-with-retry helper — both stale-driven and spontaneous
+      reconnect paths call this, ensuring identical retry semantics"
+  - ref: src/board/client.py#BoardClient::watch_with_reconnect
+    implements: "StaleWatchError handler now delegates to _connect_with_retry;
+      opening-handshake TimeoutError on stale-driven reconnect retried, not fatal"
+  - ref: src/board/client.py#BoardClient::watch_multi_with_reconnect
+    implements: "Same _connect_with_retry delegation in watch_multi_with_reconnect"
+  - ref: tests/test_board_client.py#test_watch_with_reconnect_stale_handshake_timeout_after_prior_cycles
+    implements: "Multi-cycle stale scenario: handshake timeout on reconnect #4+
+      survives in watch_with_reconnect"
+  - ref: tests/test_board_client.py#test_watch_multi_with_reconnect_stale_handshake_timeout_after_prior_cycles
+    implements: "Same for watch_multi_with_reconnect"
+  - ref: tests/test_board_client.py#test_watch_with_reconnect_stale_handshake_timeout_safety_valve_with_prior_cycles
+    implements: "Safety valve still fires after max_retries consecutive stale-path
+      handshake failures in watch_with_reconnect"
+  - ref: tests/test_board_client.py#test_watch_multi_with_reconnect_stale_handshake_timeout_safety_valve_with_prior_cycles
+    implements: "Same for watch_multi_with_reconnect"
 narrative: null
 investigation: null
 subsystems: []
 friction_entries: []
 depends_on: []
-created_after: ["plugin_hook_cli_bootstrap"]
+created_after:
+- plugin_hook_cli_bootstrap
 ---
-
 <!--
 ╔══════════════════════════════════════════════════════════════════════════════╗
 ║  DO NOT DELETE THIS COMMENT BLOCK until the chunk complete command is run.   ║
