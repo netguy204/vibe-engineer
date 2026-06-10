@@ -1,18 +1,18 @@
 ---
-status: DRAFTING
+status: ACTIVE
 advances_trunk_goal: "Required Properties: long-lived agent stewards distributable across projects — organizations can share entity knowledge (memories, wiki, identity) across the whole team without each engineer reconstructing it locally."
 proposed_chunks:
   - prompt: "~/.ve-config.toml exists as the operator-level configuration file with fields entities_dir (path, default ~/Entities, tilde-expanded) and git_base (URL prefix, no trailing slash). A new module loads, validates, and exposes the resolved config to the rest of the CLI; missing-file and malformed-file cases produce clear, actionable errors. A `ve config show` command prints the resolved config for debugging and onboarding."
-    chunk_directory: null
+    chunk_directory: entity_config_toml
     depends_on: []
   - prompt: "A canonical-clone helper ensures that for any entity name N, the directory entities_dir/N is a working git clone of git_base/N.git. The helper clones on first use, no-ops when already present, distinguishes auth/missing-repo/network errors with actionable messages, and is the single source of truth for 'is this entity available on disk yet.' This helper is the substrate that makes auto-attach feel instantaneous from the user's perspective even when the entity has never been seen on this machine before."
-    chunk_directory: null
+    chunk_directory: entity_canonical_clone
     depends_on: [0]
   - prompt: "ve entity attach <name> creates .entities/<name> as a git worktree of entities_dir/<name>, replacing the previous submodule-based attach implementation entirely. The submodule machinery (.gitmodules edits, submodule add/deinit) is removed from attach, detach, and any other code paths that referenced it; detach now removes the worktree cleanly. Each project's worktree lives on a project-scoped branch so the same canonical clone can be attached to multiple projects simultaneously without git-worktree's same-branch-twice constraint biting. Migration policy is a clean break: documentation directs existing users to detach with their old version before upgrading."
-    chunk_directory: null
+    chunk_directory: entity_worktree_attach
     depends_on: [0, 1]
   - prompt: "ve entity claude <name> auto-attaches the entity if it is not already attached in the current project, transparently composing the canonical-clone helper and the worktree-attach pathway so a user can run the command against an entity that has never been seen on this machine and immediately enter a working session. This is the 1.0 headline capability: an org distributes ~/.ve-config.toml, a new employee runs `ve entity claude <some-shared-entity>`, and the session opens with full memory + wiki context."
-    chunk_directory: null
+    chunk_directory: entity_claude_autoattach
     depends_on: [0, 1, 2]
 created_after: ["intent_ownership"]
 ---
