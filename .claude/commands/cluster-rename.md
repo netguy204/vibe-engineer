@@ -1,1 +1,0 @@
-../../.agents/skills/cluster-rename/SKILL.md

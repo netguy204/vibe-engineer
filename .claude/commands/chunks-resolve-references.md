@@ -1,1 +1,0 @@
-../../.agents/skills/chunks-resolve-references/SKILL.md

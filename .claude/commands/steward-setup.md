@@ -1,1 +1,0 @@
-../../.agents/skills/steward-setup/SKILL.md

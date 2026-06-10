@@ -1,1 +1,0 @@
-../../.agents/skills/chunk-update-references/SKILL.md

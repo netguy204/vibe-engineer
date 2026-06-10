@@ -1,1 +1,0 @@
-../../.agents/skills/steward-changelog/SKILL.md

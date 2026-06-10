@@ -1,1 +1,0 @@
-../../.agents/skills/orchestrator-monitor/SKILL.md
