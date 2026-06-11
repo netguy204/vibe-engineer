@@ -34,7 +34,7 @@ import subprocess
 from dataclasses import dataclass
 
 from cli.canonical_clone import ensure_canonical_clone
-from cli.config import load_config
+from cli.config import ConfigError, load_config
 
 
 # ---------------------------------------------------------------------------
@@ -260,6 +260,45 @@ def _is_git_repo(project_dir: pathlib.Path) -> bool:
 # ---------------------------------------------------------------------------
 # Public attach / detach
 # ---------------------------------------------------------------------------
+
+
+# Chunk: docs/chunks/entity_claude_autoattach - Public predicate for the
+# auto-attach pathway: lets `ve entity claude` short-circuit progress output
+# when the entity is already attached without invoking git or the network.
+def is_attached(
+    name: str,
+    project_dir: pathlib.Path,
+    *,
+    config_path: pathlib.Path | None = None,
+) -> bool:
+    """Return True iff ``name`` is attached to ``project_dir`` as a
+    worktree of ``<entities_dir>/<name>``.
+
+    Cheap: reads the operator config and probes the ``.git`` marker
+    file. Never invokes git, never touches the network. When the
+    operator config is missing or malformed, returns ``False`` rather
+    than raising — the caller will hit the same ``ConfigError`` path
+    when it proceeds to ``do_attach``.
+
+    Args:
+        name: Entity identifier.
+        project_dir: Project to probe.
+        config_path: Override the operator config file. Primarily for
+            tests.
+
+    Returns:
+        ``True`` iff ``<project_dir>/.entities/<name>`` is a worktree
+        whose gitdir points into ``<entities_dir>/<name>/.git/worktrees``.
+    """
+    try:
+        cfg = load_config(config_path)
+    except ConfigError:
+        return False
+    entity_path = project_dir / ".entities" / name
+    if not entity_path.exists():
+        return False
+    canonical = cfg.entities_dir / name
+    return _is_worktree_of(entity_path, canonical)
 
 
 def do_attach(

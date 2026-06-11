@@ -458,6 +458,48 @@ def _find_most_recent_session(
 def claude_cmd(entity_name: str, project_dir: pathlib.Path | None, resume_timeout: int, megaclaude: bool) -> None:
     """Launch Claude Code with entity lifecycle management."""
     project_dir = resolve_entity_project_dir(project_dir)
+
+    # Chunk: docs/chunks/entity_claude_autoattach - Auto-attach the entity
+    # (auto-clone + worktree-attach with progress output) before the session
+    # launches. Idempotent: when the entity is already attached, this is a
+    # silent fast path. Any failure aborts BEFORE the Claude session starts
+    # so we never launch against a half-set-up entity.
+    from cli.canonical_clone import (
+        AuthFailure,
+        CanonicalCloneError,
+        MissingRemoteRepo,
+        NetworkFailure,
+    )
+    from cli.config import ConfigError, DEFAULT_CONFIG_PATH
+    from cli.entity_claude import prepare_session_environment
+    from cli.entity_worktree import WorktreeAttachError
+
+    try:
+        prepare_session_environment(entity_name, project_dir)
+    except AuthFailure as exc:
+        raise click.ClickException(
+            f"Authentication failed cloning '{entity_name}' from {exc.clone_url}. "
+            "Check your git credentials (SSH key, token, or username)."
+        )
+    except MissingRemoteRepo as exc:
+        raise click.ClickException(
+            f"No repository at {exc.clone_url} for entity '{entity_name}'. "
+            "Check the entity name and the configured git_base."
+        )
+    except NetworkFailure as exc:
+        raise click.ClickException(
+            f"Network failure cloning '{entity_name}' from {exc.clone_url}. "
+            "Check your network and retry."
+        )
+    except ConfigError as exc:
+        raise click.ClickException(
+            f"Operator config missing or invalid: {exc} "
+            f"Set up `{DEFAULT_CONFIG_PATH}` with `entities_dir` and `git_base` "
+            "before running `ve entity claude`."
+        )
+    except (CanonicalCloneError, ValueError, WorktreeAttachError) as exc:
+        raise click.ClickException(str(exc))
+
     entities = Entities(project_dir)
 
     if not entities.entity_exists(entity_name):
