@@ -1,179 +1,147 @@
-
-
-<!--
-This document captures HOW you'll achieve the chunk's GOAL.
-It should be specific enough that each step is a reasonable unit of work
-to hand to an agent.
--->
-
 # Implementation Plan
 
 ## Approach
 
-<!--
-How will you build this? Describe the strategy at a high level.
-What patterns or techniques will you use?
-What existing code will you build on?
+Add a new `src/cli/config.py` module that owns the schema, loading,
+validation, and normalization of `~/.ve-config.toml`. The module exposes:
 
-Reference docs/trunk/DECISIONS.md entries where relevant.
-If this approach represents a new significant decision, ask the user
-if we should add it to DECISIONS.md and reference it here.
+- `VeConfig` dataclass with two fields: `entities_dir: pathlib.Path` and
+  `git_base: str`. Both are post-validation, fully resolved values
+  (`entities_dir` is absolute, `git_base` has no trailing slash).
+- `DEFAULT_CONFIG_PATH = Path.home() / ".ve-config.toml"`
+- `DEFAULT_ENTITIES_DIR = "~/Entities"` (sentinel string applied when
+  `entities_dir` is omitted from the file).
+- `ConfigError(Exception)` — surfaced by the CLI as a clean Click error,
+  always names the offending field and the config file path.
+- `load_config(path: Path | None = None) -> VeConfig` — the canonical
+  loader. Handles missing-file, malformed-TOML, missing-required-field,
+  wrong-type, and produces actionable error messages. Performs:
+  - tilde expansion on `entities_dir` (`Path.expanduser().resolve()`).
+  - trailing-slash strip on `git_base` (`.rstrip("/")`).
+  - applies `DEFAULT_ENTITIES_DIR` if `entities_dir` is missing.
+  - raises `ConfigError` if `git_base` is missing (no sensible default).
+- Convenience accessors used by downstream chunks:
+  - `get_entities_dir(path: Path | None = None) -> Path` — resolved
+    absolute path.
+  - `get_git_base(path: Path | None = None) -> str` — normalized base URL.
 
-Always include tests in your implementation plan and adhere to
-docs/trunk/TESTING_PHILOSOPHY.md in your planning.
+Then wire a top-level `ve config` group with a single `show` subcommand to
+`src/cli/__init__.py`, paralleling the existing pattern used by
+`cli/init_cmd.py`. The `show` command prints the resolved config in a
+stable, human-readable `key = value` format (the input file path included
+as a comment header so users can confirm which file was read).
 
-Remember to update code_paths in the chunk's GOAL.md (e.g., docs/chunks/entity_config_toml/GOAL.md)
-with references to the files that you expect to touch.
--->
+The board config module (`src/board/config.py`) is the closest existing
+template — same `tomllib`-based load pattern, same dataclass-with-defaults
+shape, same `Path.home() / ".ve" / "board.toml"` style. We deliberately do
+NOT reuse it: board config has different schema, different defaults, and
+different responsibilities. Sharing structure (dataclass + `load_*`
+function + `DEFAULT_*` constants) is enough.
+
+Tests live in `tests/test_config.py`. We use the existing `runner` and
+`tmp_path` fixtures; no new conftest plumbing needed. For each test we
+write a TOML file under `tmp_path` and pass the path explicitly to
+`load_config(path)` — we never poke at the user's real `~/.ve-config.toml`.
 
 ## Subsystem Considerations
 
-<!--
-Before designing your implementation, check docs/subsystems/ for relevant
-cross-cutting patterns.
-
-QUESTIONS TO CONSIDER:
-- Does this chunk touch any existing subsystem's scope?
-- Will this chunk implement part of a subsystem (contribute code) or use it
-  (depend on it)?
-- Did you discover code during exploration that should be part of a subsystem
-  but doesn't follow its patterns?
-
-If no subsystems are relevant, delete this section.
-
-WHEN SUBSYSTEMS ARE RELEVANT:
-List each relevant subsystem with its status and your relationship:
-- **docs/subsystems/validation** (DOCUMENTED): This chunk USES the validation
-  subsystem to check input
-- **docs/subsystems/error_handling** (REFACTORING): This chunk IMPLEMENTS a
-  new error type following the subsystem's patterns
-
-HOW SUBSYSTEM STATUS AFFECTS YOUR WORK:
-
-DOCUMENTED subsystems: The subsystem's patterns are captured but deviations are not
-being actively fixed. If you discover code that deviates from the subsystem's
-patterns, add it to the subsystem's Known Deviations section. Do NOT prioritize
-fixing those deviations—your chunk has its own goals.
-
-REFACTORING subsystems: The subsystem is being actively consolidated. If your chunk
-work touches code that deviates from the subsystem's patterns, attempt to bring it
-into compliance as part of your work. This is "opportunistic improvement"—improve
-what you touch, but don't expand scope to fix unrelated deviations.
-
-WHEN YOU DISCOVER DEVIATING CODE:
-- Add it to the subsystem's Known Deviations section
-- Note whether you will address it (REFACTORING status + relevant to your work)
-  or leave it for future work (DOCUMENTED status or outside your chunk's scope)
-
-Example:
-- **Discovered deviation**: src/legacy/parser.py#validate_input does its own
-  validation instead of using the validation subsystem
-  - Added to docs/subsystems/validation Known Deviations
-  - Action: Will not address (subsystem is DOCUMENTED; deviation outside chunk scope)
--->
+None directly relevant. This is a new operator-level config and does not
+intersect with existing subsystems. Future entity-related chunks may form
+an `entity_worktrees` subsystem; out of scope here.
 
 ## Sequence
 
-<!--
-Ordered steps to implement this chunk. Each step should be:
-- Small enough to reason about in isolation
-- Large enough to be meaningful
-- Clear about its inputs and outputs
+### Step 1: Create `src/cli/config.py`
 
-This sequence is your contract with yourself (and with agents).
-Work through it in order. Don't skip ahead.
+Implements:
+- `VeConfig` dataclass
+- `ConfigError` exception
+- `DEFAULT_CONFIG_PATH`, `DEFAULT_ENTITIES_DIR` constants
+- `load_config(path=None)` with full validation + normalization
+- `get_entities_dir(path=None)` and `get_git_base(path=None)` helpers
+- Module-level backreference comment to this chunk.
 
-Example:
+Error message contract (used by tests and downstream UX):
+- Missing file: `"Config file not found: {path}. Create it with two fields: entities_dir and git_base."`
+- TOML parse error: `"Failed to parse {path}: {orig_message}"`
+- Missing required field: `"Missing required field '{field}' in {path}"`
+- Wrong type: `"Field '{field}' in {path} must be a {type}, got {actual_type}"`
 
-### Step 1: Define the SegmentHeader struct
+### Step 2: Add `ve config show` subcommand
 
-Create the struct that represents a segment's header with fields for:
-- magic number (4 bytes)
-- version (2 bytes)
-- segment_id (8 bytes)
-- message_count (4 bytes)
-- checksum (4 bytes)
+Create the new `config` group in `src/cli/config.py` as a `@click.group`,
+with a single `show` command. Register the group in `src/cli/__init__.py`
+following the existing pattern (import + `cli.add_command(config)`).
 
-Location: src/segment/format.rs
-
-### Step 2: Implement header serialization
-
-Add `to_bytes()` and `from_bytes()` methods to SegmentHeader.
-Use little-endian encoding per SPEC.md Section 3.1.
-
-### Step 3: ...
-
----
-
-**BACKREFERENCE COMMENTS**
-
-When implementing code, add backreference comments to help future agents trace
-code back to its governing documentation.
-
-**Valid backreference types:**
-- `# Subsystem: docs/subsystems/<name>` - For architectural patterns
-- `# Chunk: docs/chunks/<name>` - For implementation work
-
-Place comments at the appropriate level:
-- **Module-level**: If this code implements the subsystem/chunk's core functionality
-- **Class-level**: If this class is part of the pattern
-- **Method-level**: If this method implements a specific behavior
-
-Format (place immediately before the symbol):
+`ve config show` output format:
 ```
-# Subsystem: docs/subsystems/workflow_artifacts - Workflow artifact manager pattern
-# Chunk: docs/chunks/auth_refactor - Authentication system redesign
+# Config file: /Users/op/.ve-config.toml
+entities_dir = /Users/op/Entities
+git_base = git@github.com:my-org
 ```
 
-Do NOT add narrative backreferences. Narratives decompose into chunks; reference
-the implementing chunk instead.
+On `ConfigError`, the command echoes the error to stderr and exits with
+code 1 (via `click.ClickException`).
 
-**Task context note**: In multi-project tasks, always use local paths (e.g.,
-`docs/chunks/chunk_name`) for chunk backreferences, not paths to the external
-artifact repo. Each project has `external.yaml` pointers that resolve to the
-actual chunk content.
--->
+### Step 3: Write `tests/test_config.py`
+
+Cover every success-criteria bullet:
+
+1. `test_load_valid_config` — file with both fields loads, types correct,
+   `entities_dir` is absolute.
+2. `test_load_default_entities_dir` — file with only `git_base` loads,
+   `entities_dir` defaults to `~/Entities` resolved absolute.
+3. `test_tilde_expansion` — `entities_dir = "~/Entities"` resolves to
+   absolute path under `Path.home()`.
+4. `test_trailing_slash_stripped` — `git_base = "https://x/"` loads as
+   `"https://x"`.
+5. `test_missing_file_error` — `load_config(non_existent_path)` raises
+   `ConfigError` whose message names the path.
+6. `test_malformed_toml_error` — invalid TOML raises `ConfigError` naming
+   the path.
+7. `test_missing_required_field_error` — file without `git_base` raises
+   `ConfigError` naming the field.
+8. `test_wrong_type_error` — `git_base = 42` raises `ConfigError` naming
+   the field and types.
+9. `test_get_entities_dir_returns_path` — helper returns `Path`.
+10. `test_get_git_base_returns_str` — helper returns normalized string.
+11. `test_config_show_command` — CLI invocation prints `entities_dir = ...`
+    and `git_base = ...` with the resolved values. Uses
+    `runner.isolated_filesystem` + an explicit `--config` flag OR a
+    monkeypatched `DEFAULT_CONFIG_PATH` to avoid touching the real
+    `~/.ve-config.toml`. Decision: pass `--config PATH` option to
+    `ve config show` for testability; downstream callers use the default.
+12. `test_config_show_missing_file` — exits non-zero with helpful error.
+
+### Step 4: Run tests + verify baseline
+
+Run `uv run pytest tests/test_config.py -v` to confirm new tests pass.
+Then run the full suite to confirm `31 failed, N passed` where N has grown
+by the count of new tests (≈12) and no new failures appear outside the
+pre-existing subsystem failures.
 
 ## Dependencies
 
-<!--
-What must exist before this chunk can be implemented?
-- Other chunks that must be complete
-- External libraries to add
-- Infrastructure or configuration
-
-If there are no dependencies, delete this section.
--->
+- Python 3.12+ stdlib `tomllib` (already required by project — see
+  `pyproject.toml requires-python = ">=3.12"`).
+- No new runtime deps. No coordination with other chunks (this is the
+  first chunk of the narrative).
 
 ## Risks and Open Questions
 
-<!--
-What might go wrong? What are you unsure about?
-Being explicit about uncertainty helps you (and agents) know where to
-be careful and when to stop and ask questions.
-
-Example:
-- fsync behavior may differ across filesystems; need to verify on ext4 and APFS
-- Unclear whether concurrent reads during write are safe; may need mutex
-- Performance target is aggressive; may need to iterate on buffer sizes
--->
+- **`ve config show` reading the user's real `~/.ve-config.toml` in tests**
+  — mitigated by accepting `--config PATH` and never relying on the real
+  home file in test code.
+- **Downstream chunks expect a specific accessor shape** — declared above
+  (`get_entities_dir(path=None) -> Path`, `get_git_base(path=None) -> str`).
+  If chunks 1–3 need a different signature, this is a small refactor; the
+  data model is stable.
+- **`git_base` validation strictness** — we only check type and strip
+  trailing slash. We do NOT validate that it's a valid URL, because both
+  `git@github.com:org` SSH-form and `https://github.com/org` HTTPS-form
+  must work; URL parsing differs between them. The clone helper (next
+  chunk) handles invalid URLs by surfacing the underlying git error.
 
 ## Deviations
 
-<!--
-POPULATE DURING IMPLEMENTATION, not at planning time.
-
-When reality diverges from the plan, document it here:
-- What changed?
-- Why?
-- What was the impact?
-
-Minor deviations (renamed a function, used a different helper) don't need
-documentation. Significant deviations (changed the approach, skipped a step,
-added steps) do.
-
-Example:
-- Step 4: Originally planned to use std::fs::rename for atomic swap.
-  Testing revealed this isn't atomic across filesystems. Changed to
-  write-fsync-rename-fsync sequence per platform best practices.
--->
+(Populated during implementation if reality diverges from the plan.)
