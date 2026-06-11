@@ -1,12 +1,14 @@
 """Standalone git-repo-based entity creation and management.
 
 # Chunk: docs/chunks/entity_repo_structure - Standalone entity git repo creation
+# Chunk: docs/chunks/entity_worktree_attach - List/inspect worktree-attached entities
 
-Entities are portable specialists that move across the platform via git
-submodules. Each entity has its own git repo that can be hosted on GitHub,
-attached to any project, forked for divergent training, and merged to combine
-learnings. This module creates the repo structure — the "blank entity" that
-gets populated with knowledge over time.
+Entities are portable specialists that move across the platform via git.
+Each entity has its own git repo that can be hosted on GitHub, attached to
+any project (as a worktree of a canonical clone — see
+``cli/entity_worktree.py``), forked for divergent training, and merged to
+combine learnings. This module owns the entity repo structure itself plus
+helpers that inspect attached entities (e.g. ``list_attached_entities``).
 """
 
 from __future__ import annotations
@@ -397,131 +399,26 @@ def derive_entity_name_from_url(url: str) -> str:
 
 
 class AttachedEntityInfo(BaseModel):
-    """Info about an entity attached as a git submodule."""
+    """Info about an entity attached as a git worktree of a canonical clone.
+
+    # Chunk: docs/chunks/entity_worktree_attach - Worktree-based attachment metadata
+    """
 
     name: str
-    remote_url: Optional[str]       # None if not a submodule or no remote
+    remote_url: Optional[str]       # None if no origin configured
     specialization: Optional[str]   # From ENTITY.md frontmatter
     status: str                     # "clean" | "uncommitted" | "ahead" | "unknown"
 
 
 # ---------------------------------------------------------------------------
-# Submodule operations
+# Attach / detach
 # ---------------------------------------------------------------------------
-
-
-# Chunk: docs/chunks/entity_attach_detach - Submodule attach implementation
-def attach_entity(project_dir: Path, repo_url: str, name: str) -> Path:
-    """Attach an entity repository to a project as a git submodule.
-
-    Args:
-        project_dir: Path to the project git repository.
-        repo_url: URL or local path to the entity's git repository.
-        name: Name to use for the entity (subdirectory under .entities/).
-
-    Returns:
-        Path to the attached entity directory (.entities/<name>).
-
-    Raises:
-        RuntimeError: If project_dir is not a git repo or submodule add fails.
-        ValueError: If the cloned repo is not a valid entity repo.
-    """
-    # Validate project_dir is a git repo
-    check = subprocess.run(
-        ["git", "-C", str(project_dir), "rev-parse", "--git-dir"],
-        capture_output=True, text=True,
-    )
-    if check.returncode != 0:
-        raise RuntimeError(
-            f"'{project_dir}' is not a git repository"
-        )
-
-    # Ensure .entities/ exists
-    entities_dir = project_dir / ".entities"
-    entities_dir.mkdir(exist_ok=True)
-
-    # Resolve relative local paths to absolute so git doesn't interpret them
-    # relative to the project's remote URL.
-    repo_url_resolved = repo_url
-    candidate = Path(repo_url).expanduser()
-    if candidate.exists() and candidate.is_dir():
-        repo_url_resolved = str(candidate.resolve())
-
-    # Run git submodule add
-    # Allow local file:// protocol (needed when repo_url is a local path)
-    submodule_path = f".entities/{name}"
-    try:
-        _run_git(
-            project_dir,
-            "submodule", "add", repo_url_resolved, submodule_path,
-            extra_env={"GIT_CONFIG_COUNT": "1",
-                       "GIT_CONFIG_KEY_0": "protocol.file.allow",
-                       "GIT_CONFIG_VALUE_0": "always"},
-        )
-    except RuntimeError as e:
-        raise RuntimeError(f"Failed to attach entity '{name}': {e}") from e
-
-    # Validate the cloned repo is an entity repo
-    entity_path = project_dir / ".entities" / name
-    if not is_entity_repo(entity_path):
-        # Cleanup the partial submodule
-        subprocess.run(
-            ["git", "-C", str(project_dir), "submodule", "deinit", "-f", submodule_path],
-            capture_output=True,
-        )
-        subprocess.run(
-            ["git", "-C", str(project_dir), "rm", "-f", submodule_path],
-            capture_output=True,
-        )
-        modules_path = project_dir / ".git" / "modules" / ".entities" / name
-        if modules_path.exists():
-            shutil.rmtree(modules_path)
-        raise ValueError("Attached repo is not a valid entity repo — missing ENTITY.md")
-
-    return entity_path
-
-
-# Chunk: docs/chunks/entity_attach_detach - Submodule detach implementation
-def detach_entity(project_dir: Path, name: str, force: bool = False) -> None:
-    """Detach an entity repository from a project.
-
-    Args:
-        project_dir: Path to the project git repository.
-        name: Name of the entity to detach (subdirectory under .entities/).
-        force: If True, detach even if the entity has uncommitted changes.
-
-    Raises:
-        ValueError: If the entity is not found.
-        RuntimeError: If the entity has uncommitted changes and force=False.
-    """
-    entity_path = project_dir / ".entities" / name
-    if not entity_path.exists():
-        raise ValueError(f"Entity '{name}' not found at '{entity_path}'")
-
-    # Check for uncommitted changes
-    status_result = subprocess.run(
-        ["git", "-C", str(entity_path), "status", "--porcelain"],
-        capture_output=True, text=True,
-    )
-    if status_result.stdout.strip() and not force:
-        raise RuntimeError(
-            f"Entity '{name}' has uncommitted changes. Use force=True to override."
-        )
-
-    submodule_path = f".entities/{name}"
-
-    # Full removal sequence
-    subprocess.run(
-        ["git", "-C", str(project_dir), "submodule", "deinit", "-f", submodule_path],
-        capture_output=True,
-    )
-    subprocess.run(
-        ["git", "-C", str(project_dir), "rm", "-f", submodule_path],
-        capture_output=True,
-    )
-    modules_path = project_dir / ".git" / "modules" / ".entities" / name
-    if modules_path.exists():
-        shutil.rmtree(modules_path)
+#
+# The attach/detach implementations live in cli/entity_worktree.py — they are
+# part of the worktree-based attach pathway and depend on the operator config
+# (entities_dir + git_base). This module retains read-only inspection helpers
+# (list_attached_entities below) that work uniformly for any .entities/<name>
+# that is a git working tree.
 
 
 # ---------------------------------------------------------------------------
@@ -572,22 +469,39 @@ def push_entity(entity_path: Path) -> PushResult:
             "checkout a branch first."
         )
 
+    # Chunk: docs/chunks/entity_worktree_attach - Push via configured upstream
+    # See pull_entity for the same rationale: worktree-attached entities
+    # run on a project-scoped local branch that differs from the remote
+    # branch they push to.
+    upstream_proc = subprocess.run(
+        ["git", "-C", str(entity_path), "rev-parse",
+         "--abbrev-ref", "--symbolic-full-name", "@{u}"],
+        capture_output=True, text=True,
+    )
+    if upstream_proc.returncode == 0 and upstream_proc.stdout.strip():
+        upstream_ref = upstream_proc.stdout.strip()
+        # Extract the remote-side branch name from "origin/<remote-branch>"
+        remote_branch = upstream_ref.split("/", 1)[1] if "/" in upstream_ref else branch
+    else:
+        upstream_ref = f"origin/{branch}"
+        remote_branch = branch
+
     # Count commits ahead of origin before pushing
     try:
         ahead_out = _run_git_output(
-            entity_path, "rev-list", f"origin/{branch}..HEAD"
+            entity_path, "rev-list", f"{upstream_ref}..HEAD"
         )
         commits_pushed = len([l for l in ahead_out.splitlines() if l.strip()])
     except RuntimeError:
-        # origin/<branch> doesn't exist yet (first push) — count all commits
+        # upstream doesn't exist yet (first push) — count all commits
         try:
             all_out = _run_git_output(entity_path, "rev-list", "HEAD")
             commits_pushed = len([l for l in all_out.splitlines() if l.strip()])
         except RuntimeError:
             commits_pushed = 0
 
-    # Push
-    _run_git(entity_path, "push", "origin", branch)
+    # Push to the remote branch the upstream points at (if any)
+    _run_git(entity_path, "push", "origin", f"HEAD:{remote_branch}")
 
     return PushResult(commits_pushed=commits_pushed, has_uncommitted=has_uncommitted)
 
@@ -643,19 +557,34 @@ def pull_entity(
             "checkout a branch first."
         )
 
+    # Chunk: docs/chunks/entity_worktree_attach - Pull via configured upstream
+    # For worktree-attached entities the local branch (e.g.
+    # ve-attach/<project>) differs from the remote branch (e.g. main).
+    # Honor the configured upstream when one is set; fall back to the
+    # legacy "origin/<branch>" assumption when not.
+    upstream_proc = subprocess.run(
+        ["git", "-C", str(entity_path), "rev-parse",
+         "--abbrev-ref", "--symbolic-full-name", "@{u}"],
+        capture_output=True, text=True,
+    )
+    if upstream_proc.returncode == 0 and upstream_proc.stdout.strip():
+        upstream_ref = upstream_proc.stdout.strip()  # e.g. "origin/main"
+    else:
+        upstream_ref = f"origin/{branch}"
+
     # Fetch remote state
     _run_git(entity_path, "fetch", "origin")
 
     # Check divergence
     # Commits on origin not in local (need to merge in)
     incoming_out = _run_git_output(
-        entity_path, "rev-list", f"HEAD..origin/{branch}"
+        entity_path, "rev-list", f"HEAD..{upstream_ref}"
     )
     incoming = [l for l in incoming_out.splitlines() if l.strip()]
 
     # Commits in local not on origin (local is ahead)
     local_only_out = _run_git_output(
-        entity_path, "rev-list", f"origin/{branch}..HEAD"
+        entity_path, "rev-list", f"{upstream_ref}..HEAD"
     )
     local_only = [l for l in local_only_out.splitlines() if l.strip()]
 
@@ -675,7 +604,7 @@ def pull_entity(
         return PullResult(commits_merged=0, up_to_date=True)
 
     # Fast-forward possible
-    _run_git(entity_path, "merge", "--ff-only", f"origin/{branch}")
+    _run_git(entity_path, "merge", "--ff-only", upstream_ref)
     return PullResult(commits_merged=len(incoming), up_to_date=False)
 
 
@@ -709,301 +638,6 @@ def set_entity_origin(entity_path: Path, url: str) -> None:
         _run_git(entity_path, "remote", "set-url", "origin", url)
     else:
         _run_git(entity_path, "remote", "add", "origin", url)
-
-
-# Chunk: docs/chunks/entity_worktree_support - Initialize entity submodules in orchestrator worktree
-def init_entity_submodules_in_worktree(worktree_path: Path, chunk: str) -> None:
-    """Initialize entity submodules in an orchestrator worktree.
-
-    After `git worktree add`, the worktree directory exists but entity
-    submodules have not been initialized. This function:
-    1. Runs `git submodule update --init` in the worktree to populate
-       .entities/<name>/ directories.
-    2. For each entity, checks out a working branch `ve-worktree-<chunk>`
-       from the detached HEAD state left by submodule init.
-
-    This ensures agents running in the worktree can commit entity changes
-    without affecting the main checkout or other worktrees.
-
-    No-op if .entities/ doesn't exist or contains no submodule-based entities.
-
-    Args:
-        worktree_path: Absolute path to the orchestrator-created worktree.
-        chunk: Chunk name used to derive the entity working branch name.
-    """
-    import logging
-    logger = logging.getLogger(__name__)
-
-    entities_dir = worktree_path / ".entities"
-    if not entities_dir.exists():
-        return
-
-    # Initialize all submodules in the worktree
-    result = subprocess.run(
-        ["git", "submodule", "update", "--init"],
-        cwd=worktree_path,
-        capture_output=True,
-        text=True,
-        env={**__import__("os").environ,
-             "GIT_CONFIG_COUNT": "1",
-             "GIT_CONFIG_KEY_0": "protocol.file.allow",
-             "GIT_CONFIG_VALUE_0": "always"},
-    )
-    if result.returncode != 0:
-        logger.warning(
-            "git submodule update --init failed in worktree %s: %s",
-            worktree_path, result.stderr,
-        )
-        return
-
-    # For each entity submodule, check out a working branch
-    branch_name = f"ve-worktree-{chunk}"
-    for entity_dir in sorted(entities_dir.iterdir()):
-        if not entity_dir.is_dir():
-            continue
-        # Submodule marker: .git is a file (not a directory)
-        if not (entity_dir / ".git").is_file():
-            continue
-
-        # Try to create and checkout the working branch
-        result = subprocess.run(
-            ["git", "-C", str(entity_dir), "checkout", "-b", branch_name],
-            capture_output=True,
-            text=True,
-        )
-        if result.returncode != 0:
-            # Branch may already exist — just check it out
-            result = subprocess.run(
-                ["git", "-C", str(entity_dir), "checkout", branch_name],
-                capture_output=True,
-                text=True,
-            )
-            if result.returncode != 0:
-                logger.warning(
-                    "Could not checkout branch %s in entity %s: %s",
-                    branch_name, entity_dir.name, result.stderr,
-                )
-
-
-# Chunk: docs/chunks/entity_worktree_support - Merge entity worktree branches to main after chunk merge
-def merge_entity_worktree_branches(
-    project_dir: Path, chunk: str, worktree_path: Optional[Path] = None
-) -> None:
-    """Merge entity worktree branches to entity main after chunk merges to base.
-
-    After the orchestrator merges orch/<chunk> to main (which includes the
-    updated entity submodule pointer), this function merges each entity's
-    `ve-worktree-<chunk>` branch into the entity's `main` branch and deletes
-    the worktree branch. This keeps the entity's main branch current.
-
-    When `git submodule update --init` runs inside an orchestrator worktree,
-    git creates a separate git module for the submodule at a worktree-specific
-    path. The entity in the worktree and the entity in the main checkout do NOT
-    share the same git module/ref namespace. To bridge them, this function
-    fetches the worktree entity branch into the project entity module, then
-    merges using git plumbing commands (merge-base, merge-tree, commit-tree,
-    update-ref). This avoids disturbing the working directory.
-
-    If a merge conflict occurs (e.g., two worktrees modified the same entity),
-    logs a warning and skips that entity — it is not a fatal error.
-
-    No-op if .entities/ doesn't exist, the worktree path doesn't exist, or no
-    entities have a ve-worktree-<chunk> branch.
-
-    Args:
-        project_dir: Root project directory where .entities/ lives.
-        chunk: Chunk name matching the ve-worktree-<chunk> branch.
-        worktree_path: Path to the chunk's orchestrator worktree. Defaults to
-            project_dir/.ve/chunks/<chunk>/worktree (single-repo mode).
-    """
-    import logging
-    import os
-    logger = logging.getLogger(__name__)
-
-    entities_dir = project_dir / ".entities"
-    if not entities_dir.exists():
-        return
-
-    if worktree_path is None:
-        worktree_path = project_dir / ".ve" / "chunks" / chunk / "worktree"
-
-    if not worktree_path.exists():
-        return
-
-    worktree_branch = f"ve-worktree-{chunk}"
-    target_branch = "main"
-    _file_protocol_env = {
-        **os.environ,
-        "GIT_CONFIG_COUNT": "1",
-        "GIT_CONFIG_KEY_0": "protocol.file.allow",
-        "GIT_CONFIG_VALUE_0": "always",
-    }
-
-    for entity_dir in sorted(entities_dir.iterdir()):
-        if not entity_dir.is_dir():
-            continue
-        # Submodule marker: .git is a file (not a directory)
-        if not (entity_dir / ".git").is_file():
-            continue
-
-        name = entity_dir.name
-        worktree_entity = worktree_path / ".entities" / name
-
-        if not worktree_entity.exists():
-            continue
-
-        # Check if the worktree branch exists in the worktree entity.
-        # Note: the worktree entity lives in a separate git module path from
-        # the project entity (git creates a per-worktree module path for
-        # submodules). We must fetch from the worktree entity into the project
-        # entity to bridge the two separate module repos.
-        verify = subprocess.run(
-            ["git", "-C", str(worktree_entity), "rev-parse", "--verify", worktree_branch],
-            capture_output=True, text=True,
-        )
-        if verify.returncode != 0:
-            # No worktree branch — skip silently
-            continue
-
-        # Fetch the worktree entity branch into the project entity so we can
-        # operate on both branches within a single repo.
-        fetch = subprocess.run(
-            ["git", "-C", str(entity_dir), "fetch",
-             str(worktree_entity), f"{worktree_branch}:{worktree_branch}"],
-            capture_output=True, text=True,
-            env=_file_protocol_env,
-        )
-        if fetch.returncode != 0:
-            logger.warning(
-                "Failed to fetch worktree entity branch for %s: %s",
-                name, fetch.stderr,
-            )
-            continue
-
-        # Get SHAs for both branches (now both visible in project entity)
-        source_result = subprocess.run(
-            ["git", "-C", str(entity_dir), "rev-parse", worktree_branch],
-            capture_output=True, text=True,
-        )
-        target_result = subprocess.run(
-            ["git", "-C", str(entity_dir), "rev-parse", target_branch],
-            capture_output=True, text=True,
-        )
-        if source_result.returncode != 0 or target_result.returncode != 0:
-            logger.warning(
-                "Could not resolve branches for entity %s: source=%s target=%s",
-                name, source_result.stderr, target_result.stderr,
-            )
-            # Clean up fetched branch
-            subprocess.run(
-                ["git", "-C", str(entity_dir), "branch", "-D", worktree_branch],
-                capture_output=True,
-            )
-            continue
-
-        source_sha = source_result.stdout.strip()
-        target_sha = target_result.stdout.strip()
-
-        # Check if already merged (source is ancestor of target)
-        ancestor_check = subprocess.run(
-            ["git", "-C", str(entity_dir), "merge-base", "--is-ancestor",
-             source_sha, target_sha],
-            capture_output=True,
-        )
-        if ancestor_check.returncode == 0:
-            # Already merged — just clean up the local branch
-            subprocess.run(
-                ["git", "-C", str(entity_dir), "branch", "-d", worktree_branch],
-                capture_output=True,
-            )
-            continue
-
-        # Check if fast-forward is possible (target is ancestor of source)
-        ff_check = subprocess.run(
-            ["git", "-C", str(entity_dir), "merge-base", "--is-ancestor",
-             target_sha, source_sha],
-            capture_output=True,
-        )
-        if ff_check.returncode == 0:
-            # Fast-forward: update main ref to source_sha
-            update = subprocess.run(
-                ["git", "-C", str(entity_dir), "update-ref",
-                 f"refs/heads/{target_branch}", source_sha],
-                capture_output=True, text=True,
-            )
-            if update.returncode != 0:
-                logger.warning(
-                    "Fast-forward update failed for entity %s: %s",
-                    name, update.stderr,
-                )
-                subprocess.run(
-                    ["git", "-C", str(entity_dir), "branch", "-D", worktree_branch],
-                    capture_output=True,
-                )
-                continue
-        else:
-            # Need a real merge — use git merge-tree (Git 2.38+)
-            merge_tree = subprocess.run(
-                ["git", "-C", str(entity_dir), "merge-tree",
-                 "--write-tree", target_sha, source_sha],
-                capture_output=True, text=True,
-            )
-            if merge_tree.returncode != 0:
-                logger.warning(
-                    "Merge conflict in entity %s (worktree branch %s vs main): %s",
-                    name, worktree_branch, merge_tree.stderr,
-                )
-                subprocess.run(
-                    ["git", "-C", str(entity_dir), "branch", "-D", worktree_branch],
-                    capture_output=True,
-                )
-                continue
-
-            new_tree = merge_tree.stdout.splitlines()[0].strip()
-
-            # Create a merge commit
-            commit_result = subprocess.run(
-                ["git", "-C", str(entity_dir), "commit-tree", new_tree,
-                 "-p", target_sha, "-p", source_sha,
-                 "-m", f"Merge entity worktree branch {worktree_branch} into main"],
-                capture_output=True, text=True,
-                env={**os.environ, **_GIT_ENV},
-            )
-            if commit_result.returncode != 0:
-                logger.warning(
-                    "commit-tree failed for entity %s: %s",
-                    name, commit_result.stderr,
-                )
-                subprocess.run(
-                    ["git", "-C", str(entity_dir), "branch", "-D", worktree_branch],
-                    capture_output=True,
-                )
-                continue
-
-            new_commit = commit_result.stdout.strip()
-
-            # Update the main branch ref
-            update = subprocess.run(
-                ["git", "-C", str(entity_dir), "update-ref",
-                 f"refs/heads/{target_branch}", new_commit],
-                capture_output=True, text=True,
-            )
-            if update.returncode != 0:
-                logger.warning(
-                    "update-ref failed for entity %s: %s",
-                    name, update.stderr,
-                )
-                subprocess.run(
-                    ["git", "-C", str(entity_dir), "branch", "-D", worktree_branch],
-                    capture_output=True,
-                )
-                continue
-
-        # Delete the fetched worktree branch from the project entity
-        subprocess.run(
-            ["git", "-C", str(entity_dir), "branch", "-d", worktree_branch],
-            capture_output=True,
-        )
 
 
 def fork_entity(
@@ -1329,13 +963,17 @@ def apply_resolutions(
 
 
 def list_attached_entities(project_dir: Path) -> list[AttachedEntityInfo]:
-    """List all entities attached as git submodules.
+    """List all entities attached as git worktrees in this project.
+
+    # Chunk: docs/chunks/entity_worktree_attach - Worktree-aware attached-entity listing
 
     Args:
         project_dir: Path to the project git repository.
 
     Returns:
-        List of AttachedEntityInfo for each attached entity submodule.
+        List of AttachedEntityInfo for each ``.entities/<name>`` whose
+        ``.git`` is a file (the worktree marker) — i.e. attached via
+        ``ve entity attach``.
     """
     entities_dir = project_dir / ".entities"
     if not entities_dir.exists():
@@ -1345,7 +983,9 @@ def list_attached_entities(project_dir: Path) -> list[AttachedEntityInfo]:
     for d in sorted(entities_dir.iterdir()):
         if not d.is_dir():
             continue
-        # Detect submodule: submodule checkout has .git as a file, not directory
+        # Attached worktrees have .git as a file (not a directory). A
+        # standalone entity repo created in-place via `ve entity create`
+        # has a .git directory and is not "attached" in this sense.
         git_marker = d / ".git"
         if not git_marker.is_file():
             continue
