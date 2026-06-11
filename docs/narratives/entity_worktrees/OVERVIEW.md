@@ -1,5 +1,5 @@
 ---
-status: ACTIVE
+status: COMPLETED
 advances_trunk_goal: "Required Properties: long-lived agent stewards distributable across projects — organizations can share entity knowledge (memories, wiki, identity) across the whole team without each engineer reconstructing it locally."
 proposed_chunks:
   - prompt: "~/.ve-config.toml exists as the operator-level configuration file with fields entities_dir (path, default ~/Entities, tilde-expanded) and git_base (URL prefix, no trailing slash). A new module loads, validates, and exposes the resolved config to the rest of the CLI; missing-file and malformed-file cases produce clear, actionable errors. A `ve config show` command prints the resolved config for debugging and onboarding."
