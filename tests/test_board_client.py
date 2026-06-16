@@ -2850,3 +2850,322 @@ async def test_watch_multi_with_reconnect_stale_handshake_timeout_safety_valve_w
                         {"ch-a": 0}, max_retries=3, count=1, stale_timeout=0.01
                     ):
                         pass
+
+
+# ---------------------------------------------------------------------------
+# Chunk: docs/chunks/watch_handshake_5xx_retry - HTTP 5xx during handshake retryable
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_watch_with_reconnect_5xx_handshake_retries(keypair):
+    """watch_with_reconnect() retries when connect() raises InvalidStatus with HTTP 5xx.
+
+    Scenario:
+      Connection 1: auth OK, ConnectionClosedError to trigger reconnect.
+      Connection 2: websockets.connect raises InvalidStatus(500).
+      Connection 3: auth OK, delivers message.
+
+    The 5xx is treated as transient; the watch recovers and delivers the message.
+    """
+    seed, pub, swarm_id = keypair
+    nonce_hex = "aa" * 32
+    challenge = json.dumps({"type": "challenge", "nonce": nonce_hex})
+    auth_ok = json.dumps({"type": "auth_ok"})
+    msg = json.dumps({
+        "type": "message",
+        "channel": "ch1",
+        "position": 9,
+        "body": "recovered-5xx==",
+        "sent_at": "2026-06-16T00:00:00Z",
+    })
+
+    connect_call_count = 0
+
+    def make_ws_factory(*args, **kwargs):
+        nonlocal connect_call_count
+        connect_call_count += 1
+        if connect_call_count == 1:
+            ws = AsyncMock()
+            ws.recv = AsyncMock(side_effect=[
+                challenge, auth_ok,
+                websockets.exceptions.ConnectionClosedError(None, None),
+            ])
+            ws.send = AsyncMock()
+            ws.close = AsyncMock()
+            return _async_ctx(ws)
+        elif connect_call_count == 2:
+            response = MagicMock()
+            response.status_code = 500
+            raise websockets.exceptions.InvalidStatus(response)
+        else:
+            ws = AsyncMock()
+            ws.recv = AsyncMock(side_effect=[challenge, auth_ok, msg])
+            ws.send = AsyncMock()
+            ws.close = AsyncMock()
+            return _async_ctx(ws)
+
+    sleep_mock = AsyncMock()
+    with patch("board.client.websockets.connect", side_effect=make_ws_factory):
+        with patch("board.client.asyncio.sleep", sleep_mock):
+            client = BoardClient("ws://localhost:8787", swarm_id, seed)
+            await client.connect()
+            result = await client.watch_with_reconnect("ch1", 8)
+
+    assert result["position"] == 9
+    assert result["body"] == "recovered-5xx=="
+    assert sleep_mock.call_count >= 1
+    assert connect_call_count == 3
+
+
+@pytest.mark.asyncio
+async def test_watch_with_reconnect_4xx_handshake_is_fatal(keypair):
+    """watch_with_reconnect() propagates InvalidStatus immediately when HTTP 4xx.
+
+    Scenario:
+      Connection 1: auth OK, ConnectionClosedError.
+      Connection 2: websockets.connect raises InvalidStatus(403).
+
+    4xx must not be retried — it propagates immediately without further attempts.
+    """
+    seed, pub, swarm_id = keypair
+    nonce_hex = "aa" * 32
+    challenge = json.dumps({"type": "challenge", "nonce": nonce_hex})
+    auth_ok = json.dumps({"type": "auth_ok"})
+
+    connect_call_count = 0
+
+    def make_ws_factory(*args, **kwargs):
+        nonlocal connect_call_count
+        connect_call_count += 1
+        if connect_call_count == 1:
+            ws = AsyncMock()
+            ws.recv = AsyncMock(side_effect=[
+                challenge, auth_ok,
+                websockets.exceptions.ConnectionClosedError(None, None),
+            ])
+            ws.send = AsyncMock()
+            ws.close = AsyncMock()
+            return _async_ctx(ws)
+        else:
+            response = MagicMock()
+            response.status_code = 403
+            raise websockets.exceptions.InvalidStatus(response)
+
+    with patch("board.client.websockets.connect", side_effect=make_ws_factory):
+        with patch("board.client.asyncio.sleep", new_callable=AsyncMock):
+            client = BoardClient("ws://localhost:8787", swarm_id, seed)
+            await client.connect()
+            with pytest.raises(websockets.exceptions.InvalidStatus):
+                await client.watch_with_reconnect("ch1", 0)
+
+    assert connect_call_count == 2
+
+
+@pytest.mark.asyncio
+async def test_watch_with_reconnect_5xx_handshake_exhausts_budget(keypair):
+    """watch_with_reconnect() safety valve fires when HTTP 5xx is sustained.
+
+    Scenario:
+      Connection 1: auth OK, ConnectionClosedError.
+      All subsequent: websockets.connect raises InvalidStatus(503).
+      max_retries=2.
+
+    InvalidStatus must propagate after the budget is exhausted.
+    The outer except _RETRYABLE_ERRORS increments attempt to 1 before calling
+    _connect_with_retry(1, ...), so _connect_with_retry exhausts the budget after
+    2 further attempts (attempt reaches 3 > 2), giving connect_call_count == 3 total.
+    """
+    seed, pub, swarm_id = keypair
+    nonce_hex = "aa" * 32
+    challenge = json.dumps({"type": "challenge", "nonce": nonce_hex})
+    auth_ok = json.dumps({"type": "auth_ok"})
+
+    connect_call_count = 0
+
+    def make_ws_factory(*args, **kwargs):
+        nonlocal connect_call_count
+        connect_call_count += 1
+        if connect_call_count == 1:
+            ws = AsyncMock()
+            ws.recv = AsyncMock(side_effect=[
+                challenge, auth_ok,
+                websockets.exceptions.ConnectionClosedError(None, None),
+            ])
+            ws.send = AsyncMock()
+            ws.close = AsyncMock()
+            return _async_ctx(ws)
+        else:
+            response = MagicMock()
+            response.status_code = 503
+            raise websockets.exceptions.InvalidStatus(response)
+
+    sleep_mock = AsyncMock()
+    with patch("board.client.websockets.connect", side_effect=make_ws_factory):
+        with patch("board.client.asyncio.sleep", sleep_mock):
+            with patch("board.client.random.uniform", return_value=0):
+                client = BoardClient("ws://localhost:8787", swarm_id, seed)
+                await client.connect()
+                with pytest.raises(websockets.exceptions.InvalidStatus):
+                    await client.watch_with_reconnect("ch1", 0, max_retries=2)
+
+    assert connect_call_count == 3
+
+
+@pytest.mark.asyncio
+async def test_watch_multi_with_reconnect_5xx_handshake_retries(keypair):
+    """watch_multi_with_reconnect() retries when connect() raises InvalidStatus with HTTP 5xx.
+
+    Scenario:
+      Connection 1: auth OK, ConnectionClosedError to trigger reconnect.
+      Connection 2: websockets.connect raises InvalidStatus(500).
+      Connection 3: auth OK, delivers message.
+
+    The 5xx is treated as transient; exactly one message is yielded after recovery.
+    """
+    seed, pub, swarm_id = keypair
+    nonce_hex = "aa" * 32
+    challenge = json.dumps({"type": "challenge", "nonce": nonce_hex})
+    auth_ok = json.dumps({"type": "auth_ok"})
+    msg = json.dumps({
+        "type": "message",
+        "channel": "ch-a",
+        "position": 5,
+        "body": "multi-5xx-retry==",
+        "sent_at": "2026-06-16T00:00:00Z",
+    })
+
+    connect_call_count = 0
+
+    def make_ws_factory(*args, **kwargs):
+        nonlocal connect_call_count
+        connect_call_count += 1
+        if connect_call_count == 1:
+            ws = AsyncMock()
+            ws.recv = AsyncMock(side_effect=[
+                challenge, auth_ok,
+                websockets.exceptions.ConnectionClosedError(None, None),
+            ])
+            ws.send = AsyncMock()
+            ws.close = AsyncMock()
+            return _async_ctx(ws)
+        elif connect_call_count == 2:
+            response = MagicMock()
+            response.status_code = 500
+            raise websockets.exceptions.InvalidStatus(response)
+        else:
+            ws = AsyncMock()
+            ws.recv = AsyncMock(side_effect=[challenge, auth_ok, msg])
+            ws.send = AsyncMock()
+            ws.close = AsyncMock()
+            return _async_ctx(ws)
+
+    results = []
+    sleep_mock = AsyncMock()
+    with patch("board.client.websockets.connect", side_effect=make_ws_factory):
+        with patch("board.client.asyncio.sleep", sleep_mock):
+            client = BoardClient("ws://localhost:8787", swarm_id, seed)
+            await client.connect()
+            async for m in client.watch_multi_with_reconnect({"ch-a": 4}, count=1):
+                results.append(m)
+
+    assert len(results) == 1
+    assert results[0]["position"] == 5
+    assert results[0]["body"] == "multi-5xx-retry=="
+    assert sleep_mock.call_count >= 1
+    assert connect_call_count == 3
+
+
+@pytest.mark.asyncio
+async def test_watch_multi_with_reconnect_4xx_handshake_is_fatal(keypair):
+    """watch_multi_with_reconnect() propagates InvalidStatus immediately when HTTP 4xx.
+
+    Scenario:
+      Connection 1: auth OK, ConnectionClosedError.
+      Connection 2: websockets.connect raises InvalidStatus(403).
+
+    4xx must not be retried — it propagates immediately without further attempts.
+    """
+    seed, pub, swarm_id = keypair
+    nonce_hex = "aa" * 32
+    challenge = json.dumps({"type": "challenge", "nonce": nonce_hex})
+    auth_ok = json.dumps({"type": "auth_ok"})
+
+    connect_call_count = 0
+
+    def make_ws_factory(*args, **kwargs):
+        nonlocal connect_call_count
+        connect_call_count += 1
+        if connect_call_count == 1:
+            ws = AsyncMock()
+            ws.recv = AsyncMock(side_effect=[
+                challenge, auth_ok,
+                websockets.exceptions.ConnectionClosedError(None, None),
+            ])
+            ws.send = AsyncMock()
+            ws.close = AsyncMock()
+            return _async_ctx(ws)
+        else:
+            response = MagicMock()
+            response.status_code = 403
+            raise websockets.exceptions.InvalidStatus(response)
+
+    with patch("board.client.websockets.connect", side_effect=make_ws_factory):
+        with patch("board.client.asyncio.sleep", new_callable=AsyncMock):
+            client = BoardClient("ws://localhost:8787", swarm_id, seed)
+            await client.connect()
+            with pytest.raises(websockets.exceptions.InvalidStatus):
+                async for _ in client.watch_multi_with_reconnect({"ch-a": 0}, count=1):
+                    pass
+
+    assert connect_call_count == 2
+
+
+@pytest.mark.asyncio
+async def test_watch_multi_with_reconnect_5xx_handshake_exhausts_budget(keypair):
+    """watch_multi_with_reconnect() safety valve fires when HTTP 5xx is sustained.
+
+    Scenario:
+      Connection 1: auth OK, ConnectionClosedError.
+      All subsequent: websockets.connect raises InvalidStatus(503).
+      max_retries=2.
+
+    InvalidStatus must propagate after the budget is exhausted (connect_call_count == 3).
+    """
+    seed, pub, swarm_id = keypair
+    nonce_hex = "aa" * 32
+    challenge = json.dumps({"type": "challenge", "nonce": nonce_hex})
+    auth_ok = json.dumps({"type": "auth_ok"})
+
+    connect_call_count = 0
+
+    def make_ws_factory(*args, **kwargs):
+        nonlocal connect_call_count
+        connect_call_count += 1
+        if connect_call_count == 1:
+            ws = AsyncMock()
+            ws.recv = AsyncMock(side_effect=[
+                challenge, auth_ok,
+                websockets.exceptions.ConnectionClosedError(None, None),
+            ])
+            ws.send = AsyncMock()
+            ws.close = AsyncMock()
+            return _async_ctx(ws)
+        else:
+            response = MagicMock()
+            response.status_code = 503
+            raise websockets.exceptions.InvalidStatus(response)
+
+    sleep_mock = AsyncMock()
+    with patch("board.client.websockets.connect", side_effect=make_ws_factory):
+        with patch("board.client.asyncio.sleep", sleep_mock):
+            with patch("board.client.random.uniform", return_value=0):
+                client = BoardClient("ws://localhost:8787", swarm_id, seed)
+                await client.connect()
+                with pytest.raises(websockets.exceptions.InvalidStatus):
+                    async for _ in client.watch_multi_with_reconnect(
+                        {"ch-a": 0}, max_retries=2, count=1
+                    ):
+                        pass
+
+    assert connect_call_count == 3

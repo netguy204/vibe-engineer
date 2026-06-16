@@ -1,19 +1,23 @@
 ---
-status: FUTURE
+status: IMPLEMENTING
 ticket: null
 parent_chunk: watch_handshake_timeout_retry
 code_paths:
-  - src/board/client.py
-  - tests/test_board_client.py
+- src/board/client.py
+- tests/test_board_client.py
 code_references: []
 narrative: null
 investigation: null
 subsystems: []
 friction_entries: []
 depends_on: []
-created_after: ["entity_canonical_clone", "entity_claude_autoattach", "entity_config_toml", "entity_worktree_attach", "watch_handshake_stale_retry"]
+created_after:
+- entity_canonical_clone
+- entity_claude_autoattach
+- entity_config_toml
+- entity_worktree_attach
+- watch_handshake_stale_retry
 ---
-
 <!--
 ╔══════════════════════════════════════════════════════════════════════════════╗
 ║  DO NOT DELETE THIS COMMENT BLOCK until the chunk complete command is run.   ║

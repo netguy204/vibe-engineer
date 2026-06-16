@@ -149,6 +149,27 @@ class BoardClient:
             try:
                 await self.connect()
                 return 0, 1.0  # reset on successful connect
+            # Chunk: docs/chunks/watch_handshake_5xx_retry - HTTP 5xx during handshake retryable; 4xx fatal
+            except websockets.exceptions.InvalidStatus as inv_exc:
+                # 4xx = fatal configuration/identity error; surface immediately
+                if inv_exc.response.status_code < 500:
+                    raise
+                # 5xx = transient server outage; treat identically to TimeoutError
+                attempt += 1
+                if max_retries is not None and attempt > max_retries:
+                    raise
+                jitter = random.uniform(0, backoff * 0.5)
+                wait_time = min(backoff + jitter, max_backoff)
+                logger.warning(
+                    "Handshake rejected HTTP %d during reconnect in %.1fs "
+                    "(attempt %d) exc=%s",
+                    inv_exc.response.status_code,
+                    wait_time,
+                    attempt,
+                    type(inv_exc).__name__,
+                )
+                await asyncio.sleep(wait_time)
+                backoff = min(backoff * 2, max_backoff)
             except _RETRYABLE_ERRORS as connect_exc:
                 attempt += 1
                 if max_retries is not None and attempt > max_retries:
