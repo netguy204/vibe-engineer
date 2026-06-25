@@ -12,13 +12,23 @@ session resume to the backend. Each phase is a fresh session: no context
 carryover between phases.
 """
 
+import json
 import os
 import re
+from dataclasses import asdict
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional, Any, Callable
 
-from orchestrator.backend import AgentBackend, SessionRequest
+from orchestrator.backend import (
+    AgentBackend,
+    LogEvent,
+    ResultEvent,
+    SessionRequest,
+    TextEvent,
+    ToolCallEvent,
+    ToolResultEvent,
+)
 from orchestrator.backends.claude import ClaudeBackend
 from orchestrator.models import AgentResult, OrchestratorConfig, ReviewToolDecision, WorkUnitPhase
 
@@ -331,8 +341,22 @@ class AgentRunner:
         return result
 
 
+# Chunk: docs/chunks/backend_logparse - JSON-line log serialization
+
+# Map event classes to their JSON type tag
+_EVENT_TYPE_TAG: dict[type, str] = {
+    TextEvent: "text",
+    ToolCallEvent: "tool_call",
+    ToolResultEvent: "tool_result",
+    ResultEvent: "result",
+}
+
+
 def create_log_callback(chunk: str, phase: WorkUnitPhase, log_dir: Path):
     """Create a logging callback for agent execution.
+
+    Serializes each :class:`LogEvent` as a single JSON line containing a
+    ``timestamp``, ``type`` tag, and the event's own fields.
 
     Args:
         chunk: Chunk name
@@ -340,16 +364,16 @@ def create_log_callback(chunk: str, phase: WorkUnitPhase, log_dir: Path):
         log_dir: Directory for log files
 
     Returns:
-        Callback function for logging messages
+        Callback function for logging LogEvent messages
     """
     log_dir.mkdir(parents=True, exist_ok=True)
     log_file = log_dir / f"{phase.value.lower()}.txt"
 
-    def callback(message: Any) -> None:
+    def callback(event: LogEvent) -> None:
         timestamp = datetime.now(timezone.utc).isoformat()
-        message_str = str(message)
-
+        type_tag = _EVENT_TYPE_TAG.get(type(event), type(event).__name__)
+        record = {"timestamp": timestamp, "type": type_tag, **asdict(event)}
         with open(log_file, "a") as f:
-            f.write(f"[{timestamp}] {message_str}\n")
+            f.write(json.dumps(record, default=str) + "\n")
 
     return callback

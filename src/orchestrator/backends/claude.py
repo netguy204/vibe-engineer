@@ -31,8 +31,13 @@ from claude_agent_sdk.types import (
 
 from orchestrator.backend import (
     AgentBackend,
+    LogEvent,
+    ResultEvent,
     SessionRequest,
+    TextEvent,
+    ToolCallEvent,
     ToolDecision,
+    ToolResultEvent,
     ToolUse,
     is_sandbox_violation,
 )
@@ -342,6 +347,66 @@ def create_review_decision_hook(
     return {"PreToolUse": [hook_matcher]}
 
 
+# Chunk: docs/chunks/backend_logparse - Translate SDK messages to normalized LogEvents
+def _emit_log_events(message: object, on_log: Callable[[LogEvent], None]) -> None:
+    """Translate a Claude SDK message into normalized LogEvent(s) and emit them.
+
+    Each SDK message may produce zero or more LogEvents. Messages that don't
+    map to a known event type (dicts, init messages) are silently skipped.
+    """
+    if isinstance(message, ResultMessage):
+        on_log(
+            ResultEvent(
+                subtype=getattr(message, "subtype", "success"),
+                duration_ms=getattr(message, "duration_ms", 0),
+                total_cost_usd=getattr(message, "total_cost_usd", 0.0),
+                num_turns=getattr(message, "num_turns", 0),
+                is_error=getattr(message, "is_error", False),
+                session_id=getattr(message, "session_id", None),
+                result_text=getattr(message, "result", None),
+            )
+        )
+        return
+
+    if isinstance(message, AssistantMessage):
+        if not hasattr(message, "content") or not message.content:
+            return
+        for block in message.content:
+            if hasattr(block, "text") and not hasattr(block, "name"):
+                # TextBlock
+                on_log(TextEvent(text=block.text))
+            elif hasattr(block, "name") and hasattr(block, "id"):
+                # ToolUseBlock
+                tool_input = getattr(block, "input", {})
+                description = tool_input.get("description") if isinstance(tool_input, dict) else None
+                on_log(
+                    ToolCallEvent(
+                        tool_id=block.id,
+                        name=block.name,
+                        input=tool_input if isinstance(tool_input, dict) else {},
+                        description=description,
+                    )
+                )
+        return
+
+    # UserMessage with ToolResultBlocks
+    if hasattr(message, "content") and not isinstance(message, dict):
+        content = message.content if hasattr(message, "content") else []
+        if isinstance(content, list):
+            for block in content:
+                if hasattr(block, "tool_use_id"):
+                    block_content = getattr(block, "content", "")
+                    if not isinstance(block_content, str):
+                        block_content = str(block_content)
+                    on_log(
+                        ToolResultEvent(
+                            tool_use_id=block.tool_use_id,
+                            content=block_content,
+                            is_error=getattr(block, "is_error", False),
+                        )
+                    )
+
+
 # Chunk: docs/chunks/backend_seam - Claude Agent SDK implementation of AgentBackend
 class ClaudeBackend:
     """Runs an agent phase via the Claude Agent SDK (ClaudeSDKClient).
@@ -415,7 +480,7 @@ class ClaudeBackend:
                 await client.query(request.prompt)
                 async for message in client.receive_response():
                     if request.on_log:
-                        request.on_log(message)
+                        _emit_log_events(message, request.on_log)
 
                     # Capture session_id from init messages
                     if isinstance(message, dict):

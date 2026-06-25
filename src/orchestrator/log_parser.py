@@ -1,10 +1,14 @@
+# Chunk: docs/chunks/backend_logparse - JSON-line log parser (replaces regex-based parser)
 # Chunk: docs/chunks/orch_tail_command - Log parsing and tail command for orchestrator
 """Log parser for orchestrator agent logs.
 
-Parses the raw log format used by create_log_callback() and provides
-human-friendly display formatting.
+Deserializes JSON-line log files written by :func:`create_log_callback` and
+provides human-friendly display formatting. The parser is backend-agnostic:
+it operates on the normalized :class:`LogEvent` shapes, so any backend that
+emits those events produces identical summaries.
 """
 
+import json
 import re
 import shutil
 from dataclasses import dataclass
@@ -19,9 +23,9 @@ class ParsedLogEntry:
 
     Attributes:
         timestamp: When the message was logged
-        message_type: Type of message (SystemMessage, AssistantMessage, etc.)
+        message_type: Type of message (AssistantMessage, UserMessage, ResultMessage, SystemMessage)
         content: Type-specific parsed content
-        raw_line: The original log line
+        raw_line: The original log line (raw JSON string)
     """
 
     timestamp: datetime
@@ -68,23 +72,6 @@ class ResultInfo:
     result_text: Optional[str] = None
 
 
-# Regex patterns for parsing log lines
-TIMESTAMP_PATTERN = re.compile(r"^\[([^\]]+)\]\s+(.+)$")
-MESSAGE_TYPE_PATTERN = re.compile(r"^(\w+Message)\((.+)\)$", re.DOTALL)
-
-# Patterns for extracting content from message bodies
-TEXT_BLOCK_PATTERN = re.compile(r"TextBlock\(text='((?:[^'\\]|\\.)*)'\)")
-TOOL_USE_PATTERN = re.compile(
-    r"ToolUseBlock\(id='([^']+)',\s*name='([^']+)',\s*input=(\{[^}]*\})"
-)
-TOOL_RESULT_PATTERN = re.compile(
-    r"ToolResultBlock\(tool_use_id='([^']+)',\s*content='((?:[^'\\]|\\.)*)',\s*is_error=(\w+)"
-)
-RESULT_MESSAGE_PATTERN = re.compile(
-    r"subtype='(\w+)'.*?duration_ms=(\d+).*?is_error=(\w+).*?num_turns=(\d+).*?total_cost_usd=([0-9.]+)"
-)
-
-
 def parse_timestamp(timestamp_str: str) -> datetime:
     """Parse an ISO format timestamp string.
 
@@ -94,39 +81,14 @@ def parse_timestamp(timestamp_str: str) -> datetime:
     Returns:
         Parsed datetime object
     """
-    # Handle timezone offset format
     return datetime.fromisoformat(timestamp_str)
 
 
-def _unescape_string(s: str) -> str:
-    """Unescape a Python string literal.
-
-    Handles common escape sequences like \\n, \\t, \\', etc.
-    """
-    return s.encode("utf-8").decode("unicode_escape")
-
-
-def _extract_description_from_input(input_str: str) -> Optional[str]:
-    """Extract description field from tool input if present.
-
-    Args:
-        input_str: The tool input dict as a string
-
-    Returns:
-        Description string if found, None otherwise
-    """
-    # Look for 'description': '...' pattern
-    match = re.search(r"['\"]description['\"]\s*:\s*['\"]([^'\"]+)['\"]", input_str)
-    if match:
-        return match.group(1)
-    return None
-
-
 def parse_log_line(line: str) -> Optional[ParsedLogEntry]:
-    """Parse a single log line into structured data.
+    """Parse a single JSON log line into structured data.
 
     Args:
-        line: A single line from the log file
+        line: A single JSON line from the log file
 
     Returns:
         ParsedLogEntry if successfully parsed, None otherwise
@@ -135,152 +97,78 @@ def parse_log_line(line: str) -> Optional[ParsedLogEntry]:
     if not line:
         return None
 
-    # Extract timestamp and message body
-    timestamp_match = TIMESTAMP_PATTERN.match(line)
-    if not timestamp_match:
+    try:
+        record = json.loads(line)
+    except (json.JSONDecodeError, ValueError):
         return None
 
-    timestamp_str = timestamp_match.group(1)
-    message_body = timestamp_match.group(2)
+    if not isinstance(record, dict):
+        return None
+
+    timestamp_str = record.get("timestamp")
+    event_type = record.get("type")
+    if not timestamp_str or not event_type:
+        return None
 
     try:
         timestamp = parse_timestamp(timestamp_str)
     except ValueError:
         return None
 
-    # Extract message type
-    type_match = MESSAGE_TYPE_PATTERN.match(message_body)
-    if not type_match:
+    if event_type == "text":
+        message_type = "AssistantMessage"
+        content = {
+            "text_blocks": [TextContent(text=record.get("text", ""))],
+            "tool_calls": [],
+        }
+
+    elif event_type == "tool_call":
+        message_type = "AssistantMessage"
+        tool_input = record.get("input", {})
+        description = record.get("description")
+        content = {
+            "text_blocks": [],
+            "tool_calls": [
+                ToolCall(
+                    tool_id=record.get("tool_id", ""),
+                    name=record.get("name", ""),
+                    input=tool_input if isinstance(tool_input, dict) else {},
+                    description=description,
+                )
+            ],
+        }
+
+    elif event_type == "tool_result":
+        message_type = "UserMessage"
+        content = {
+            "tool_results": [
+                ToolResult(
+                    tool_use_id=record.get("tool_use_id", ""),
+                    content=record.get("content", ""),
+                    is_error=record.get("is_error", False),
+                )
+            ],
+        }
+
+    elif event_type == "result":
+        message_type = "ResultMessage"
+        content = ResultInfo(
+            subtype=record.get("subtype", "success"),
+            duration_ms=int(record.get("duration_ms", 0)),
+            total_cost_usd=float(record.get("total_cost_usd", 0.0)),
+            num_turns=int(record.get("num_turns", 0)),
+            is_error=record.get("is_error", False),
+            result_text=record.get("result_text"),
+        )
+
+    else:
         return None
-
-    message_type = type_match.group(1)
-    message_content = type_match.group(2)
-
-    # Parse based on message type
-    content: Any = None
-
-    if message_type == "SystemMessage":
-        # Just store raw content for system messages
-        content = {"raw": message_content}
-
-    elif message_type == "AssistantMessage":
-        content = _parse_assistant_message(message_content)
-
-    elif message_type == "UserMessage":
-        content = _parse_user_message(message_content)
-
-    elif message_type == "ResultMessage":
-        content = _parse_result_message(message_content)
 
     return ParsedLogEntry(
         timestamp=timestamp,
         message_type=message_type,
         content=content,
         raw_line=line,
-    )
-
-
-def _parse_assistant_message(content: str) -> dict:
-    """Parse AssistantMessage content.
-
-    Returns dict with 'text_blocks' and 'tool_calls' lists.
-    """
-    result = {"text_blocks": [], "tool_calls": []}
-
-    # Extract TextBlocks
-    for match in TEXT_BLOCK_PATTERN.finditer(content):
-        try:
-            text = _unescape_string(match.group(1))
-            result["text_blocks"].append(TextContent(text=text))
-        except Exception:
-            # If unescape fails, use raw text
-            result["text_blocks"].append(TextContent(text=match.group(1)))
-
-    # Extract ToolUseBlocks
-    for match in TOOL_USE_PATTERN.finditer(content):
-        tool_id = match.group(1)
-        name = match.group(2)
-        input_str = match.group(3)
-        description = _extract_description_from_input(input_str)
-
-        # Try to parse input as dict
-        try:
-            # Simple parsing - extract file_path if present
-            input_dict: dict = {}
-            file_path_match = re.search(r"['\"]file_path['\"]\s*:\s*['\"]([^'\"]+)['\"]", input_str)
-            if file_path_match:
-                input_dict["file_path"] = file_path_match.group(1)
-            command_match = re.search(r"['\"]command['\"]\s*:\s*['\"]([^'\"]+)['\"]", input_str)
-            if command_match:
-                input_dict["command"] = command_match.group(1)
-        except Exception:
-            input_dict = {}
-
-        result["tool_calls"].append(
-            ToolCall(
-                tool_id=tool_id,
-                name=name,
-                input=input_dict,
-                description=description,
-            )
-        )
-
-    return result
-
-
-def _parse_user_message(content: str) -> dict:
-    """Parse UserMessage content.
-
-    Returns dict with 'tool_results' list.
-    """
-    result = {"tool_results": []}
-
-    for match in TOOL_RESULT_PATTERN.finditer(content):
-        tool_use_id = match.group(1)
-        content_str = match.group(2)
-        is_error = match.group(3).lower() == "true"
-
-        try:
-            content_str = _unescape_string(content_str)
-        except Exception:
-            pass
-
-        result["tool_results"].append(
-            ToolResult(
-                tool_use_id=tool_use_id,
-                content=content_str,
-                is_error=is_error,
-            )
-        )
-
-    return result
-
-
-def _parse_result_message(content: str) -> Optional[ResultInfo]:
-    """Parse ResultMessage content.
-
-    Returns ResultInfo with summary information.
-    """
-    match = RESULT_MESSAGE_PATTERN.search(content)
-    if not match:
-        return None
-
-    # Extract result text if present
-    result_text = None
-    result_match = re.search(r"result=['\"](.+?)['\"],?\s*structured_output", content, re.DOTALL)
-    if result_match:
-        try:
-            result_text = _unescape_string(result_match.group(1))
-        except Exception:
-            result_text = result_match.group(1)
-
-    return ResultInfo(
-        subtype=match.group(1),
-        duration_ms=int(match.group(2)),
-        is_error=match.group(3).lower() == "true",
-        num_turns=int(match.group(4)),
-        total_cost_usd=float(match.group(5)),
-        result_text=result_text,
     )
 
 
@@ -343,11 +231,9 @@ def format_tool_call(entry: ParsedLogEntry) -> list[str]:
     timestamp = format_timestamp(entry.timestamp)
 
     for tool_call in content["tool_calls"]:
-        # Build display line
         if tool_call.description:
             line = f"{timestamp} ▶ {tool_call.name}: {tool_call.description}"
         else:
-            # Extract useful info from input
             if tool_call.name == "Read" and "file_path" in tool_call.input:
                 path = Path(tool_call.input["file_path"]).name
                 line = f"{timestamp} ▶ {tool_call.name}: {path}"
@@ -382,12 +268,8 @@ def format_tool_result(entry: ParsedLogEntry) -> list[str]:
     timestamp = format_timestamp(entry.timestamp)
 
     for result in content["tool_results"]:
-        # Determine symbol based on error status
         symbol = "✗" if result.is_error else "✓"
-
-        # Create abbreviated summary
         summary = _abbreviate_result(result.content)
-
         line = f"{timestamp} {symbol} {summary}"
         lines.append(line)
 
@@ -406,13 +288,10 @@ def _abbreviate_result(content: str) -> str:
     if not content:
         return "(empty)"
 
-    # Count lines
     lines = content.split("\n")
     line_count = len(lines)
 
-    # Check for common patterns
     if "passed" in content.lower() and "skipped" in content.lower():
-        # Test results
         match = re.search(r"(\d+)\s*passed.*?(\d+)\s*skipped", content, re.IGNORECASE)
         if match:
             return f"{match.group(1)} passed, {match.group(2)} skipped"
@@ -428,11 +307,9 @@ def _abbreviate_result(content: str) -> str:
     if line_count > 5:
         return f"({line_count} lines)"
 
-    # Short content - truncate if needed
     if len(content) > 50:
         return content[:47] + "..."
 
-    # Single line result
     if line_count == 1:
         return content.strip()
 
@@ -467,15 +344,12 @@ def format_assistant_text(
         if not text:
             continue
 
-        # Wrap text
         wrapped = _word_wrap(text, max_width - len(indent) - 3)
 
-        # Format first line with timestamp and emoji
         if wrapped:
             first_line = f"{timestamp} 💬 {wrapped[0]}"
             lines.append(first_line)
 
-            # Format continuation lines with indent
             for cont_line in wrapped[1:]:
                 lines.append(f"{indent}{cont_line}")
 
@@ -550,7 +424,6 @@ def format_result_banner(entry: ParsedLogEntry) -> str:
     timestamp = format_timestamp(entry.timestamp)
     status = "ERROR" if result.is_error else "SUCCESS"
 
-    # Format duration
     duration_sec = result.duration_ms / 1000
     if duration_sec < 60:
         duration_str = f"{duration_sec:.0f}s"
@@ -559,7 +432,6 @@ def format_result_banner(entry: ParsedLogEntry) -> str:
         seconds = int(duration_sec % 60)
         duration_str = f"{minutes}m {seconds}s"
 
-    # Format cost
     cost_str = f"${result.total_cost_usd:.2f}"
 
     return f"{timestamp} ══ {status} ══ {duration_str} | {cost_str} | {result.num_turns} turns"
@@ -579,14 +451,11 @@ def format_entry(entry: ParsedLogEntry, terminal_width: Optional[int] = None) ->
         terminal_width = shutil.get_terminal_size().columns
 
     if entry.message_type == "SystemMessage":
-        # Skip system messages in display
         return []
 
     elif entry.message_type == "AssistantMessage":
         lines = []
-        # Tool calls first
         lines.extend(format_tool_call(entry))
-        # Then text content
         lines.extend(format_assistant_text(entry, max_width=terminal_width))
         return lines
 
@@ -660,10 +529,7 @@ def format_entry_for_html(entry: ParsedLogEntry, terminal_width: int = 100) -> l
     Returns:
         List of HTML-escaped formatted lines
     """
-    # Get the plain-text formatted lines
     plain_lines = format_entry(entry, terminal_width)
-
-    # Escape HTML in each line
     return [_escape_html(line) for line in plain_lines]
 
 

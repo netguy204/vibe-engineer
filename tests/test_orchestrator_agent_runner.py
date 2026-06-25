@@ -14,7 +14,7 @@ from orchestrator.agent import (
     create_log_callback,
     _load_skill_content,
 )
-from orchestrator.backend import is_sandbox_violation
+from orchestrator.backend import TextEvent, ToolCallEvent, is_sandbox_violation
 from orchestrator.backends.claude import (
     create_question_intercept_hook,
     create_review_decision_hook,
@@ -285,18 +285,20 @@ class TestLogCallback:
     """Tests for log callback creation."""
 
     def test_create_log_callback(self, tmp_path):
-        """Creates callback that writes to file."""
+        """Creates callback that writes JSON lines to file."""
         log_dir = tmp_path / "logs"
 
         callback = create_log_callback("test_chunk", WorkUnitPhase.PLAN, log_dir)
 
-        # Call the callback
-        callback("test message")
+        # Call the callback with a LogEvent
+        callback(TextEvent(text="test message"))
 
-        # Check file was created
+        # Check file was created with JSON content
         log_file = log_dir / "plan.txt"
         assert log_file.exists()
-        assert "test message" in log_file.read_text()
+        content = log_file.read_text()
+        assert "test message" in content
+        assert '"type": "text"' in content
 
     def test_log_callback_appends(self, tmp_path):
         """Callback appends to existing log."""
@@ -304,20 +306,22 @@ class TestLogCallback:
 
         callback = create_log_callback("test_chunk", WorkUnitPhase.PLAN, log_dir)
 
-        callback("message 1")
-        callback("message 2")
+        callback(TextEvent(text="message 1"))
+        callback(ToolCallEvent(tool_id="t1", name="Bash", input={"command": "ls"}))
 
         log_file = log_dir / "plan.txt"
         content = log_file.read_text()
         assert "message 1" in content
-        assert "message 2" in content
+        assert "Bash" in content
+        lines = [l for l in content.strip().split("\n") if l]
+        assert len(lines) == 2
 
     def test_log_callback_creates_dir(self, tmp_path):
         """Callback creates log directory if needed."""
         log_dir = tmp_path / "nested" / "logs"
 
         callback = create_log_callback("test_chunk", WorkUnitPhase.IMPLEMENT, log_dir)
-        callback("test")
+        callback(TextEvent(text="test"))
 
         assert (log_dir / "implement.txt").exists()
 
