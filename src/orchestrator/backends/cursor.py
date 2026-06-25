@@ -540,16 +540,21 @@ class CursorBackend:
     ) -> Optional[ReviewToolDecision]:
         """Capture the first ReviewDecision tool call from the event stream.
 
-        The MCP ReviewDecision call carries its decision in the tool args; MCP
-        wrappers may nest the real arguments under ``arguments``.
+        An MCP tool call is logged as ``mcpToolCall`` whose args wrap the real
+        call: ``{"name": "orchestrator-ReviewDecision", "args": {"decision": ...}}``.
+        Unwrap the nested ``args`` (or ``arguments``) to find the decision.
         """
         if captured is not None or not request.expose_review_tool:
             return captured
         if not isinstance(args, dict):
             return captured
         payload = args
-        if "decision" not in payload and isinstance(payload.get("arguments"), dict):
-            payload = payload["arguments"]
+        if "decision" not in payload:
+            for nest_key in ("args", "arguments"):
+                inner = payload.get(nest_key)
+                if isinstance(inner, dict) and "decision" in inner:
+                    payload = inner
+                    break
         decision = payload.get("decision")
         looks_like_review = (
             any(name in str(key) for name in _REVIEW_DECISION_NAMES)

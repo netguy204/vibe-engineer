@@ -351,11 +351,12 @@ class TestCursorBackendReviewCapture:
             max_turns=10, expose_review_tool=True,
             on_review_decision=captured.append,
         )
+        # Real MCP call shape: mcpToolCall wraps {name, args:{decision,...}}.
         lines = [
             _init(),
             _tool_started("mcpToolCall",
-                          {"name": "mcp__orchestrator__ReviewDecision",
-                           "arguments": {"decision": "approve", "summary": "LGTM"}}),
+                          {"name": "orchestrator-ReviewDecision",
+                           "args": {"decision": "approve", "summary": "LGTM"}}),
             _result(True),
         ]
         result, _ = await _run(request, lines)
@@ -369,7 +370,7 @@ class TestCursorBackendReviewCapture:
         lines = [
             _init(),
             _tool_started("mcpToolCall",
-                          {"name": "ReviewDecision", "arguments": {"decision": "approve"}}),
+                          {"name": "orchestrator-ReviewDecision", "args": {"decision": "approve"}}),
             _result(True),
         ]
         result, _ = await _run(_make_request(tmp_path, expose_review_tool=False), lines)
