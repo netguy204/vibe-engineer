@@ -315,13 +315,21 @@ class ACPTransport:
                 continue
 
             msg_id = msg.get("id")
-            # A response has an id that matches a pending request
-            if msg_id is not None and msg_id in self._pending:
+            # Correlate by id ONLY for actual responses. Agent->client requests
+            # (e.g. session/request_permission) carry their own ids in a separate
+            # space that can collide with our outgoing request ids, so a message
+            # with a "method" is a request/notification, never a response.
+            is_response = (
+                "method" not in msg
+                and msg_id is not None
+                and msg_id in self._pending
+            )
+            if is_response:
                 future = self._pending.pop(msg_id)
                 if not future.done():
                     future.set_result(msg)
             else:
-                # Notification or unsolicited message
+                # Notification or an agent->client request (routed to the loop).
                 await self._notifications.put(msg)
 
     async def send_request(self, method: str, params: dict | None = None) -> dict:

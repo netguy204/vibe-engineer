@@ -106,6 +106,40 @@ class TestACPTransportCorrelation:
         assert req["params"] == {"key": "val"}
 
     @pytest.mark.asyncio
+    async def test_incoming_request_with_colliding_id_is_not_a_response(self, mock_process):
+        """An agent->client request (e.g. session/request_permission) whose id
+        collides with a pending request id is routed to the notification queue,
+        NOT mis-correlated as that request's response.
+
+        Regression: cursor-agent numbers its permission requests 0,1,2,... in the
+        same integer space as our outgoing requests, so a permission request can
+        share the id of our pending session/prompt. It must be distinguished by
+        the presence of a "method" field.
+        """
+        transport = ACPTransport()
+        transport._process = mock_process
+
+        loop = asyncio.get_running_loop()
+        pending = loop.create_future()
+        transport._pending[3] = pending  # our pending session/prompt (id=3)
+
+        incoming = {
+            "jsonrpc": "2.0",
+            "id": 3,
+            "method": "session/request_permission",
+            "params": {"toolCall": {"toolCallId": "x"}},
+        }
+        mock_process.stdout.readline = AsyncMock(
+            side_effect=[(json.dumps(incoming) + "\n").encode(), b""]
+        )
+
+        await transport._read_loop()
+
+        assert not pending.done()  # the colliding request did not resolve it
+        msg = await transport.recv_notification(timeout=1.0)
+        assert msg == incoming
+
+    @pytest.mark.asyncio
     async def test_jsonrpc_error_raises(self, mock_process):
         """A JSON-RPC error response raises RuntimeError."""
         transport = ACPTransport()
