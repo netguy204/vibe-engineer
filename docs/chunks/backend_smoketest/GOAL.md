@@ -1,17 +1,23 @@
 ---
-status: FUTURE
+status: IMPLEMENTING
 ticket: null
 parent_chunk: null
-code_paths: []
+code_paths:
+- docs/cursor_smoketest.md
 code_references: []
 narrative: null
 investigation: null
-subsystems: []
+subsystems:
+- subsystem_id: orchestrator
+  relationship: uses
 friction_entries: []
 depends_on: []
-created_after: ["backend_config", "backend_cursor", "backend_logparse", "backend_parity"]
+created_after:
+- backend_config
+- backend_cursor
+- backend_logparse
+- backend_parity
 ---
-
 # Chunk Goal
 
 ## Minor Goal
