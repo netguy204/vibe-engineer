@@ -1,19 +1,24 @@
 # Subsystem: docs/subsystems/orchestrator - Parallel agent orchestration
-# Chunk: docs/chunks/backend_cursor - CursorBackend: ACP-based Cursor/Composer backend
-"""Cursor/Composer backend via ACP (Agent Client Protocol).
+# Chunk: docs/chunks/backend_cursor - CursorBackend: cursor-agent print-mode backend
+"""Cursor/Composer backend via cursor-agent print mode.
 
 Implements :class:`~orchestrator.backend.AgentBackend` by spawning
-``cursor-agent acp`` as a subprocess and speaking JSON-RPC 2.0 over its
-stdin/stdout. This module is the ONLY place in the orchestrator that interacts
-with the ``cursor-agent`` binary; everything above the seam talks through
-:class:`~orchestrator.backend.SessionRequest` and
+``cursor-agent -p --output-format stream-json`` (non-interactive print mode,
+which runs the prompt to autonomous completion) and parsing its newline-
+delimited JSON event stream. This module is the ONLY place in the orchestrator
+that interacts with the ``cursor-agent`` binary; everything above the seam talks
+through :class:`~orchestrator.backend.SessionRequest` and
 :class:`~orchestrator.models.AgentResult`.
+
+Interactive ACP mode was rejected during live validation: it holds turns open
+waiting for the operator, which an autonomous orchestrator cannot satisfy.
+Sandbox enforcement therefore moves to a ``.cursor/hooks.json`` hook.
 """
 
 from __future__ import annotations
 
 import asyncio
-import atexit
+import inspect
 import json
 import logging
 import shutil
@@ -22,6 +27,7 @@ from typing import Any, Optional
 
 from orchestrator.backend import (
     AgentBackend,
+    ResultEvent,
     SessionRequest,
     TextEvent,
     ToolCallEvent,
@@ -249,7 +255,7 @@ def _remove_cursor_mcp_config(worktree: Path) -> None:
 
 
 # ---------------------------------------------------------------------------
-# ACP JSON-RPC transport
+# cursor-agent binary discovery
 # ---------------------------------------------------------------------------
 
 
@@ -264,363 +270,184 @@ class CursorAgentNotFoundError(RuntimeError):
         )
 
 
-class ACPTransport:
-    """Low-level JSON-RPC 2.0 transport over a ``cursor-agent acp`` subprocess.
+# ---------------------------------------------------------------------------
+# Sandbox enforcement hook (print mode)
+# ---------------------------------------------------------------------------
 
-    Sends requests with auto-incrementing ``id`` via stdin, reads
-    newline-delimited JSON-RPC messages from stdout, correlates responses
-    by ``id``, and buffers incoming notifications into an asyncio queue.
+
+def _write_sandbox_hook(worktree: Path, host_repo_path: Path) -> None:
+    """Write a ``.cursor/hooks.json`` beforeShellExecution hook that enforces
+    the worktree sandbox.
+
+    In print mode there is no in-process permission round-trip, so sandbox
+    policy is applied by a hook script cursor-agent runs before each shell
+    command. The script delegates to the shared
+    :func:`~orchestrator.backend.is_sandbox_violation`; a deny overrides
+    ``--force``.
     """
+    cursor_dir = worktree / ".cursor"
+    cursor_dir.mkdir(parents=True, exist_ok=True)
 
-    def __init__(self) -> None:
-        self._process: Optional[asyncio.subprocess.Process] = None
-        self._next_id: int = 1
-        self._pending: dict[int, asyncio.Future[dict]] = {}
-        self._notifications: asyncio.Queue[dict] = asyncio.Queue()
-        self._reader_task: Optional[asyncio.Task] = None
-        self._closed = False
+    # Embed is_sandbox_violation's exact source so the hook is self-contained.
+    # Importing orchestrator.backend would pull the heavy package __init__ and
+    # crash the hook — which cursor-agent then fails OPEN on (allowing the
+    # command). Embedding the source keeps the policy identical with no drift.
+    fn_src = inspect.getsource(is_sandbox_violation)
+    hook_script = cursor_dir / "_sandbox_hook.py"
+    hook_script.write_text(
+        "#!/usr/bin/env python3\n"
+        "from __future__ import annotations\n"
+        "import json, re, sys\n"
+        "from pathlib import Path\n"
+        "from typing import Optional\n"
+        "\n"
+        + fn_src
+        + "\n"
+        "try:\n"
+        "    data = json.load(sys.stdin)\n"
+        "except Exception:\n"
+        "    print(json.dumps({'permission': 'allow'}))\n"
+        "    sys.exit(0)\n"
+        "command = data.get('command', '') or ''\n"
+        f"violation, reason = is_sandbox_violation(command, Path({str(host_repo_path)!r}), Path({str(worktree)!r}))\n"
+        "if violation:\n"
+        "    print(json.dumps({'permission': 'deny',\n"
+        "                      'agentMessage': reason or 'Blocked by worktree sandbox policy',\n"
+        "                      'userMessage': reason or 'sandbox: blocked'}))\n"
+        "else:\n"
+        "    print(json.dumps({'permission': 'allow'}))\n"
+    )
 
-    async def start(self) -> None:
-        """Spawn ``cursor-agent acp`` and begin reading stdout."""
-        binary = shutil.which("cursor-agent")
-        if binary is None:
-            raise CursorAgentNotFoundError()
+    hooks_path = cursor_dir / "hooks.json"
+    hooks_config = {
+        "version": 1,
+        "hooks": {
+            "beforeShellExecution": [
+                {"command": f"python3 {hook_script}", "type": "command"}
+            ]
+        },
+    }
+    hooks_path.write_text(json.dumps(hooks_config, indent=2) + "\n")
 
-        self._process = await asyncio.create_subprocess_exec(
-            binary,
-            "acp",
-            stdin=asyncio.subprocess.PIPE,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-        )
-        self._reader_task = asyncio.create_task(self._read_loop())
-        atexit.register(self._sync_cleanup)
 
-    async def _read_loop(self) -> None:
-        """Read newline-delimited JSON from stdout and dispatch."""
-        assert self._process is not None
-        assert self._process.stdout is not None
-        while True:
-            line = await self._process.stdout.readline()
-            if not line:
-                # EOF — subprocess exited
-                break
-            line_str = line.decode("utf-8", errors="replace").strip()
-            if not line_str:
-                continue
-            try:
-                msg = json.loads(line_str)
-            except json.JSONDecodeError:
-                logger.warning("ACP: non-JSON line from cursor-agent: %s", line_str[:200])
-                continue
-
-            msg_id = msg.get("id")
-            # Correlate by id ONLY for actual responses. Agent->client requests
-            # (e.g. session/request_permission) carry their own ids in a separate
-            # space that can collide with our outgoing request ids, so a message
-            # with a "method" is a request/notification, never a response.
-            is_response = (
-                "method" not in msg
-                and msg_id is not None
-                and msg_id in self._pending
-            )
-            if is_response:
-                future = self._pending.pop(msg_id)
-                if not future.done():
-                    future.set_result(msg)
-            else:
-                # Notification or an agent->client request (routed to the loop).
-                await self._notifications.put(msg)
-
-    async def send_request(self, method: str, params: dict | None = None) -> dict:
-        """Send a JSON-RPC request and wait for the correlated response."""
-        assert self._process is not None
-        assert self._process.stdin is not None
-
-        req_id = self._next_id
-        self._next_id += 1
-
-        request: dict[str, Any] = {
-            "jsonrpc": "2.0",
-            "id": req_id,
-            "method": method,
-        }
-        if params is not None:
-            request["params"] = params
-
-        loop = asyncio.get_running_loop()
-        future: asyncio.Future[dict] = loop.create_future()
-        self._pending[req_id] = future
-
-        data = json.dumps(request) + "\n"
-        self._process.stdin.write(data.encode("utf-8"))
-        await self._process.stdin.drain()
-
-        result = await future
-        if "error" in result:
-            error = result["error"]
-            raise RuntimeError(
-                f"ACP JSON-RPC error ({error.get('code', '?')}): {error.get('message', 'unknown')}"
-            )
-        return result.get("result", {})
-
-    async def send_notification(self, method: str, params: dict | None = None) -> None:
-        """Send a one-way JSON-RPC notification (no ``id``, no response)."""
-        assert self._process is not None
-        assert self._process.stdin is not None
-
-        notification: dict[str, Any] = {
-            "jsonrpc": "2.0",
-            "method": method,
-        }
-        if params is not None:
-            notification["params"] = params
-
-        data = json.dumps(notification) + "\n"
-        self._process.stdin.write(data.encode("utf-8"))
-        await self._process.stdin.drain()
-
-    async def send_response(self, req_id: Any, result: dict) -> None:
-        """Reply to an agent->client JSON-RPC request (e.g. permission)."""
-        assert self._process is not None
-        assert self._process.stdin is not None
-        response = {"jsonrpc": "2.0", "id": req_id, "result": result}
-        data = json.dumps(response) + "\n"
-        self._process.stdin.write(data.encode("utf-8"))
-        await self._process.stdin.drain()
-
-    async def recv_notification(self, timeout: float | None = None) -> dict | None:
-        """Return the next buffered notification, or None on timeout."""
-        try:
-            return await asyncio.wait_for(self._notifications.get(), timeout=timeout)
-        except asyncio.TimeoutError:
-            return None
-
-    def _sync_cleanup(self) -> None:
-        """Best-effort synchronous cleanup for atexit."""
-        if self._process and self._process.returncode is None:
-            try:
-                self._process.kill()
-            except ProcessLookupError:
-                pass
-
-    async def close(self) -> None:
-        """Gracefully shut down the subprocess and reader task."""
-        self._closed = True
-        if self._process and self._process.returncode is None:
-            if self._process.stdin:
-                try:
-                    self._process.stdin.close()
-                except Exception:
-                    pass
-            try:
-                await asyncio.wait_for(self._process.wait(), timeout=5.0)
-            except asyncio.TimeoutError:
-                self._process.kill()
-                await self._process.wait()
-
-        if self._reader_task and not self._reader_task.done():
-            self._reader_task.cancel()
-            try:
-                await self._reader_task
-            except asyncio.CancelledError:
-                pass
-
-        # Cancel any pending futures
-        for future in self._pending.values():
-            if not future.done():
-                future.cancel()
-        self._pending.clear()
-
-    @property
-    def is_alive(self) -> bool:
-        """True if the subprocess is still running."""
-        return self._process is not None and self._process.returncode is None
+def _remove_sandbox_hook(worktree: Path) -> None:
+    """Remove the sandbox hook files; remove ``.cursor/`` if it becomes empty."""
+    cursor_dir = worktree / ".cursor"
+    for name in ("hooks.json", "_sandbox_hook.py"):
+        path = cursor_dir / name
+        if path.exists():
+            path.unlink()
+    if cursor_dir.exists() and not any(cursor_dir.iterdir()):
+        cursor_dir.rmdir()
 
 
 # ---------------------------------------------------------------------------
-# CursorBackend
+# CursorBackend (print mode)
 # ---------------------------------------------------------------------------
 
-# Pattern for matching ReviewDecision tool calls in the ACP event stream.
-# May appear as plain "ReviewDecision" or MCP-namespaced.
+# Tool names that carry a ReviewDecision (plain or MCP-namespaced).
 _REVIEW_DECISION_NAMES = frozenset({
     "ReviewDecision",
     "mcp__orchestrator__ReviewDecision",
 })
 
 
-def _extract_question(params: dict) -> dict:
-    """Build the orchestrator question dict from an ACP question request."""
-    question_text = params.get("question", "")
-    options = params.get("options", [])
-    header = params.get("header", "")
-    multi_select = params.get("multiSelect", False)
-    return {
-        "question": question_text,
-        "options": options,
-        "header": header,
-        "multiSelect": multi_select,
-        "all_questions": params.get("allQuestions", [
-            {"question": question_text, "options": options,
-             "header": header, "multiSelect": multi_select}
-        ]),
-    }
-
-
 class CursorBackend:
-    """Runs an agent phase via the Cursor ACP protocol (cursor-agent acp).
+    """Runs an agent phase via ``cursor-agent`` print mode (non-interactive).
 
-    Translates a :class:`~orchestrator.backend.SessionRequest` into ACP
-    JSON-RPC calls: ``initialize`` handshake, ``session/new`` (or
-    ``session/load`` to resume), then ``session/prompt``. While the prompt
-    runs, ``session/update`` notifications stream output (normalized to
-    LogEvents) and ``session/request_permission`` requests gate tool use
-    (sandbox enforcement). The ``session/prompt`` response carries the turn's
-    ``stopReason``.
+    Spawns ``cursor-agent -p --force --output-format stream-json`` and parses
+    the newline-delimited JSON event stream. Print mode runs autonomously to
+    completion (unlike interactive ACP, which holds turns waiting for the
+    operator), which is what the orchestrator needs.
+
+    Sandbox enforcement is applied out-of-process via a ``.cursor/hooks.json``
+    beforeShellExecution hook (see :func:`_write_sandbox_hook`). The
+    ReviewDecision MCP tool is exposed via ``.cursor/mcp.json`` during REVIEW.
+
+    Print mode cannot ask the operator interactive questions, so
+    ``on_question`` / suspension does not apply to this backend; the agent runs
+    to a decision autonomously.
     """
 
     async def run(self, request: SessionRequest) -> AgentResult:
-        # Validate binary availability up front
         if shutil.which("cursor-agent") is None:
             raise CursorAgentNotFoundError()
 
-        wrote_mcp_config = False
-        transport = ACPTransport()
-
-        captured_question: Optional[dict] = None
+        wrote_mcp = False
         captured_review_decision: Optional[ReviewToolDecision] = None
         session_id: Optional[str] = None
         error: Optional[str] = None
         completed = False
 
         try:
-            # Step 1: Write MCP config if review tool is needed
+            # Always enforce the sandbox via a beforeShellExecution hook.
+            _write_sandbox_hook(request.cwd, request.host_repo_path)
             if request.expose_review_tool:
                 _write_cursor_mcp_config(request.cwd)
-                wrote_mcp_config = True
+                wrote_mcp = True
 
-            # Step 2: Start ACP transport
-            await transport.start()
-
-            # Step 3: initialize handshake (ACP)
-            await transport.send_request("initialize", {
-                "protocolVersion": 1,
-                "clientCapabilities": {
-                    "fs": {"readTextFile": True, "writeTextFile": True},
-                },
-            })
-            await transport.send_notification("notifications/initialized", {})
-
-            # Step 4: Create or resume a session. The model is cursor-agent's
-            # configured default; ACP session/new does not accept a model param.
+            cmd = ["cursor-agent", "-p", "--force",
+                   "--output-format", "stream-json"]
+            if wrote_mcp:
+                cmd.append("--approve-mcps")
             if request.resume_session_id:
-                await transport.send_request("session/load", {
-                    "sessionId": request.resume_session_id,
-                    "cwd": str(request.cwd),
-                    "mcpServers": [],
-                })
-                session_id = request.resume_session_id
-            else:
-                new_result = await transport.send_request("session/new", {
-                    "cwd": str(request.cwd),
-                    "mcpServers": [],
-                })
-                session_id = new_result.get("sessionId") or session_id
+                cmd += ["--resume", request.resume_session_id]
+            cmd.append(request.prompt)
 
-            # Step 5: Send the prompt. Its response (with stopReason) marks turn
-            # completion; ACP streams session/update notifications and may send
-            # session/request_permission requests while the prompt runs.
-            if not transport.is_alive:
-                error = "cursor-agent process exited before the prompt was sent"
-            else:
-                # Commands seen in tool_call updates, keyed by toolCallId, so a
-                # later session/request_permission (whose payload lacks the
-                # command) can be matched back to it for the sandbox check.
-                tool_commands: dict[str, str] = {}
-                prompt_task = asyncio.create_task(transport.send_request(
-                    "session/prompt",
-                    {
-                        "sessionId": session_id,
-                        "prompt": [{"type": "text", "text": request.prompt}],
-                    },
-                ))
+            proc = await asyncio.create_subprocess_exec(
+                *cmd,
+                cwd=str(request.cwd),
+                env=request.env or None,
+                stdin=asyncio.subprocess.DEVNULL,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
 
-                while not prompt_task.done():
-                    msg = await transport.recv_notification(timeout=300.0)
-                    if msg is None:
-                        if prompt_task.done():
-                            break
-                        error = (
-                            "cursor-agent process exited unexpectedly"
-                            if not transport.is_alive
-                            else "Timed out waiting for ACP notification"
-                        )
-                        break
+            assert proc.stdout is not None
+            async for raw in proc.stdout:
+                line = raw.decode("utf-8", errors="replace").strip()
+                if not line:
+                    continue
+                try:
+                    event = json.loads(line)
+                except json.JSONDecodeError:
+                    logger.warning("stream-json: non-JSON line: %s", line[:200])
+                    continue
 
-                    method = msg.get("method", "")
-                    params = msg.get("params", {})
+                captured_review_decision = self._handle_event(
+                    event, request, captured_review_decision
+                )
 
-                    # --- Permission request (sandbox enforcement) ---
-                    if method == "session/request_permission":
-                        await self._reply_permission(
-                            transport, msg, params, request, tool_commands
-                        )
-                        continue
+                etype = event.get("type")
+                if etype == "system" and event.get("subtype") == "init":
+                    session_id = event.get("session_id") or session_id
+                elif etype == "result":
+                    if event.get("session_id"):
+                        session_id = event["session_id"]
+                    if event.get("is_error", False):
+                        error = event.get("result") or "Agent returned error"
+                    else:
+                        completed = True
 
-                    # --- Question forwarding (suspends the run) ---
-                    if method in ("cursor/ask_question", "session/request_input"):
-                        captured_question = _extract_question(params)
-                        if request.on_question:
-                            request.on_question(captured_question)
-                        break
-
-                    # --- Streaming updates: text, tool calls, results ---
-                    if method == "session/update":
-                        captured_review_decision = self._handle_update(
-                            params.get("update", {}), request,
-                            captured_review_decision, tool_commands,
-                        )
-                        continue
-
-                    logger.debug("ACP: ignoring unknown method %r", method)
-
-                # Collect the turn result unless suspended by a question.
-                if not captured_question:
-                    if not prompt_task.done():
-                        try:
-                            await asyncio.wait_for(prompt_task, timeout=10.0)
-                        except (asyncio.TimeoutError, asyncio.CancelledError):
-                            pass
-                    if prompt_task.done() and not prompt_task.cancelled():
-                        exc = prompt_task.exception()
-                        if exc is not None:
-                            error = error or str(exc)
-                        else:
-                            stop_reason = prompt_task.result().get("stopReason")
-                            completed = stop_reason == "end_turn"
-                            if stop_reason and stop_reason != "end_turn":
-                                error = error or f"Agent stopped: {stop_reason}"
-                if not prompt_task.done():
-                    prompt_task.cancel()
-
+            await proc.wait()
+            if not completed and error is None and proc.returncode not in (0, None):
+                stderr_text = ""
+                if proc.stderr is not None:
+                    stderr_text = (await proc.stderr.read()).decode(
+                        "utf-8", errors="replace"
+                    )
+                error = (
+                    f"cursor-agent exited with code {proc.returncode}: "
+                    f"{stderr_text.strip()[:500]}"
+                ).strip()
         except CursorAgentNotFoundError:
             raise
-        except Exception as e:
+        except Exception as e:  # pragma: no cover - defensive
             error = str(e)
         finally:
-            await transport.close()
-            if wrote_mcp_config:
+            _remove_sandbox_hook(request.cwd)
+            if wrote_mcp:
                 _remove_cursor_mcp_config(request.cwd)
-
-        # Build result
-        if captured_question:
-            return AgentResult(
-                completed=False,
-                suspended=True,
-                session_id=session_id,
-                question=captured_question,
-            )
 
         if error:
             return AgentResult(
@@ -630,7 +457,6 @@ class CursorBackend:
                 error=error,
                 review_decision=captured_review_decision,
             )
-
         return AgentResult(
             completed=completed,
             suspended=False,
@@ -638,116 +464,108 @@ class CursorBackend:
             review_decision=captured_review_decision,
         )
 
-    async def _reply_permission(
+    def _handle_event(
         self,
-        transport: "ACPTransport",
-        msg: dict,
-        params: dict,
-        request: SessionRequest,
-        tool_commands: dict,
-    ) -> None:
-        """Answer an ACP session/request_permission via the sandbox policy.
-
-        The permission payload carries no rawInput, so the command is matched
-        back from the preceding tool_call update by toolCallId (falling back to
-        the backticked title). The shared sandbox check then selects an
-        allow/reject option offered by the agent.
-        """
-        tool_call = params.get("toolCall") or {}
-        tool_call_id = tool_call.get("toolCallId", "")
-        command = tool_commands.get(tool_call_id, "")
-        if not command:
-            title = tool_call.get("title", "") or ""
-            command = title.strip().strip("`")
-        is_violation, _reason = is_sandbox_violation(
-            command or "", request.host_repo_path, request.cwd
-        )
-
-        options = params.get("options") or []
-
-        def pick(*kinds: str) -> Optional[str]:
-            for opt in options:
-                if opt.get("kind") in kinds:
-                    return opt.get("optionId")
-            return None
-
-        if is_violation:
-            logger.info("ACP sandbox DENY: %s (%s)", command, _reason)
-            option_id = pick("reject_once", "reject_always", "reject")
-        else:
-            option_id = pick("allow_once", "allow_always", "allow")
-
-        outcome = (
-            {"outcome": "selected", "optionId": option_id}
-            if option_id is not None
-            else {"outcome": "cancelled"}
-        )
-        reply_id = msg.get("id")
-        if reply_id is not None:
-            await transport.send_response(reply_id, {"outcome": outcome})
-
-    def _handle_update(
-        self,
-        update: dict,
+        event: dict,
         request: SessionRequest,
         captured_review_decision: Optional[ReviewToolDecision],
-        tool_commands: dict,
     ) -> Optional[ReviewToolDecision]:
-        """Normalize one ACP session/update into LogEvents; capture ReviewDecision.
+        """Normalize one stream-json event into LogEvents; capture ReviewDecision."""
+        etype = event.get("type")
 
-        Records any shell command (keyed by toolCallId) so a later
-        session/request_permission can be sandbox-checked.
-        """
-        kind = update.get("sessionUpdate", "")
-
-        if kind in ("agent_message_chunk", "agent_thought_chunk"):
-            content = update.get("content", {})
-            if isinstance(content, dict) and content.get("type") == "text":
-                if request.on_log:
-                    request.on_log(TextEvent(text=content.get("text", "")))
+        if etype == "assistant":
+            content = event.get("message", {}).get("content", []) or []
+            for block in content:
+                if isinstance(block, dict) and block.get("type") == "text":
+                    if request.on_log:
+                        request.on_log(TextEvent(text=block.get("text", "")))
             return captured_review_decision
 
-        if kind == "tool_call":
-            name = update.get("title") or update.get("kind") or ""
-            raw_input = update.get("rawInput") or {}
-            if not isinstance(raw_input, dict):
-                raw_input = {}
-            tool_call_id = update.get("toolCallId", "")
-            cmd = raw_input.get("command")
-            if tool_call_id and isinstance(cmd, str) and cmd:
-                tool_commands[tool_call_id] = cmd
-            if request.on_log:
-                request.on_log(ToolCallEvent(
-                    tool_id=update.get("toolCallId", ""),
-                    name=name,
-                    input=raw_input,
-                    description=update.get("title"),
-                ))
-            if (
-                captured_review_decision is None
-                and raw_input.get("decision")
-                and (name in _REVIEW_DECISION_NAMES or "ReviewDecision" in str(name))
-            ):
-                captured_review_decision = ReviewToolDecision(
-                    decision=str(raw_input.get("decision", "")).upper(),
-                    summary=raw_input.get("summary", ""),
-                    criteria_assessment=raw_input.get("criteria_assessment"),
-                    issues=raw_input.get("issues"),
-                    reason=raw_input.get("reason"),
-                )
-                if request.on_review_decision:
-                    request.on_review_decision(captured_review_decision)
+        if etype == "tool_call":
+            subtype = event.get("subtype")
+            call_id = event.get("call_id", "")
+            tool_call = event.get("tool_call", {}) or {}
+            # Shape: {"<name>ToolCall": {"args": {...}, "result": {...}}}
+            for key, body in tool_call.items():
+                if not isinstance(body, dict):
+                    continue
+                args = body.get("args") if isinstance(body.get("args"), dict) else {}
+                if subtype == "started":
+                    if request.on_log:
+                        request.on_log(ToolCallEvent(
+                            tool_id=call_id,
+                            name=key,
+                            input=args,
+                            description=args.get("command") or args.get("path"),
+                        ))
+                    captured_review_decision = self._maybe_capture_review(
+                        key, args, request, captured_review_decision
+                    )
+                elif subtype == "completed":
+                    result = body.get("result")
+                    is_err = isinstance(result, dict) and (
+                        "rejected" in result or "error" in result
+                    )
+                    if request.on_log:
+                        content_text = json.dumps(result)[:2000] if result is not None else ""
+                        request.on_log(ToolResultEvent(
+                            tool_use_id=call_id,
+                            content=content_text,
+                            is_error=is_err,
+                        ))
+                    captured_review_decision = self._maybe_capture_review(
+                        key, args, request, captured_review_decision
+                    )
             return captured_review_decision
 
-        if kind == "tool_call_update":
+        if etype == "result":
             if request.on_log:
-                content = update.get("content", "")
-                request.on_log(ToolResultEvent(
-                    tool_use_id=update.get("toolCallId", ""),
-                    content=content if isinstance(content, str) else str(content),
-                    is_error=update.get("status") == "failed",
+                request.on_log(ResultEvent(
+                    subtype=event.get("subtype", "success"),
+                    duration_ms=event.get("duration_ms", 0),
+                    total_cost_usd=event.get("total_cost_usd", 0.0),
+                    num_turns=event.get("num_turns", 0),
+                    is_error=event.get("is_error", False),
+                    session_id=event.get("session_id"),
+                    result_text=event.get("result"),
                 ))
         return captured_review_decision
+
+    def _maybe_capture_review(
+        self,
+        key: str,
+        args: dict,
+        request: SessionRequest,
+        captured: Optional[ReviewToolDecision],
+    ) -> Optional[ReviewToolDecision]:
+        """Capture the first ReviewDecision tool call from the event stream.
+
+        The MCP ReviewDecision call carries its decision in the tool args; MCP
+        wrappers may nest the real arguments under ``arguments``.
+        """
+        if captured is not None or not request.expose_review_tool:
+            return captured
+        if not isinstance(args, dict):
+            return captured
+        payload = args
+        if "decision" not in payload and isinstance(payload.get("arguments"), dict):
+            payload = payload["arguments"]
+        decision = payload.get("decision")
+        looks_like_review = (
+            any(name in str(key) for name in _REVIEW_DECISION_NAMES)
+            or "ReviewDecision" in json.dumps(args)
+        )
+        if decision and looks_like_review:
+            captured = ReviewToolDecision(
+                decision=str(decision).upper(),
+                summary=payload.get("summary", ""),
+                criteria_assessment=payload.get("criteria_assessment"),
+                issues=payload.get("issues"),
+                reason=payload.get("reason"),
+            )
+            if request.on_review_decision:
+                request.on_review_decision(captured)
+        return captured
 
 
 # Assert CursorBackend satisfies the AgentBackend protocol at import time.
