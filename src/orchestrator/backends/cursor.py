@@ -401,6 +401,10 @@ class CursorBackend:
                 stdin=asyncio.subprocess.DEVNULL,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
+                # stream-json emits one JSON object per line; a single line (e.g. a
+                # large content block) easily exceeds asyncio's 64KB default and
+                # would raise "Separator is found, but chunk is longer than limit".
+                limit=16 * 1024 * 1024,
             )
 
             assert proc.stdout is not None
