@@ -8,7 +8,7 @@ narrative: pluggable_backends
 investigation: null
 subsystems: []
 friction_entries: []
-depends_on: ["backend_seam", "backend_logparse"]
+depends_on: ["backend_logparse"]
 created_after: ["backend_seam"]
 ---
 
