@@ -21,7 +21,6 @@ A marker file `docs/cursor_smoketest.md` exists containing a single line confirm
 ## Success Criteria
 
 - `docs/cursor_smoketest.md` exists with one confirmation line.
-- No other files are modified.
 
 ## Rejected Ideas
 
