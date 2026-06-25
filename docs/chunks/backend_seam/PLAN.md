@@ -204,3 +204,31 @@ build on the seam it establishes.
 - **`query` deprecated import.** `agent.py` imports `query` "for backwards
   compatibility in deprecated methods" — verify nothing still uses it before
   dropping; if used, relocate alongside the SDK.
+
+## Deviations
+
+- **Sandbox seam carries context, not an `on_tool_use` callback.** The plan/GOAL
+  modeled sandbox enforcement as an `on_tool_use(ToolUse) -> ToolDecision`
+  callback on `SessionRequest`. Two existing tests pin behavior a bare
+  ALLOW/DENY callback can't preserve: `create_sandbox_enforcement_hook`'s deny
+  output must carry a *reason* string, and the hook must register as a `"Bash"`
+  matcher. So `SessionRequest` instead carries sandbox context
+  (`host_repo_path` + `cwd`/worktree), and `ClaudeBackend` builds the Bash hook
+  via the retained `create_sandbox_enforcement_hook`, which expresses its
+  decision in `ToolUse`/`ToolDecision` terms and delegates to the shared
+  `is_sandbox_violation`. `ToolUse`/`ToolDecision` remain first-class contract
+  types (used inside the sandbox hook handler and intended for Cursor's
+  `session/request_permission` mapping); only the lossy callback shape was
+  dropped. Behavior is identical and the deny reason survives.
+
+- **Hook callbacks are wrapped so the captured value stays in sync.** The original
+  `run_phase` wrapped the question/review callbacks so the (non-functional but
+  test-simulated) hooks set the local captured value *and* called the
+  orchestrator callback. The first pass passed callbacks to the hooks directly,
+  breaking `test_run_phase_captures_question_on_intercept` and
+  `test_run_phase_captures_review_decision`. Restored the wrapper pattern in
+  `ClaudeBackend.run` (`handle_question` / `handle_review_decision`).
+
+- **`_is_sandbox_violation` renamed to `is_sandbox_violation`** (now public, in
+  `orchestrator.backend`) since it is shared cross-backend contract logic. Test
+  call sites updated accordingly (mechanical).

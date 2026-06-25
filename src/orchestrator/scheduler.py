@@ -27,7 +27,7 @@ from pathlib import Path
 from typing import Optional
 
 # Chunk: docs/chunks/reviewer_decision_tool - ReviewDecision tool for explicit review decisions
-from orchestrator.agent import AgentRunner, create_log_callback, create_review_decision_hook
+from orchestrator.agent import AgentRunner, create_log_callback
 from orchestrator.models import (
     AgentResult,
     ConflictVerdict,

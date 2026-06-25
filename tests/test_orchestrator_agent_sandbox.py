@@ -12,13 +12,15 @@ from orchestrator.agent import (
     AgentRunnerError,
     PHASE_SKILL_FILES,
     create_log_callback,
+    _load_skill_content,
+)
+from orchestrator.backend import is_sandbox_violation
+from orchestrator.backends.claude import (
     create_question_intercept_hook,
     create_review_decision_hook,
     create_sandbox_enforcement_hook,
     create_orchestrator_mcp_server,
     review_decision_tool,
-    _load_skill_content,
-    _is_sandbox_violation,
     _merge_hooks,
 )
 from orchestrator.models import AgentResult, ReviewToolDecision, WorkUnitPhase
@@ -215,7 +217,7 @@ class TestAgentRunnerSandboxIntegration:
         worktree_path = tmp_path / "worktree"
         worktree_path.mkdir()
 
-        from orchestrator.agent import ResultMessage
+        from orchestrator.backends.claude import ResultMessage
 
         mock_result = MagicMock(spec=ResultMessage)
         mock_result.result = "Success"
@@ -223,7 +225,7 @@ class TestAgentRunnerSandboxIntegration:
         mock_result.session_id = None
 
         MockClient = create_mock_claude_sdk_client(messages=[mock_result])
-        with patch("orchestrator.agent.ClaudeSDKClient", MockClient):
+        with patch("orchestrator.backends.claude.ClaudeSDKClient", MockClient):
             await runner.run_phase(
                 chunk="test_chunk",
                 phase=WorkUnitPhase.PLAN,
@@ -246,7 +248,7 @@ class TestAgentRunnerSandboxIntegration:
         worktree_path = tmp_path / "worktree"
         worktree_path.mkdir()
 
-        from orchestrator.agent import ResultMessage
+        from orchestrator.backends.claude import ResultMessage
 
         mock_result = MagicMock(spec=ResultMessage)
         mock_result.result = "Success"
@@ -254,7 +256,7 @@ class TestAgentRunnerSandboxIntegration:
         mock_result.session_id = None
 
         MockClient = create_mock_claude_sdk_client(messages=[mock_result])
-        with patch("orchestrator.agent.ClaudeSDKClient", MockClient):
+        with patch("orchestrator.backends.claude.ClaudeSDKClient", MockClient):
             await runner.run_phase(
                 chunk="test_chunk",
                 phase=WorkUnitPhase.PLAN,
@@ -279,7 +281,7 @@ class TestAgentRunnerSandboxIntegration:
         worktree_path = tmp_path / "worktree"
         worktree_path.mkdir()
 
-        from orchestrator.agent import ResultMessage
+        from orchestrator.backends.claude import ResultMessage
 
         mock_result = MagicMock(spec=ResultMessage)
         mock_result.result = "Success"
@@ -287,7 +289,7 @@ class TestAgentRunnerSandboxIntegration:
         mock_result.session_id = None
 
         MockClient = create_mock_claude_sdk_client(messages=[mock_result])
-        with patch("orchestrator.agent.ClaudeSDKClient", MockClient):
+        with patch("orchestrator.backends.claude.ClaudeSDKClient", MockClient):
             await runner.run_phase(
                 chunk="test_chunk",
                 phase=WorkUnitPhase.PLAN,
@@ -307,7 +309,7 @@ class TestAgentRunnerSandboxIntegration:
         worktree_path = tmp_path / "worktree"
         worktree_path.mkdir()
 
-        from orchestrator.agent import ResultMessage
+        from orchestrator.backends.claude import ResultMessage
 
         mock_result = MagicMock(spec=ResultMessage)
         mock_result.result = "Success"
@@ -315,7 +317,7 @@ class TestAgentRunnerSandboxIntegration:
         mock_result.session_id = None
 
         MockClient = create_mock_claude_sdk_client(messages=[mock_result])
-        with patch("orchestrator.agent.ClaudeSDKClient", MockClient):
+        with patch("orchestrator.backends.claude.ClaudeSDKClient", MockClient):
             await runner.run_phase(
                 chunk="test_chunk",
                 phase=WorkUnitPhase.PLAN,
@@ -338,7 +340,7 @@ class TestAgentRunnerSandboxIntegration:
         worktree_path = tmp_path / "worktree"
         worktree_path.mkdir()
 
-        from orchestrator.agent import ResultMessage
+        from orchestrator.backends.claude import ResultMessage
 
         mock_result = MagicMock(spec=ResultMessage)
         mock_result.result = "Success"
@@ -346,7 +348,7 @@ class TestAgentRunnerSandboxIntegration:
         mock_result.session_id = None
 
         MockClient = create_mock_claude_sdk_client(messages=[mock_result])
-        with patch("orchestrator.agent.ClaudeSDKClient", MockClient):
+        with patch("orchestrator.backends.claude.ClaudeSDKClient", MockClient):
             await runner.resume_for_active_status(
                 chunk="test_chunk",
                 worktree_path=worktree_path,

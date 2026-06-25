@@ -12,13 +12,15 @@ from orchestrator.agent import (
     AgentRunnerError,
     PHASE_SKILL_FILES,
     create_log_callback,
+    _load_skill_content,
+)
+from orchestrator.backend import is_sandbox_violation
+from orchestrator.backends.claude import (
     create_question_intercept_hook,
     create_review_decision_hook,
     create_sandbox_enforcement_hook,
     create_orchestrator_mcp_server,
     review_decision_tool,
-    _load_skill_content,
-    _is_sandbox_violation,
     _merge_hooks,
 )
 from orchestrator.models import AgentResult, ReviewToolDecision, WorkUnitPhase
@@ -178,7 +180,7 @@ class TestErrorDetectionRemoval:
         worktree_path = tmp_path / "worktree"
         worktree_path.mkdir()
 
-        from orchestrator.agent import ResultMessage
+        from orchestrator.backends.claude import ResultMessage
 
         mock_result = MagicMock(spec=ResultMessage)
         # Verbose success with "Failed to" phrase - should still be success
@@ -190,7 +192,7 @@ class TestErrorDetectionRemoval:
         mock_result.session_id = None
 
         MockClient = create_mock_claude_sdk_client(messages=[mock_result])
-        with patch("orchestrator.agent.ClaudeSDKClient", MockClient):
+        with patch("orchestrator.backends.claude.ClaudeSDKClient", MockClient):
             result = await runner.run_phase(
                 chunk="test_chunk",
                 phase=WorkUnitPhase.PLAN,
@@ -213,7 +215,7 @@ class TestErrorDetectionRemoval:
         worktree_path = tmp_path / "worktree"
         worktree_path.mkdir()
 
-        from orchestrator.agent import ResultMessage
+        from orchestrator.backends.claude import ResultMessage
 
         mock_result = MagicMock(spec=ResultMessage)
         # Verbose success with "Error:" phrase - should still be success
@@ -225,7 +227,7 @@ class TestErrorDetectionRemoval:
         mock_result.session_id = None
 
         MockClient = create_mock_claude_sdk_client(messages=[mock_result])
-        with patch("orchestrator.agent.ClaudeSDKClient", MockClient):
+        with patch("orchestrator.backends.claude.ClaudeSDKClient", MockClient):
             result = await runner.run_phase(
                 chunk="test_chunk",
                 phase=WorkUnitPhase.PLAN,
@@ -243,7 +245,7 @@ class TestErrorDetectionRemoval:
         worktree_path = tmp_path / "worktree"
         worktree_path.mkdir()
 
-        from orchestrator.agent import ResultMessage
+        from orchestrator.backends.claude import ResultMessage
 
         mock_result = MagicMock(spec=ResultMessage)
         mock_result.result = (
@@ -254,7 +256,7 @@ class TestErrorDetectionRemoval:
         mock_result.session_id = None
 
         MockClient = create_mock_claude_sdk_client(messages=[mock_result])
-        with patch("orchestrator.agent.ClaudeSDKClient", MockClient):
+        with patch("orchestrator.backends.claude.ClaudeSDKClient", MockClient):
             result = await runner.run_phase(
                 chunk="test_chunk",
                 phase=WorkUnitPhase.PLAN,
@@ -276,7 +278,7 @@ class TestErrorDetectionRemoval:
         worktree_path = tmp_path / "worktree"
         worktree_path.mkdir()
 
-        from orchestrator.agent import ResultMessage
+        from orchestrator.backends.claude import ResultMessage
 
         mock_result = MagicMock(spec=ResultMessage)
         mock_result.result = "Something went wrong"
@@ -284,7 +286,7 @@ class TestErrorDetectionRemoval:
         mock_result.session_id = None
 
         MockClient = create_mock_claude_sdk_client(messages=[mock_result])
-        with patch("orchestrator.agent.ClaudeSDKClient", MockClient):
+        with patch("orchestrator.backends.claude.ClaudeSDKClient", MockClient):
             result = await runner.run_phase(
                 chunk="test_chunk",
                 phase=WorkUnitPhase.PLAN,
