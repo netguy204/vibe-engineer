@@ -22,7 +22,6 @@ import pytest
 from orchestrator.backend import (
     AgentBackend,
     LogEvent,
-    ResultEvent,
     SessionRequest,
     TextEvent,
     ToolCallEvent,
@@ -278,417 +277,349 @@ def _make_request(
     )
 
 
-class _FakeTransportBackend(CursorBackend):
-    """CursorBackend subclass that injects a fake transport for testing the event loop.
+# ---------------------------------------------------------------------------
+# Fake transport for driving CursorBackend.run against the real ACP flow:
+# initialize -> session/new (or session/load) -> session/prompt, with
+# session/update notifications streamed while the prompt request is pending.
+# ---------------------------------------------------------------------------
 
-    Provide a list of ACP notifications that will be yielded from recv_notification
-    in order. The init and session/new responses are auto-handled.
+
+def _update(session_update: str, **fields) -> dict:
+    """Build a session/update notification with the given sessionUpdate kind.
+
+    `fields` may include a `kind` (the tool_call's own kind, e.g. "execute"),
+    which is why the discriminator parameter is named session_update.
+    """
+    return {
+        "jsonrpc": "2.0",
+        "method": "session/update",
+        "params": {"update": {"sessionUpdate": session_update, **fields}},
+    }
+
+
+def _perm_request(req_id, tool_call_id: str, title: str) -> dict:
+    """Build a session/request_permission with the real toolCall/options shape."""
+    return {
+        "jsonrpc": "2.0",
+        "id": req_id,
+        "method": "session/request_permission",
+        "params": {
+            "sessionId": "s1",
+            "toolCall": {"toolCallId": tool_call_id, "title": title, "kind": "execute"},
+            "options": [
+                {"optionId": "allow-once", "name": "Allow once", "kind": "allow_once"},
+                {"optionId": "allow-always", "name": "Allow always", "kind": "allow_always"},
+                {"optionId": "reject-once", "name": "Reject", "kind": "reject_once"},
+            ],
+        },
+    }
+
+
+class _FakeTransport:
+    """Deterministic fake ACPTransport.
+
+    Replays ``notifications`` from recv_notification in order; when they are
+    exhausted it resolves the pending session/prompt request with ``stop_reason``
+    (or raises ``prompt_exc``). Records sent requests, notifications, and
+    permission replies for assertions.
     """
 
-    def __init__(self, notifications: list[dict], init_session_id: str = "test-sess"):
-        super().__init__()
-        self._notifications = notifications
-        self._init_session_id = init_session_id
+    def __init__(
+        self,
+        notifications,
+        *,
+        session_id: str = "test-sess",
+        stop_reason: str = "end_turn",
+        prompt_exc: Exception | None = None,
+        alive: bool = True,
+        simulate_silence: bool = False,
+    ):
+        self.notifs = list(notifications)
+        self.session_id = session_id
+        self.stop_reason = stop_reason
+        self.prompt_exc = prompt_exc
+        self.alive = alive
+        self.simulate_silence = simulate_silence
+        self.sent_requests: list[tuple] = []
+        self.sent_notifications: list[tuple] = []
+        self.permission_replies: list[tuple] = []
+        self._prompt_future = None
+
+    async def start(self):
+        pass
+
+    async def close(self):
+        self.alive = False
+
+    @property
+    def is_alive(self):
+        return self.alive
+
+    async def send_request(self, method, params=None):
+        self.sent_requests.append((method, params))
+        if method == "session/new":
+            return {"sessionId": self.session_id}
+        if method == "session/prompt":
+            self._prompt_future = asyncio.get_event_loop().create_future()
+            if self.simulate_silence:
+                # Resolve on a short delay so the grace wait_for in run() returns
+                # quickly, while recv_notification still drives the silence path.
+                async def _later(fut=self._prompt_future):
+                    await asyncio.sleep(0.02)
+                    if not fut.done():
+                        fut.set_result({"stopReason": self.stop_reason})
+
+                asyncio.ensure_future(_later())
+            return await self._prompt_future
+        return {}
+
+    async def send_notification(self, method, params=None):
+        self.sent_notifications.append((method, params))
+
+    async def send_response(self, req_id, result):
+        self.permission_replies.append((req_id, result))
+
+    async def recv_notification(self, timeout=None):
+        if self.notifs:
+            return self.notifs.pop(0)
+        if self.simulate_silence:
+            return None  # silence; prompt resolves via its own delayed task
+        # Yield so the pending session/prompt task runs far enough to create
+        # its future, then resolve it (turn complete).
+        for _ in range(5):
+            if self._prompt_future is not None:
+                break
+            await asyncio.sleep(0)
+        if self._prompt_future is not None and not self._prompt_future.done():
+            if self.prompt_exc is not None:
+                self._prompt_future.set_exception(self.prompt_exc)
+            else:
+                self._prompt_future.set_result({"stopReason": self.stop_reason})
+            await asyncio.sleep(0)  # let the prompt task resume to completion
+        return None
 
 
-async def _run_with_fake_events(
-    request: SessionRequest,
-    notifications: list[dict],
-    init_session_id: str = "test-sess",
-) -> AgentResult:
-    """Run CursorBackend.run with a patched transport that replays canned events."""
-    backend = CursorBackend()
-
-    notification_iter = iter(notifications)
-
-    async def fake_recv(timeout=None):
-        try:
-            return next(notification_iter)
-        except StopIteration:
-            return None
-
-    fake_transport = AsyncMock(spec=ACPTransport)
-    fake_transport.is_alive = True
-    fake_transport.recv_notification = fake_recv
-    fake_transport.send_request = AsyncMock(
-        side_effect=[
-            # system/init response
-            {"session_id": init_session_id},
-            # session/new or session/load response
-            {"sessionId": init_session_id},
-        ]
-    )
-    fake_transport.close = AsyncMock()
-    fake_transport._process = MagicMock()
-    fake_transport._process.stdin = MagicMock()
-    fake_transport._process.stdin.write = MagicMock()
-    fake_transport._process.stdin.drain = AsyncMock()
-    fake_transport._process.returncode = None
-
+async def _run_with_fake(request: SessionRequest, fake: _FakeTransport) -> AgentResult:
+    """Run CursorBackend.run with the given fake transport patched in."""
     with (
         patch("orchestrator.backends.cursor.shutil.which", return_value="/usr/bin/cursor-agent"),
         patch.object(ACPTransport, "start", new_callable=AsyncMock),
-        patch("orchestrator.backends.cursor.ACPTransport", return_value=fake_transport),
+        patch("orchestrator.backends.cursor.ACPTransport", return_value=fake),
     ):
-        return await backend.run(request)
+        return await CursorBackend().run(request)
 
 
 class TestCursorBackendEventLoop:
     """Integration tests for the ACP event loop in CursorBackend.run."""
 
     @pytest.mark.asyncio
-    async def test_simple_session_completion(self, tmp_path):
-        """A session that emits a result notification produces AgentResult(completed=True)."""
-        events = [
-            {
-                "jsonrpc": "2.0",
-                "method": "session/result",
-                "params": {
-                    "isError": False,
-                    "sessionId": "test-sess",
-                    "durationMs": 5000,
-                    "totalCostUsd": 0.5,
-                    "numTurns": 3,
-                    "resultText": "Done",
-                },
-            }
-        ]
-        request = _make_request(tmp_path)
-        result = await _run_with_fake_events(request, events)
+    async def test_handshake_and_session_creation(self, tmp_path):
+        """The run issues initialize, notifications/initialized, session/new, session/prompt."""
+        fake = _FakeTransport([])
+        result = await _run_with_fake(_make_request(tmp_path), fake)
 
+        req_methods = [m for m, _ in fake.sent_requests]
+        assert req_methods == ["initialize", "session/new", "session/prompt"]
+        assert ("notifications/initialized", {}) in fake.sent_notifications
+        assert result.completed is True
+        assert result.session_id == "test-sess"
+
+    @pytest.mark.asyncio
+    async def test_simple_session_completion(self, tmp_path):
+        """stopReason end_turn yields AgentResult(completed=True)."""
+        fake = _FakeTransport(
+            [_update("agent_message_chunk", content={"type": "text", "text": "PONG"})],
+            stop_reason="end_turn",
+        )
+        result = await _run_with_fake(_make_request(tmp_path), fake)
         assert result.completed is True
         assert result.suspended is False
-        assert result.session_id == "test-sess"
         assert result.error is None
 
     @pytest.mark.asyncio
-    async def test_session_error(self, tmp_path):
-        """A session/result with isError produces AgentResult(error=...)."""
-        events = [
-            {
-                "jsonrpc": "2.0",
-                "method": "session/result",
-                "params": {
-                    "isError": True,
-                    "errorMessage": "Something went wrong",
-                    "sessionId": "test-sess",
-                },
-            }
-        ]
-        request = _make_request(tmp_path)
-        result = await _run_with_fake_events(request, events)
-
+    async def test_non_end_turn_stop_reason_is_error(self, tmp_path):
+        """A non-end_turn stopReason surfaces as an error, not completion."""
+        fake = _FakeTransport([], stop_reason="refusal")
+        result = await _run_with_fake(_make_request(tmp_path), fake)
         assert result.completed is False
-        assert result.error == "Something went wrong"
+        assert result.error is not None
+        assert "refusal" in result.error
+
+    @pytest.mark.asyncio
+    async def test_prompt_exception_is_error(self, tmp_path):
+        """An exception from the session/prompt request becomes the result error."""
+        fake = _FakeTransport([], prompt_exc=RuntimeError("ACP JSON-RPC error"))
+        result = await _run_with_fake(_make_request(tmp_path), fake)
+        assert result.completed is False
+        assert "ACP JSON-RPC error" in (result.error or "")
 
     @pytest.mark.asyncio
     async def test_sandbox_allow_safe_command(self, tmp_path):
-        """A permission request for a safe command gets allow reply."""
+        """A permission request for an in-worktree command is allowed."""
         worktree = tmp_path / "worktree"
         worktree.mkdir()
-        host = tmp_path
-
-        events = [
-            {
-                "jsonrpc": "2.0",
-                "id": 100,
-                "method": "session/request_permission",
-                "params": {
-                    "toolName": "Bash",
-                    "toolInput": {"command": "ls -la"},
-                    "command": "ls -la",
-                },
-            },
-            {
-                "jsonrpc": "2.0",
-                "method": "session/result",
-                "params": {"isError": False, "sessionId": "s1"},
-            },
-        ]
         request = SessionRequest(
-            prompt="test",
-            cwd=worktree,
-            host_repo_path=host,
-            env={},
-            max_turns=5,
+            prompt="t", cwd=worktree, host_repo_path=tmp_path, env={}, max_turns=5,
         )
-        result = await _run_with_fake_events(request, events)
+        fake = _FakeTransport([
+            _update("tool_call", toolCallId="t1", title="`ls -la`", kind="execute",
+                    rawInput={"command": "ls -la"}),
+            _perm_request(100, "t1", "`ls -la`"),
+        ])
+        result = await _run_with_fake(request, fake)
         assert result.completed is True
+        assert fake.permission_replies == [
+            (100, {"outcome": {"outcome": "selected", "optionId": "allow-once"}})
+        ]
 
     @pytest.mark.asyncio
     async def test_sandbox_deny_violation(self, tmp_path):
-        """A permission request escaping the worktree gets deny reply."""
+        """A permission request escaping the worktree is rejected.
+
+        The permission payload carries no command — it is correlated by
+        toolCallId from the preceding tool_call update.
+        """
         worktree = tmp_path / "worktree"
         worktree.mkdir()
         host = tmp_path
-
-        permission_replies: list[dict] = []
-
-        # We need to capture what gets written back
-        events = [
-            {
-                "jsonrpc": "2.0",
-                "id": 200,
-                "method": "session/request_permission",
-                "params": {
-                    "toolName": "Bash",
-                    "toolInput": {"command": f"cd {host} && rm -rf ."},
-                    "command": f"cd {host} && rm -rf .",
-                },
-            },
-            {
-                "jsonrpc": "2.0",
-                "method": "session/result",
-                "params": {"isError": False, "sessionId": "s1"},
-            },
-        ]
         request = SessionRequest(
-            prompt="test",
-            cwd=worktree,
-            host_repo_path=host,
-            env={},
-            max_turns=5,
+            prompt="t", cwd=worktree, host_repo_path=host, env={}, max_turns=5,
         )
-        result = await _run_with_fake_events(request, events)
-        # Session still completes (the deny is sent, agent continues)
+        fake = _FakeTransport([
+            _update("tool_call", toolCallId="t2", title="`git -C ...`", kind="execute",
+                    rawInput={"command": f"git -C {host} status"}),
+            _perm_request(200, "t2", "`git -C ...`"),
+        ])
+        result = await _run_with_fake(request, fake)
         assert result.completed is True
+        assert fake.permission_replies == [
+            (200, {"outcome": {"outcome": "selected", "optionId": "reject-once"}})
+        ]
 
     @pytest.mark.asyncio
-    async def test_question_forwarding(self, tmp_path):
-        """cursor/ask_question suspends the session and calls on_question."""
-        captured_questions: list[dict] = []
-
-        events = [
+    async def test_question_forwarding_suspends(self, tmp_path):
+        """cursor/ask_question suspends the run and calls on_question."""
+        captured: list[dict] = []
+        fake = _FakeTransport([
             {
                 "jsonrpc": "2.0",
                 "method": "cursor/ask_question",
                 "params": {
-                    "question": "Which database should I use?",
+                    "question": "Which database?",
                     "options": ["PostgreSQL", "SQLite"],
-                    "header": "Database choice",
+                    "header": "Database",
                     "multiSelect": False,
                 },
             },
-        ]
-        request = _make_request(
-            tmp_path,
-            on_question=lambda q: captured_questions.append(q),
-        )
-        result = await _run_with_fake_events(request, events)
+        ])
+        request = _make_request(tmp_path, on_question=lambda q: captured.append(q))
+        result = await _run_with_fake(request, fake)
 
         assert result.suspended is True
         assert result.completed is False
-        assert result.question is not None
-        assert result.question["question"] == "Which database should I use?"
+        assert result.question["question"] == "Which database?"
         assert result.question["options"] == ["PostgreSQL", "SQLite"]
-        assert len(captured_questions) == 1
+        assert len(captured) == 1
 
     @pytest.mark.asyncio
     async def test_review_decision_capture(self, tmp_path):
-        """ReviewDecision tool call in session/update is captured."""
-        captured_decisions: list[ReviewToolDecision] = []
-
-        events = [
-            {
-                "jsonrpc": "2.0",
-                "method": "session/update",
-                "params": {
-                    "content": [
-                        {
-                            "type": "tool_use",
-                            "id": "tu-1",
-                            "name": "ReviewDecision",
-                            "input": {
-                                "decision": "APPROVE",
-                                "summary": "Implementation looks good",
-                            },
-                        }
-                    ]
-                },
-            },
-            {
-                "jsonrpc": "2.0",
-                "method": "session/result",
-                "params": {"isError": False, "sessionId": "s1"},
-            },
-        ]
+        """A ReviewDecision tool_call update is captured into the result."""
+        captured: list[ReviewToolDecision] = []
+        fake = _FakeTransport([
+            _update("tool_call", toolCallId="r1", title="ReviewDecision", kind="other",
+                    rawInput={"decision": "APPROVE", "summary": "Looks good"}),
+        ])
         request = _make_request(
-            tmp_path,
-            expose_review_tool=True,
-            on_review_decision=lambda d: captured_decisions.append(d),
+            tmp_path, expose_review_tool=True,
+            on_review_decision=lambda d: captured.append(d),
         )
-        result = await _run_with_fake_events(request, events)
-
+        result = await _run_with_fake(request, fake)
         assert result.review_decision is not None
         assert result.review_decision.decision == "APPROVE"
-        assert result.review_decision.summary == "Implementation looks good"
-        assert len(captured_decisions) == 1
+        assert result.review_decision.summary == "Looks good"
+        assert len(captured) == 1
 
     @pytest.mark.asyncio
     async def test_review_decision_mcp_namespaced(self, tmp_path):
-        """ReviewDecision also captured when MCP-namespaced."""
-        events = [
-            {
-                "jsonrpc": "2.0",
-                "method": "session/update",
-                "params": {
-                    "content": [
-                        {
-                            "type": "tool_use",
-                            "id": "tu-2",
-                            "name": "mcp__orchestrator__ReviewDecision",
-                            "input": {
-                                "decision": "feedback",
-                                "summary": "Needs work",
-                                "issues": [{"location": "foo.py", "concern": "missing tests"}],
-                            },
-                        }
-                    ]
-                },
-            },
-            {
-                "jsonrpc": "2.0",
-                "method": "session/result",
-                "params": {"isError": False},
-            },
-        ]
-        request = _make_request(tmp_path, expose_review_tool=True)
-        result = await _run_with_fake_events(request, events)
-
+        """ReviewDecision is captured when the tool title is MCP-namespaced."""
+        fake = _FakeTransport([
+            _update("tool_call", toolCallId="r2",
+                    title="mcp__orchestrator__ReviewDecision", kind="other",
+                    rawInput={
+                        "decision": "feedback",
+                        "summary": "Needs work",
+                        "issues": [{"location": "foo.py", "concern": "missing tests"}],
+                    }),
+        ])
+        result = await _run_with_fake(_make_request(tmp_path, expose_review_tool=True), fake)
         assert result.review_decision is not None
         assert result.review_decision.decision == "FEEDBACK"
         assert result.review_decision.issues == [{"location": "foo.py", "concern": "missing tests"}]
 
     @pytest.mark.asyncio
-    async def test_log_events_emitted(self, tmp_path):
-        """session/update content blocks are translated into LogEvents."""
-        log_events: list[LogEvent] = []
+    async def test_review_decision_only_first_captured(self, tmp_path):
+        """Only the first ReviewDecision is captured."""
+        captured: list[ReviewToolDecision] = []
+        fake = _FakeTransport([
+            _update("tool_call", toolCallId="r1", title="ReviewDecision", kind="other",
+                    rawInput={"decision": "FEEDBACK", "summary": "First"}),
+            _update("tool_call", toolCallId="r2", title="ReviewDecision", kind="other",
+                    rawInput={"decision": "APPROVE", "summary": "Second"}),
+        ])
+        request = _make_request(
+            tmp_path, expose_review_tool=True,
+            on_review_decision=lambda d: captured.append(d),
+        )
+        result = await _run_with_fake(request, fake)
+        assert result.review_decision.decision == "FEEDBACK"
+        assert result.review_decision.summary == "First"
+        assert len(captured) == 1
 
-        events = [
-            {
-                "jsonrpc": "2.0",
-                "method": "session/update",
-                "params": {
-                    "content": [
-                        {"type": "text", "text": "Thinking about the problem..."},
-                        {
-                            "type": "tool_use",
-                            "id": "t1",
-                            "name": "Bash",
-                            "input": {"command": "ls", "description": "List files"},
-                        },
-                        {
-                            "type": "tool_result",
-                            "tool_use_id": "t1",
-                            "content": "file1.txt\nfile2.txt",
-                            "is_error": False,
-                        },
-                    ]
-                },
-            },
-            {
-                "jsonrpc": "2.0",
-                "method": "session/result",
-                "params": {
-                    "isError": False,
-                    "sessionId": "s1",
-                    "durationMs": 1000,
-                    "totalCostUsd": 0.1,
-                    "numTurns": 1,
-                },
-            },
-        ]
-        request = _make_request(tmp_path, on_log=lambda e: log_events.append(e))
-        result = await _run_with_fake_events(request, events)
+    @pytest.mark.asyncio
+    async def test_log_events_emitted(self, tmp_path):
+        """session/update notifications normalize to TextEvent/ToolCallEvent/ToolResultEvent."""
+        log_events: list[LogEvent] = []
+        fake = _FakeTransport([
+            _update("agent_message_chunk", content={"type": "text", "text": "Thinking..."}),
+            _update("tool_call", toolCallId="t1", title="Bash", kind="execute",
+                    rawInput={"command": "ls"}),
+            _update("tool_call_update", toolCallId="t1", status="completed",
+                    content="file1.txt\nfile2.txt"),
+        ])
+        result = await _run_with_fake(_make_request(tmp_path, on_log=lambda e: log_events.append(e)), fake)
 
         assert result.completed is True
-        # 3 events from session/update + 1 ResultEvent from session/result
-        assert len(log_events) == 4
-
+        assert len(log_events) == 3
         assert isinstance(log_events[0], TextEvent)
-        assert log_events[0].text == "Thinking about the problem..."
-
+        assert log_events[0].text == "Thinking..."
         assert isinstance(log_events[1], ToolCallEvent)
         assert log_events[1].name == "Bash"
         assert log_events[1].tool_id == "t1"
-        assert log_events[1].description == "List files"
-
         assert isinstance(log_events[2], ToolResultEvent)
         assert log_events[2].tool_use_id == "t1"
         assert log_events[2].content == "file1.txt\nfile2.txt"
         assert log_events[2].is_error is False
 
-        assert isinstance(log_events[3], ResultEvent)
-
     @pytest.mark.asyncio
-    async def test_session_resume(self, tmp_path):
-        """When resume_session_id is set, session/load is called instead of session/new."""
+    async def test_session_resume_uses_session_load(self, tmp_path):
+        """resume_session_id routes through session/load, not session/new."""
         request = _make_request(tmp_path, resume_session_id="prev-sess")
+        fake = _FakeTransport([], session_id="prev-sess")
+        result = await _run_with_fake(request, fake)
 
-        backend = CursorBackend()
-        send_request_calls: list[tuple] = []
-
-        async def fake_recv(timeout=None):
-            return {
-                "jsonrpc": "2.0",
-                "method": "session/result",
-                "params": {"isError": False, "sessionId": "prev-sess"},
-            }
-
-        async def fake_send_request(method, params=None):
-            send_request_calls.append((method, params))
-            if method == "system/init":
-                return {"session_id": "prev-sess"}
-            if method == "session/load":
-                return {"sessionId": "prev-sess"}
-            return {}
-
-        fake_transport = AsyncMock(spec=ACPTransport)
-        fake_transport.is_alive = True
-        fake_transport.recv_notification = fake_recv
-        fake_transport.send_request = fake_send_request
-        fake_transport.close = AsyncMock()
-        fake_transport._process = MagicMock()
-        fake_transport._process.stdin = MagicMock()
-        fake_transport._process.stdin.write = MagicMock()
-        fake_transport._process.stdin.drain = AsyncMock()
-        fake_transport._process.returncode = None
-
-        with (
-            patch("orchestrator.backends.cursor.shutil.which", return_value="/usr/bin/cursor-agent"),
-            patch("orchestrator.backends.cursor.ACPTransport", return_value=fake_transport),
-        ):
-            result = await backend.run(request)
-
-        assert result.session_id == "prev-sess"
-        # Verify session/load was called, not session/new
-        methods = [call[0] for call in send_request_calls]
+        methods = [m for m, _ in fake.sent_requests]
         assert "session/load" in methods
         assert "session/new" not in methods
+        assert result.session_id == "prev-sess"
 
     @pytest.mark.asyncio
     async def test_unknown_method_ignored(self, tmp_path):
-        """Unknown ACP methods are logged and skipped without error."""
-        events = [
-            {
-                "jsonrpc": "2.0",
-                "method": "some/unknown_method",
-                "params": {"data": "whatever"},
-            },
-            {
-                "jsonrpc": "2.0",
-                "method": "session/result",
-                "params": {"isError": False, "sessionId": "s1"},
-            },
-        ]
-        request = _make_request(tmp_path)
-        result = await _run_with_fake_events(request, events)
+        """Unknown ACP notification methods are skipped without error."""
+        fake = _FakeTransport([
+            {"jsonrpc": "2.0", "method": "some/unknown_method", "params": {"data": "x"}},
+        ])
+        result = await _run_with_fake(_make_request(tmp_path), fake)
         assert result.completed is True
-
-
-# ---------------------------------------------------------------------------
-# Chunk: docs/chunks/backend_parity - Edge cases from parity analysis
-# ---------------------------------------------------------------------------
 
 
 class TestCursorBackendParityEdgeCases:
@@ -696,222 +627,60 @@ class TestCursorBackendParityEdgeCases:
 
     @pytest.mark.asyncio
     async def test_mcp_config_cleaned_up_on_error(self, tmp_path):
-        """MCP config files are removed even when the event loop raises."""
+        """MCP config files are removed even when the prompt errors."""
         worktree = tmp_path / "worktree"
         worktree.mkdir()
-
-        events = [
-            {
-                "jsonrpc": "2.0",
-                "method": "session/result",
-                "params": {"isError": True, "errorMessage": "Composer crashed"},
-            },
-        ]
         request = SessionRequest(
-            prompt="review the code",
-            cwd=worktree,
-            host_repo_path=tmp_path,
-            env={},
-            max_turns=10,
-            expose_review_tool=True,
+            prompt="review", cwd=worktree, host_repo_path=tmp_path, env={},
+            max_turns=10, expose_review_tool=True,
         )
-        result = await _run_with_fake_events(request, events)
+        fake = _FakeTransport([], prompt_exc=RuntimeError("Composer crashed"))
+        result = await _run_with_fake(request, fake)
 
         assert result.error == "Composer crashed"
-        # MCP config must be cleaned up even on error
         assert not (worktree / ".cursor" / "mcp.json").exists()
         assert not (worktree / ".cursor" / "_review_mcp_server.py").exists()
 
     @pytest.mark.asyncio
-    async def test_permission_request_without_id_does_not_crash(self, tmp_path):
-        """A permission request missing the 'id' field is skipped without error."""
-        worktree = tmp_path / "worktree"
-        worktree.mkdir()
-
-        events = [
-            {
-                "jsonrpc": "2.0",
-                # No "id" field — backend should skip the reply
-                "method": "session/request_permission",
-                "params": {
-                    "toolName": "Bash",
-                    "toolInput": {"command": "ls"},
-                    "command": "ls",
-                },
-            },
-            {
-                "jsonrpc": "2.0",
-                "method": "session/result",
-                "params": {"isError": False, "sessionId": "s1"},
-            },
-        ]
-        request = SessionRequest(
-            prompt="test",
-            cwd=worktree,
-            host_repo_path=tmp_path,
-            env={},
-            max_turns=5,
-        )
-        result = await _run_with_fake_events(request, events)
-        assert result.completed is True
-
-    @pytest.mark.asyncio
-    async def test_timeout_when_transport_alive_no_notifications(self, tmp_path):
-        """When no notifications arrive and transport is alive, result has a timeout error."""
-        backend = CursorBackend()
-
-        call_count = 0
-
-        async def fake_recv(timeout=None):
-            nonlocal call_count
-            call_count += 1
-            # First call returns None (timeout), simulating 300s silence
-            return None
-
-        fake_transport = AsyncMock(spec=ACPTransport)
-        fake_transport.is_alive = True
-        fake_transport.recv_notification = fake_recv
-        fake_transport.send_request = AsyncMock(
-            side_effect=[
-                {"session_id": "t1"},
-                {"sessionId": "t1"},
-            ]
-        )
-        fake_transport.close = AsyncMock()
-        fake_transport._process = MagicMock()
-        fake_transport._process.stdin = MagicMock()
-        fake_transport._process.stdin.write = MagicMock()
-        fake_transport._process.stdin.drain = AsyncMock()
-        fake_transport._process.returncode = None
-
-        request = _make_request(tmp_path)
-
-        with (
-            patch("orchestrator.backends.cursor.shutil.which", return_value="/usr/bin/cursor-agent"),
-            patch("orchestrator.backends.cursor.ACPTransport", return_value=fake_transport),
-        ):
-            result = await backend.run(request)
-
-        assert result.completed is False
-        assert result.error is not None
-        assert "Timed out" in result.error
-
-    @pytest.mark.asyncio
-    async def test_review_decision_only_first_captured(self, tmp_path):
-        """Only the first ReviewDecision tool call is captured; subsequent ones are ignored."""
-        captured_decisions: list[ReviewToolDecision] = []
-
-        events = [
-            {
-                "jsonrpc": "2.0",
-                "method": "session/update",
-                "params": {
-                    "content": [
-                        {
-                            "type": "tool_use",
-                            "id": "tu-1",
-                            "name": "ReviewDecision",
-                            "input": {
-                                "decision": "FEEDBACK",
-                                "summary": "First attempt",
-                            },
-                        },
-                    ]
-                },
-            },
-            {
-                "jsonrpc": "2.0",
-                "method": "session/update",
-                "params": {
-                    "content": [
-                        {
-                            "type": "tool_use",
-                            "id": "tu-2",
-                            "name": "ReviewDecision",
-                            "input": {
-                                "decision": "APPROVE",
-                                "summary": "Changed my mind",
-                            },
-                        },
-                    ]
-                },
-            },
-            {
-                "jsonrpc": "2.0",
-                "method": "session/result",
-                "params": {"isError": False, "sessionId": "s1"},
-            },
-        ]
-        request = _make_request(
-            tmp_path,
-            expose_review_tool=True,
-            on_review_decision=lambda d: captured_decisions.append(d),
-        )
-        result = await _run_with_fake_events(request, events)
-
-        assert result.review_decision is not None
-        assert result.review_decision.decision == "FEEDBACK"
-        assert result.review_decision.summary == "First attempt"
-        assert len(captured_decisions) == 1
-
-    @pytest.mark.asyncio
     async def test_mcp_config_not_written_without_expose_review_tool(self, tmp_path):
-        """When expose_review_tool is False, no .cursor/ config is created."""
+        """No .cursor/ config is created when expose_review_tool is False."""
         worktree = tmp_path / "worktree"
         worktree.mkdir()
-
-        events = [
-            {
-                "jsonrpc": "2.0",
-                "method": "session/result",
-                "params": {"isError": False, "sessionId": "s1"},
-            },
-        ]
         request = SessionRequest(
-            prompt="implement the feature",
-            cwd=worktree,
-            host_repo_path=tmp_path,
-            env={},
-            max_turns=10,
-            expose_review_tool=False,
+            prompt="implement", cwd=worktree, host_repo_path=tmp_path, env={},
+            max_turns=10, expose_review_tool=False,
         )
-        result = await _run_with_fake_events(request, events)
-
+        result = await _run_with_fake(request, _FakeTransport([]))
         assert result.completed is True
         assert not (worktree / ".cursor").exists()
 
     @pytest.mark.asyncio
-    async def test_transport_eof_produces_error(self, tmp_path):
-        """When cursor-agent exits unexpectedly (EOF), result has an error."""
-        backend = CursorBackend()
-
-        async def fake_recv(timeout=None):
-            return None  # EOF
-
-        fake_transport = AsyncMock(spec=ACPTransport)
-        fake_transport.is_alive = False  # Process already exited
-        fake_transport.recv_notification = fake_recv
-        fake_transport.send_request = AsyncMock(
-            side_effect=[
-                {"session_id": "t1"},
-                {"sessionId": "t1"},
-            ]
+    async def test_permission_request_without_id_does_not_crash(self, tmp_path):
+        """A permission request missing 'id' is handled without replying or crashing."""
+        worktree = tmp_path / "worktree"
+        worktree.mkdir()
+        request = SessionRequest(
+            prompt="t", cwd=worktree, host_repo_path=tmp_path, env={}, max_turns=5,
         )
-        fake_transport.close = AsyncMock()
-        fake_transport._process = MagicMock()
-        fake_transport._process.stdin = MagicMock()
-        fake_transport._process.stdin.write = MagicMock()
-        fake_transport._process.stdin.drain = AsyncMock()
-        fake_transport._process.returncode = 1
+        perm = _perm_request(None, "t1", "`ls`")
+        del perm["id"]
+        fake = _FakeTransport([perm])
+        result = await _run_with_fake(request, fake)
+        assert result.completed is True
+        assert fake.permission_replies == []
 
-        request = _make_request(tmp_path)
-
-        with (
-            patch("orchestrator.backends.cursor.shutil.which", return_value="/usr/bin/cursor-agent"),
-            patch("orchestrator.backends.cursor.ACPTransport", return_value=fake_transport),
-        ):
-            result = await backend.run(request)
-
+    @pytest.mark.asyncio
+    async def test_silence_produces_timeout_error(self, tmp_path):
+        """recv_notification returning None while the prompt is pending is a timeout."""
+        fake = _FakeTransport([], simulate_silence=True)
+        result = await _run_with_fake(_make_request(tmp_path), fake)
         assert result.completed is False
-        assert result.error is not None
-        assert "exited before event loop" in result.error
+        assert "Timed out" in (result.error or "")
+
+    @pytest.mark.asyncio
+    async def test_not_alive_before_prompt_produces_error(self, tmp_path):
+        """If the process is gone before the prompt is sent, the result is an error."""
+        fake = _FakeTransport([], alive=False)
+        result = await _run_with_fake(_make_request(tmp_path), fake)
+        assert result.completed is False
+        assert "exited before the prompt was sent" in (result.error or "")
