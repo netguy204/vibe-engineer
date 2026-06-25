@@ -1,6 +1,7 @@
 # Subsystem: docs/subsystems/orchestrator - Parallel agent orchestration
 # Chunk: docs/chunks/backend_seam - Backend implementations package
 # Chunk: docs/chunks/backend_config - Backend factory for config-driven backend selection
+# Chunk: docs/chunks/backend_cursor - CursorBackend registration
 """Concrete AgentBackend implementations and factory.
 
 The :func:`create_backend` factory maps a config string to a concrete
@@ -14,9 +15,18 @@ from orchestrator.backends.claude import ClaudeBackend
 
 # Registry mapping config values to backend constructors.
 # Each value is a zero-arg callable returning an AgentBackend instance.
+# CursorBackend is lazily imported so the module loads cleanly even when
+# cursor-agent is not installed — the binary check happens at run() time.
 BACKEND_REGISTRY: dict[str, type] = {
     "claude": ClaudeBackend,
 }
+
+try:
+    from orchestrator.backends.cursor import CursorBackend
+
+    BACKEND_REGISTRY["cursor"] = CursorBackend
+except ImportError:  # pragma: no cover — only if cursor module itself fails
+    pass
 
 
 def create_backend(name: str) -> AgentBackend:
