@@ -494,6 +494,9 @@ class CursorBackend:
                     session_id = new_result["sessionId"]
 
             # Step 5: Event loop — process notifications until session ends
+            if not transport.is_alive:
+                error = "cursor-agent process exited before event loop started"
+
             while transport.is_alive:
                 msg = await transport.recv_notification(timeout=300.0)
                 if msg is None:

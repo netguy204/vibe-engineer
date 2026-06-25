@@ -10,167 +10,202 @@ to hand to an agent.
 
 ## Approach
 
-<!--
-How will you build this? Describe the strategy at a high level.
-What patterns or techniques will you use?
-What existing code will you build on?
+This chunk is primarily a validation/tuning/documentation effort, not a greenfield
+implementation. The code changes from `backend_seam`, `backend_cursor`,
+`backend_config`, and `backend_logparse` are already merged. This chunk confirms
+that the Cursor backend works end-to-end on real chunks via the orchestrator,
+tunes any divergences, and documents the setup.
 
-Reference docs/trunk/DECISIONS.md entries where relevant.
-If this approach represents a new significant decision, ask the user
-if we should add it to DECISIONS.md and reference it here.
+The approach has three parts:
 
-Always include tests in your implementation plan and adhere to
-docs/trunk/TESTING_PHILOSOPHY.md in your planning.
+1. **End-to-end validation** — Run a handful of representative chunks through
+   the full lifecycle (PLAN → IMPLEMENT → REVIEW → COMPLETE) on the Cursor
+   backend via the orchestrator. Confirm sandbox isolation, question forwarding,
+   and review decisions work in practice, not just in unit tests.
 
-Remember to update code_paths in the chunk's GOAL.md (e.g., docs/chunks/backend_parity/GOAL.md)
-with references to the files that you expect to touch.
--->
+2. **Prompt and turn-budget tuning** — Where Composer diverges from Claude
+   (wording that confuses it, turn budgets that are too tight or too generous),
+   record the differences and adjust. Per-backend prompt patches or config
+   overrides may be added to `OrchestratorConfig` or the `CursorBackend` if
+   needed; otherwise document the divergences without code changes.
+
+3. **Documentation** — Add a Cursor backend section to
+   `docs/trunk/ORCHESTRATOR.md` covering: `cursor-agent` installation, the ACP
+   integration, required `.cursor/` config (`mcp.json`, any `hooks.json`),
+   backend selection via `ve orch config --backend cursor`, and known
+   divergences.
+
+Builds on DEC-010 (plugin distribution), DEC-012 (session-local execution
+preferred but orchestrator still functional), and the `AgentBackend` seam from
+`backend_seam`.
 
 ## Subsystem Considerations
 
-<!--
-Before designing your implementation, check docs/subsystems/ for relevant
-cross-cutting patterns.
-
-QUESTIONS TO CONSIDER:
-- Does this chunk touch any existing subsystem's scope?
-- Will this chunk implement part of a subsystem (contribute code) or use it
-  (depend on it)?
-- Did you discover code during exploration that should be part of a subsystem
-  but doesn't follow its patterns?
-
-If no subsystems are relevant, delete this section.
-
-WHEN SUBSYSTEMS ARE RELEVANT:
-List each relevant subsystem with its status and your relationship:
-- **docs/subsystems/validation** (DOCUMENTED): This chunk USES the validation
-  subsystem to check input
-- **docs/subsystems/error_handling** (REFACTORING): This chunk IMPLEMENTS a
-  new error type following the subsystem's patterns
-
-HOW SUBSYSTEM STATUS AFFECTS YOUR WORK:
-
-DOCUMENTED subsystems: The subsystem's patterns are captured but deviations are not
-being actively fixed. If you discover code that deviates from the subsystem's
-patterns, add it to the subsystem's Known Deviations section. Do NOT prioritize
-fixing those deviations—your chunk has its own goals.
-
-REFACTORING subsystems: The subsystem is being actively consolidated. If your chunk
-work touches code that deviates from the subsystem's patterns, attempt to bring it
-into compliance as part of your work. This is "opportunistic improvement"—improve
-what you touch, but don't expand scope to fix unrelated deviations.
-
-WHEN YOU DISCOVER DEVIATING CODE:
-- Add it to the subsystem's Known Deviations section
-- Note whether you will address it (REFACTORING status + relevant to your work)
-  or leave it for future work (DOCUMENTED status or outside your chunk's scope)
-
-Example:
-- **Discovered deviation**: src/legacy/parser.py#validate_input does its own
-  validation instead of using the validation subsystem
-  - Added to docs/subsystems/validation Known Deviations
-  - Action: Will not address (subsystem is DOCUMENTED; deviation outside chunk scope)
--->
+- **docs/subsystems/orchestrator** (DOCUMENTED): This chunk USES the
+  orchestrator subsystem — it validates an existing backend through the
+  orchestrator's scheduling/worktree machinery but does not change the
+  subsystem's core patterns.
 
 ## Sequence
 
-<!--
-Ordered steps to implement this chunk. Each step should be:
-- Small enough to reason about in isolation
-- Large enough to be meaningful
-- Clear about its inputs and outputs
+### Step 1: Verify `cursor-agent` availability and ACP handshake
 
-This sequence is your contract with yourself (and with agents).
-Work through it in order. Don't skip ahead.
+Confirm that `cursor-agent acp` starts, completes the `system/init`
+handshake, and responds to `session/new`. This is a manual smoke test, not
+automated — the step establishes that the local environment is wired
+correctly before running full phases.
 
-Example:
+If `cursor-agent` is not installed, document the installation steps and
+stop — the remaining steps are meaningless without the binary.
 
-### Step 1: Define the SegmentHeader struct
+### Step 2: Run a PLAN phase on the Cursor backend
 
-Create the struct that represents a segment's header with fields for:
-- magic number (4 bytes)
-- version (2 bytes)
-- segment_id (8 bytes)
-- message_count (4 bytes)
-- checksum (4 bytes)
+Pick a small, self-contained chunk (or create a throwaway one). Inject it
+into the orchestrator with `ve orch config --backend cursor` set, and let
+it run the PLAN phase.
 
-Location: src/segment/format.rs
+Observe:
+- Does the agent receive the phase prompt?
+- Does sandbox enforcement work (deny worktree escapes via
+  `session/request_permission`)?
+- Does the agent produce a PLAN.md?
+- Are log events normalized correctly (JSON-line log file readable by
+  `log_parser.py`)?
 
-### Step 2: Implement header serialization
+Record any prompt wording that confuses Composer or any turn-budget
+insufficiency. If the PLAN phase fails or produces poor output, adjust the
+prompt or `max_turns_implement` and retry before proceeding.
 
-Add `to_bytes()` and `from_bytes()` methods to SegmentHeader.
-Use little-endian encoding per SPEC.md Section 3.1.
+### Step 3: Run IMPLEMENT and REVIEW phases
 
-### Step 3: ...
+Continue the same chunk (or a fresh one) through IMPLEMENT and REVIEW.
 
----
+IMPLEMENT observations:
+- Does the implementer follow the plan?
+- Is the turn budget sufficient for meaningful work?
+- Does re-entry context injection work if the phase is re-entered?
 
-**BACKREFERENCE COMMENTS**
+REVIEW observations:
+- Does the ReviewDecision MCP server (`.cursor/mcp.json`) get written and
+  picked up by Composer?
+- Does the agent call the `ReviewDecision` tool?
+- Is the decision captured into `AgentResult.review_decision`?
+- Is `.cursor/mcp.json` cleaned up after the phase?
 
-When implementing code, add backreference comments to help future agents trace
-code back to its governing documentation.
+If `cursor/ask_question` fires (operator question), confirm the question
+is forwarded to the attention queue and answering it resumes the session.
 
-**Valid backreference types:**
-- `# Subsystem: docs/subsystems/<name>` - For architectural patterns
-- `# Chunk: docs/chunks/<name>` - For implementation work
+### Step 4: Run the COMPLETE phase and confirm full lifecycle
 
-Place comments at the appropriate level:
-- **Module-level**: If this code implements the subsystem/chunk's core functionality
-- **Class-level**: If this class is part of the pattern
-- **Method-level**: If this method implements a specific behavior
+Let the chunk reach COMPLETE. Verify:
+- The chunk's GOAL.md status is updated to ACTIVE (or
+  `resume_for_active_status` fires and succeeds).
+- The worktree is merged/pruned cleanly.
+- The orchestrator work unit reaches DONE.
 
-Format (place immediately before the symbol):
-```
-# Subsystem: docs/subsystems/workflow_artifacts - Workflow artifact manager pattern
-# Chunk: docs/chunks/auth_refactor - Authentication system redesign
-```
+At this point the full lifecycle has been validated end-to-end.
 
-Do NOT add narrative backreferences. Narratives decompose into chunks; reference
-the implementing chunk instead.
+### Step 5: Record divergences and tune
 
-**Task context note**: In multi-project tasks, always use local paths (e.g.,
-`docs/chunks/chunk_name`) for chunk backreferences, not paths to the external
-artifact repo. Each project has `external.yaml` pointers that resolve to the
-actual chunk content.
--->
+Collect all observed divergences between the Cursor and Claude paths:
+
+- **Prompt wording**: Any phase prompt phrasing that Composer interprets
+  differently from Claude (e.g., tool-name references, sandbox reminder
+  wording). If adjustments are needed, decide whether to:
+  - Patch the shared prompt to work for both (preferred).
+  - Add per-backend prompt overrides in `AgentRunner.get_phase_prompt` or
+    `OrchestratorConfig`.
+
+- **Turn budgets**: If `max_turns_implement` or `max_turns_complete` need
+  different values for Composer, add per-backend overrides to
+  `OrchestratorConfig` (e.g., `max_turns_implement_cursor`) or note that
+  the current values work for both.
+
+- **ACP event handling**: Any `session/update`, `session/result`, or
+  `session/request_permission` payloads that differ from what the
+  `CursorBackend` event loop expects. Fix in
+  `src/orchestrator/backends/cursor.py` if so.
+
+Location: divergences are documented in Step 6; code changes (if any) go
+in the files listed above.
+
+### Step 6: Document the Cursor backend in ORCHESTRATOR.md
+
+Add a new section to `docs/trunk/ORCHESTRATOR.md` covering:
+
+1. **Prerequisites** — Installing `cursor-agent` (version requirement,
+   platform notes), verifying it's on `$PATH`.
+2. **Backend selection** — `ve orch config --backend cursor` (and the REST
+   API equivalent).
+3. **ACP integration** — How the orchestrator drives `cursor-agent acp`,
+   the `system/init` → `session/new` → event-loop lifecycle.
+4. **`.cursor/` configuration** — The MCP server for ReviewDecision
+   (`mcp.json`), any `hooks.json` if applicable.
+5. **Known divergences** — Prompt tuning, turn budgets, or behavioral
+   differences operators should be aware of.
+6. **Troubleshooting** — Common failure modes (`CursorAgentNotFoundError`,
+   ACP timeout, permission denied).
+
+### Step 7: Add a backend parity integration test (optional, if warranted)
+
+If the end-to-end runs reveal edge cases not covered by the existing
+`tests/test_orchestrator_cursor_backend.py` unit tests, add targeted tests.
+These should be mock-based (no real `cursor-agent` dependency in CI) and
+exercise the divergent behavior.
+
+Do NOT add a full CI gate comparing Composer vs Claude output — that was
+explicitly rejected in the GOAL.md.
 
 ## Dependencies
 
-<!--
-What must exist before this chunk can be implemented?
-- Other chunks that must be complete
-- External libraries to add
-- Infrastructure or configuration
-
-If there are no dependencies, delete this section.
--->
+- **backend_cursor** (ACTIVE): `CursorBackend` implementation must exist.
+- **backend_config** (ACTIVE): Backend selection via `OrchestratorConfig.backend`
+  and `create_backend()` factory must work.
+- **backend_seam** (ACTIVE): `AgentBackend` protocol and normalized types.
+- **backend_logparse** (ACTIVE): Normalized log events and JSON-line parser.
+- **External**: `cursor-agent` binary (v1.7+) must be installed on the
+  machine running parity tests.
 
 ## Risks and Open Questions
 
-<!--
-What might go wrong? What are you unsure about?
-Being explicit about uncertainty helps you (and agents) know where to
-be careful and when to stop and ask questions.
-
-Example:
-- fsync behavior may differ across filesystems; need to verify on ext4 and APFS
-- Unclear whether concurrent reads during write are safe; may need mutex
-- Performance target is aggressive; may need to iterate on buffer sizes
--->
+- **`cursor-agent` availability**: The parity tests require a real
+  `cursor-agent` binary. If it's not installed on the operator's machine, Steps
+  1–4 cannot be executed and the chunk reduces to documentation-only (Steps 5–6).
+- **ACP protocol stability**: The Cursor ACP protocol is relatively new. If
+  `cursor-agent` ships a breaking change to `session/request_permission` or
+  `session/update` payloads, the `CursorBackend` event loop will need updates.
+  The existing tests mock ACP, so breakage would only surface in real runs.
+- **Prompt sensitivity**: Composer and Claude may parse the same prompt
+  differently. If Composer struggles with specific phase prompts, the fix may
+  require per-backend prompt variants, which adds maintenance burden. Prefer
+  making prompts work for both backends.
+- **Turn budget uncertainty**: The current `max_turns_implement=100` and
+  `max_turns_complete=20` were tuned for Claude. Composer may need different
+  values. If so, the question is whether to add per-backend config fields or
+  just adjust the shared defaults.
 
 ## Deviations
 
+- **Steps 1–4 skipped**: `cursor-agent` is not installed on the machine. Per
+  the risk section, the chunk reduces to documentation + code analysis (Steps
+  5–7). End-to-end parity validation requires a real `cursor-agent` binary and
+  must be done manually by the operator.
+
+- **Step 5 (divergence analysis) done via code review, not live runs**: All
+  divergences documented in ORCHESTRATOR.md were identified by comparing
+  `ClaudeBackend` and `CursorBackend` source code side-by-side. The most
+  significant finding is that ACP does not support a `maxTurns` parameter,
+  so the Cursor backend has no turn budget enforcement.
+
+- **Step 7 (tests) expanded**: The parity analysis revealed a real bug — if
+  `cursor-agent` exits between `session/new` and the event loop, no error was
+  reported. Fixed by adding a pre-loop `is_alive` check in
+  `CursorBackend.run()`. Six edge-case tests added covering: MCP cleanup on
+  error, permission requests without `id`, notification timeout, first-only
+  ReviewDecision capture, MCP-not-written for non-review phases, and early
+  process exit.
+
 <!--
-POPULATE DURING IMPLEMENTATION, not at planning time.
-
-When reality diverges from the plan, document it here:
-- What changed?
-- Why?
-- What was the impact?
-
-Minor deviations (renamed a function, used a different helper) don't need
-documentation. Significant deviations (changed the approach, skipped a step,
-added steps) do.
 
 Example:
 - Step 4: Originally planned to use std::fs::rename for atomic swap.

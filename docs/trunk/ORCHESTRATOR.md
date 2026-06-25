@@ -236,6 +236,122 @@ ve orch inject my_chunk
 
 **Important:** For new chunks, always wait for operator approval before committing. For existing chunks the operator is explicitly requesting execution, so proceed directly.
 
+## Cursor Backend
+
+<!-- Chunk: docs/chunks/backend_parity - Cursor backend setup and documentation -->
+
+The orchestrator supports running chunk phases on Cursor's Composer via the
+`cursor-agent` ACP (Agent Client Protocol) binary. This section covers setup,
+configuration, and known behavioral differences.
+
+### Prerequisites
+
+1. **Install `cursor-agent`** (v1.7+). The binary ships with the Cursor CLI.
+   After installing Cursor, ensure `cursor-agent` is on your `$PATH`:
+
+   ```bash
+   cursor-agent --version
+   # Expected: cursor-agent 1.7.x or later
+   ```
+
+   Platform notes:
+   - macOS: Cursor installs the CLI via the command palette ("Install 'cursor' command")
+   - Linux: The AppImage bundles `cursor-agent`; extract or symlink it to `$PATH`
+   - If `cursor-agent` is missing, the orchestrator raises
+     `CursorAgentNotFoundError` with installation instructions
+
+2. **No project-level cursor config is required ahead of time.** The backend
+   manages `.cursor/mcp.json` (for the ReviewDecision tool during REVIEW phases)
+   automatically — it writes the config before the phase and removes it after.
+
+### Backend Selection
+
+Select the Cursor backend via the orchestrator config:
+
+```bash
+# CLI
+ve orch config --backend cursor
+
+# To switch back to Claude (default)
+ve orch config --backend claude
+```
+
+The `backend` field in `OrchestratorConfig` is resolved by `create_backend()`
+in `src/orchestrator/backends/__init__.py`. Valid values are the keys of
+`BACKEND_REGISTRY`: currently `"claude"` (default) and `"cursor"`.
+
+### ACP Integration
+
+The `CursorBackend` drives `cursor-agent acp` as a subprocess, speaking
+JSON-RPC 2.0 over stdin/stdout. The lifecycle for each phase:
+
+1. **`system/init`** — Handshake with `cursor-agent`. Establishes protocol
+   version and client identity (`vibe-engineer-orchestrator`).
+2. **`session/new`** (or `session/load` for resume) — Starts a Composer session
+   in the chunk's worktree with `permissions: "auto-allow"` and `model: "composer"`.
+3. **Event loop** — Processes notifications until `session/result`:
+   - `session/update` — Text, tool calls, and tool results are normalized into
+     `LogEvent` types (`TextEvent`, `ToolCallEvent`, `ToolResultEvent`).
+   - `session/request_permission` — Sandbox enforcement. The backend runs the
+     same `is_sandbox_violation()` check as Claude and replies with
+     `allow`/`deny`.
+   - `cursor/ask_question` — Question forwarding. The session suspends and the
+     question is routed to the orchestrator attention queue.
+   - `session/result` — Phase complete. `isError` determines success/failure.
+4. **Cleanup** — The transport is closed and any `.cursor/mcp.json` written for
+   the REVIEW phase is removed.
+
+### `.cursor/` Configuration
+
+During the **REVIEW** phase, the backend writes two files into the worktree's
+`.cursor/` directory:
+
+- **`mcp.json`** — Declares a stdio MCP server (`orchestrator`) that exposes
+  the `ReviewDecision` tool. This lets Composer call `ReviewDecision` (or
+  `mcp__orchestrator__ReviewDecision`) to submit its review verdict.
+- **`_review_mcp_server.py`** — The MCP server implementation (inline Python).
+  Handles `initialize`, `tools/list`, and `tools/call` for `ReviewDecision`.
+
+Both files are removed after the phase completes (including on error). If the
+`.cursor/` directory is empty after cleanup, it is also removed.
+
+No `hooks.json` is currently written — sandbox enforcement happens via ACP
+`session/request_permission` responses rather than Cursor's hook system.
+
+### Known Divergences from Claude
+
+The following behavioral differences exist between the Claude and Cursor
+backends:
+
+| Area | Claude | Cursor |
+|------|--------|--------|
+| **Turn budget** | Passed via `ClaudeAgentOptions.max_turns` | Not passed to `session/new` — ACP does not currently expose a turn limit parameter. Composer runs until completion or the 300s notification timeout. |
+| **Permission mode** | `bypassPermissions` (trusts orchestrator hooks) | `"permissions": "auto-allow"` in `session/new` params |
+| **ReviewDecision tool** | In-process MCP server via Claude Agent SDK | File-based `.cursor/mcp.json` + Python script |
+| **Question capture** | Parsed from `AssistantMessage` content blocks (`AskUserQuestion` tool call) | Received as `cursor/ask_question` ACP notification |
+| **Sandbox enforcement** | `PreToolUse` hook returning `block`/`allow` | ACP `session/request_permission` with `deny`/`allow` reply |
+| **Session resume** | `options.resume = session_id` | `session/load` ACP request |
+| **Log events** | Translated from SDK `AssistantMessage`/`ResultMessage` objects | Translated from ACP `session/update`/`session/result` JSON |
+
+**Turn budget is the most significant divergence.** The Cursor ACP protocol
+does not currently accept a `maxTurns` parameter in `session/new`. In practice,
+Composer sessions are bounded by the 300-second notification timeout in the
+event loop. If Composer requires tighter turn control, this would need an
+upstream ACP protocol addition or a client-side turn counter that sends
+`session/cancel` after N tool calls.
+
+### Troubleshooting
+
+| Symptom | Cause | Fix |
+|---------|-------|-----|
+| `CursorAgentNotFoundError` | `cursor-agent` not on `$PATH` | Install Cursor CLI v1.7+, ensure `cursor-agent` is accessible |
+| ACP timeout (300s) | Agent hung or slow phase | Check `cursor-agent` stderr logs; consider splitting the chunk into smaller work |
+| `session/result` with `isError: true` | Composer hit an error | Read `errorMessage` in the result; common causes: invalid prompt, model refusal |
+| `cursor/ask_question` not forwarded | `on_question` callback not wired | Ensure the phase is run with `question_callback` set (orchestrator does this automatically) |
+| ReviewDecision not captured | Tool name mismatch | Backend matches both `ReviewDecision` and `mcp__orchestrator__ReviewDecision`; check Composer is using one of these names |
+| `.cursor/mcp.json` left behind | Backend crashed before cleanup | Manually delete `.cursor/mcp.json` and `.cursor/_review_mcp_server.py` from the worktree |
+| Permission denied on reply | ACP notification missing `id` | The sandbox reply requires the notification's `id` field; if absent, the deny/allow cannot be sent (logged as debug) |
+
 ## Proactive Orchestrator Support
 
 When working interactively with the operator:

@@ -1,17 +1,24 @@
 ---
-status: FUTURE
+status: IMPLEMENTING
 ticket: null
 parent_chunk: null
-code_paths: []
+code_paths:
+- docs/trunk/ORCHESTRATOR.md
+- src/orchestrator/backends/cursor.py
+- src/orchestrator/agent.py
+- src/orchestrator/models.py
+- tests/test_orchestrator_cursor_backend.py
 code_references: []
 narrative: pluggable_backends
 investigation: null
 subsystems: []
 friction_entries: []
-depends_on: ["backend_cursor", "backend_config"]
-created_after: ["backend_seam"]
+depends_on:
+- backend_cursor
+- backend_config
+created_after:
+- backend_seam
 ---
-
 <!--
 ╔══════════════════════════════════════════════════════════════════════════════╗
 ║  DO NOT DELETE THIS COMMENT BLOCK until the chunk complete command is run.   ║
