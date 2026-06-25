@@ -1,179 +1,123 @@
 
 
-<!--
-This document captures HOW you'll achieve the chunk's GOAL.
-It should be specific enough that each step is a reasonable unit of work
-to hand to an agent.
--->
-
 # Implementation Plan
 
 ## Approach
 
-<!--
-How will you build this? Describe the strategy at a high level.
-What patterns or techniques will you use?
-What existing code will you build on?
+Add a `backend` field to `OrchestratorConfig` (Pydantic model, DEC-008) with a
+string value defaulting to `"claude"`. Introduce a backend factory function in
+`src/orchestrator/backends/__init__.py` that maps the config value to a concrete
+`AgentBackend` instance. Wire the factory into `create_scheduler` so the
+`AgentRunner` receives its backend from config rather than always defaulting to
+`ClaudeBackend`. Surface the setting through the existing `ve orch config` CLI
+command and REST API endpoints (GET/PATCH `/config`), following the same
+per-field pattern used by `max_turns_implement`, `max_turns_complete`, etc.
 
-Reference docs/trunk/DECISIONS.md entries where relevant.
-If this approach represents a new significant decision, ask the user
-if we should add it to DECISIONS.md and reference it here.
+The config-persistence layer is the `StateStore` key-value store already used by
+`_load_config` in `daemon.py` and the API endpoints in
+`api/scheduling.py`. The `backend` value is stored as a string and loaded the
+same way every other config field is.
 
-Always include tests in your implementation plan and adhere to
-docs/trunk/TESTING_PHILOSOPHY.md in your planning.
-
-Remember to update code_paths in the chunk's GOAL.md (e.g., docs/chunks/backend_config/GOAL.md)
-with references to the files that you expect to touch.
--->
-
-## Subsystem Considerations
-
-<!--
-Before designing your implementation, check docs/subsystems/ for relevant
-cross-cutting patterns.
-
-QUESTIONS TO CONSIDER:
-- Does this chunk touch any existing subsystem's scope?
-- Will this chunk implement part of a subsystem (contribute code) or use it
-  (depend on it)?
-- Did you discover code during exploration that should be part of a subsystem
-  but doesn't follow its patterns?
-
-If no subsystems are relevant, delete this section.
-
-WHEN SUBSYSTEMS ARE RELEVANT:
-List each relevant subsystem with its status and your relationship:
-- **docs/subsystems/validation** (DOCUMENTED): This chunk USES the validation
-  subsystem to check input
-- **docs/subsystems/error_handling** (REFACTORING): This chunk IMPLEMENTS a
-  new error type following the subsystem's patterns
-
-HOW SUBSYSTEM STATUS AFFECTS YOUR WORK:
-
-DOCUMENTED subsystems: The subsystem's patterns are captured but deviations are not
-being actively fixed. If you discover code that deviates from the subsystem's
-patterns, add it to the subsystem's Known Deviations section. Do NOT prioritize
-fixing those deviations—your chunk has its own goals.
-
-REFACTORING subsystems: The subsystem is being actively consolidated. If your chunk
-work touches code that deviates from the subsystem's patterns, attempt to bring it
-into compliance as part of your work. This is "opportunistic improvement"—improve
-what you touch, but don't expand scope to fix unrelated deviations.
-
-WHEN YOU DISCOVER DEVIATING CODE:
-- Add it to the subsystem's Known Deviations section
-- Note whether you will address it (REFACTORING status + relevant to your work)
-  or leave it for future work (DOCUMENTED status or outside your chunk's scope)
-
-Example:
-- **Discovered deviation**: src/legacy/parser.py#validate_input does its own
-  validation instead of using the validation subsystem
-  - Added to docs/subsystems/validation Known Deviations
-  - Action: Will not address (subsystem is DOCUMENTED; deviation outside chunk scope)
--->
+Tests follow the testing philosophy: TDD for the factory's error path (unknown
+backend → clear error), and a behavioral test proving `create_scheduler` passes
+the factory-resolved backend into `AgentRunner`. No trivial tests for Pydantic
+field storage.
 
 ## Sequence
 
-<!--
-Ordered steps to implement this chunk. Each step should be:
-- Small enough to reason about in isolation
-- Large enough to be meaningful
-- Clear about its inputs and outputs
+### Step 1: Add `backend` field to `OrchestratorConfig`
 
-This sequence is your contract with yourself (and with agents).
-Work through it in order. Don't skip ahead.
+Add a `backend: str = "claude"` field to `OrchestratorConfig` in
+`src/orchestrator/models.py`. Include it in `model_dump_json_serializable`.
 
-Example:
+Location: `src/orchestrator/models.py`
 
-### Step 1: Define the SegmentHeader struct
+### Step 2: Write failing tests for the backend factory
 
-Create the struct that represents a segment's header with fields for:
-- magic number (4 bytes)
-- version (2 bytes)
-- segment_id (8 bytes)
-- message_count (4 bytes)
-- checksum (4 bytes)
+Before implementing the factory, write tests in a new
+`tests/test_orchestrator_backend_factory.py`:
 
-Location: src/segment/format.rs
+1. `test_create_backend_returns_claude_for_default` — factory called with
+   `"claude"` returns a `ClaudeBackend` instance.
+2. `test_create_backend_raises_on_unknown` — factory called with
+   `"nonexistent"` raises a clear `ValueError` naming the bad value and listing
+   available backends.
+3. `test_create_scheduler_uses_config_backend` — `create_scheduler` with a
+   config whose `backend="claude"` produces a scheduler whose
+   `agent_runner.backend` is a `ClaudeBackend`.
 
-### Step 2: Implement header serialization
+Location: `tests/test_orchestrator_backend_factory.py`
 
-Add `to_bytes()` and `from_bytes()` methods to SegmentHeader.
-Use little-endian encoding per SPEC.md Section 3.1.
+### Step 3: Implement the backend factory
 
-### Step 3: ...
+Add `create_backend(name: str) -> AgentBackend` to
+`src/orchestrator/backends/__init__.py`. The registry is a plain dict mapping
+`"claude"` → `ClaudeBackend`. Unknown keys raise `ValueError` with the
+requested name and the sorted list of known backends for a clear fail-fast
+message.
 
----
+Location: `src/orchestrator/backends/__init__.py`
 
-**BACKREFERENCE COMMENTS**
+### Step 4: Wire the factory into `create_scheduler`
 
-When implementing code, add backreference comments to help future agents trace
-code back to its governing documentation.
+In `src/orchestrator/scheduler.py`, change `create_scheduler` to call
+`create_backend(config.backend)` and pass the result to `AgentRunner`. This
+replaces the current implicit `ClaudeBackend()` default inside `AgentRunner`
+with an explicit factory-resolved instance.
 
-**Valid backreference types:**
-- `# Subsystem: docs/subsystems/<name>` - For architectural patterns
-- `# Chunk: docs/chunks/<name>` - For implementation work
+Location: `src/orchestrator/scheduler.py`
 
-Place comments at the appropriate level:
-- **Module-level**: If this code implements the subsystem/chunk's core functionality
-- **Class-level**: If this class is part of the pattern
-- **Method-level**: If this method implements a specific behavior
+### Step 5: Persist and load `backend` in daemon config
 
-Format (place immediately before the symbol):
-```
-# Subsystem: docs/subsystems/workflow_artifacts - Workflow artifact manager pattern
-# Chunk: docs/chunks/auth_refactor - Authentication system redesign
-```
+In `src/orchestrator/daemon.py::_load_config`, read the `"backend"` key from
+the store and set `config.backend` if present (string, no type coercion
+needed). This parallels the existing `max_agents`, `max_turns_*` loading
+pattern.
 
-Do NOT add narrative backreferences. Narratives decompose into chunks; reference
-the implementing chunk instead.
+Location: `src/orchestrator/daemon.py`
 
-**Task context note**: In multi-project tasks, always use local paths (e.g.,
-`docs/chunks/chunk_name`) for chunk backreferences, not paths to the external
-artifact repo. Each project has `external.yaml` pointers that resolve to the
-actual chunk content.
--->
+### Step 6: Add `backend` to the REST API config endpoints
+
+In `src/orchestrator/api/scheduling.py`:
+
+- `get_config_endpoint`: load `"backend"` from the store and set it on the
+  config before returning.
+- `update_config_endpoint`: accept `"backend"` in the PATCH body, validate that
+  it is a known backend (reuse the factory's registry or call `create_backend`
+  to fail-fast), and persist it.
+
+Location: `src/orchestrator/api/scheduling.py`
+
+### Step 7: Add `--backend` CLI option to `ve orch config`
+
+Add a `--backend` option (type `str`) to the `orch_config` command in
+`src/cli/orch.py`. On set, include it in the PATCH body. On get, display it
+alongside the other fields.
+
+Location: `src/cli/orch.py`
+
+### Step 8: Run existing tests and verify green
+
+Run the full orchestrator test suite (`uv run pytest tests/test_orchestrator_*.py`)
+to confirm no regressions. The default `backend="claude"` means all existing
+paths produce identical behavior.
 
 ## Dependencies
 
-<!--
-What must exist before this chunk can be implemented?
-- Other chunks that must be complete
-- External libraries to add
-- Infrastructure or configuration
-
-If there are no dependencies, delete this section.
--->
+- **backend_seam** (ACTIVE) — provides `AgentBackend` protocol, `ClaudeBackend`,
+  and the `AgentRunner(backend=...)` injection point this chunk builds on.
 
 ## Risks and Open Questions
 
-<!--
-What might go wrong? What are you unsure about?
-Being explicit about uncertainty helps you (and agents) know where to
-be careful and when to stop and ask questions.
-
-Example:
-- fsync behavior may differ across filesystems; need to verify on ext4 and APFS
-- Unclear whether concurrent reads during write are safe; may need mutex
-- Performance target is aggressive; may need to iterate on buffer sizes
--->
+- **Validation at config-set time vs. use time**: The plan validates the
+  backend name at PATCH time (fail-fast on write). If a backend value is
+  written directly to the store outside the API, it will fail at daemon start
+  when `create_scheduler` calls the factory. This is acceptable — the factory
+  error message is clear.
+- **No `ve settings` command exists**: The GOAL.md mentions `ve settings`;
+  there is no such command. The existing `ve orch config` is the config
+  surface. This plan uses `ve orch config` exclusively.
 
 ## Deviations
 
-<!--
-POPULATE DURING IMPLEMENTATION, not at planning time.
-
-When reality diverges from the plan, document it here:
-- What changed?
-- Why?
-- What was the impact?
-
-Minor deviations (renamed a function, used a different helper) don't need
-documentation. Significant deviations (changed the approach, skipped a step,
-added steps) do.
-
-Example:
-- Step 4: Originally planned to use std::fs::rename for atomic swap.
-  Testing revealed this isn't atomic across filesystems. Changed to
-  write-fsync-rename-fsync sequence per platform best practices.
--->
+<!-- Populated during implementation. -->

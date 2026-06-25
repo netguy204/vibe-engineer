@@ -344,6 +344,11 @@ async def get_config_endpoint(request: Request) -> JSONResponse:
         except ValueError:
             pass
 
+    # Chunk: docs/chunks/backend_config - Read backend from config
+    backend_str = store.get_config("backend")
+    if backend_str:
+        config.backend = backend_str
+
     return JSONResponse(config.model_dump_json_serializable())
 
 
@@ -391,6 +396,19 @@ async def update_config_endpoint(request: Request) -> JSONResponse:
             return error_response("max_turns_complete must be a positive integer")
         store.set_config("max_turns_complete", str(max_turns_complete))
 
+    # Chunk: docs/chunks/backend_config - Update backend if provided
+    if "backend" in body:
+        backend_value = body["backend"]
+        if not isinstance(backend_value, str) or not backend_value.strip():
+            return error_response("backend must be a non-empty string")
+        # Validate that the backend is known (fail-fast on write)
+        from orchestrator.backends import create_backend
+        try:
+            create_backend(backend_value)
+        except ValueError as e:
+            return error_response(str(e))
+        store.set_config("backend", backend_value)
+
     # Return updated config
     config = OrchestratorConfig()
 
@@ -430,5 +448,10 @@ async def update_config_endpoint(request: Request) -> JSONResponse:
             config.max_turns_complete = int(max_turns_complete_str)
         except ValueError:
             pass
+
+    # Chunk: docs/chunks/backend_config - Read backend from config
+    backend_str = store.get_config("backend")
+    if backend_str:
+        config.backend = backend_str
 
     return JSONResponse(config.model_dump_json_serializable())
