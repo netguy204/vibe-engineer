@@ -1,23 +1,32 @@
 # Subsystem: docs/subsystems/orchestrator - Parallel agent orchestration
 # Chunk: docs/chunks/backend_seam - Unit tests for the AgentBackend seam
+# Chunk: docs/chunks/backend_logparse - Tests for _emit_log_events and LogEvent types
 """Tests for the backend-agnostic AgentBackend seam.
 
-These cover the contract types and that AgentRunner delegates to an injected
-backend (proving the seam is real and swappable), independent of any SDK.
+These cover the contract types, that AgentRunner delegates to an injected
+backend (proving the seam is real and swappable), and that _emit_log_events
+correctly translates SDK message shapes into normalized LogEvents.
 """
 
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
 from orchestrator.agent import AgentRunner
 from orchestrator.backend import (
     AgentBackend,
+    LogEvent,
+    ResultEvent,
     SessionRequest,
+    TextEvent,
+    ToolCallEvent,
     ToolDecision,
+    ToolResultEvent,
     ToolUse,
     is_sandbox_violation,
 )
+from orchestrator.backends.claude import _emit_log_events
 from orchestrator.models import AgentResult, WorkUnitPhase
 
 
@@ -154,3 +163,111 @@ def test_is_sandbox_violation_allows_safe_command():
     violation, reason = is_sandbox_violation("git status && ls docs/", host, worktree)
     assert violation is False
     assert reason is None
+
+
+# ---------------------------------------------------------------------------
+# _emit_log_events tests
+# ---------------------------------------------------------------------------
+# We use SimpleNamespace to simulate SDK message objects without importing
+# the Claude Agent SDK (keeping these tests SDK-free).
+
+
+class TestEmitLogEvents:
+    """Tests for _emit_log_events translation of SDK messages to LogEvents."""
+
+    def _collect(self, message) -> list[LogEvent]:
+        """Helper: run _emit_log_events and collect emitted events."""
+        events: list[LogEvent] = []
+        _emit_log_events(message, events.append)
+        return events
+
+    def test_text_block_emits_text_event(self):
+        """AssistantMessage with a TextBlock emits a TextEvent."""
+        from claude_agent_sdk.types import AssistantMessage
+
+        text_block = SimpleNamespace(text="Hello world")
+        msg = AssistantMessage(content=[text_block], model="test")
+
+        events = self._collect(msg)
+        assert len(events) == 1
+        assert isinstance(events[0], TextEvent)
+        assert events[0].text == "Hello world"
+
+    def test_tool_use_block_emits_tool_call_event(self):
+        """AssistantMessage with a ToolUseBlock emits a ToolCallEvent."""
+        from claude_agent_sdk.types import AssistantMessage
+
+        tool_block = SimpleNamespace(
+            id="t1", name="Bash", input={"command": "ls", "description": "List files"}
+        )
+        msg = AssistantMessage(content=[tool_block], model="test")
+
+        events = self._collect(msg)
+        assert len(events) == 1
+        assert isinstance(events[0], ToolCallEvent)
+        assert events[0].tool_id == "t1"
+        assert events[0].name == "Bash"
+        assert events[0].input == {"command": "ls", "description": "List files"}
+        assert events[0].description == "List files"
+
+    def test_tool_result_block_emits_tool_result_event(self):
+        """UserMessage with a ToolResultBlock emits a ToolResultEvent."""
+        result_block = SimpleNamespace(
+            tool_use_id="t1", content="file1.txt", is_error=False
+        )
+        msg = SimpleNamespace(content=[result_block])
+
+        events = self._collect(msg)
+        assert len(events) == 1
+        assert isinstance(events[0], ToolResultEvent)
+        assert events[0].tool_use_id == "t1"
+        assert events[0].content == "file1.txt"
+        assert events[0].is_error is False
+
+    def test_result_message_emits_result_event(self):
+        """ResultMessage emits a ResultEvent."""
+        from claude_agent_sdk.types import ResultMessage
+
+        msg = ResultMessage(
+            subtype="success",
+            duration_ms=12345,
+            duration_api_ms=10000,
+            total_cost_usd=0.75,
+            num_turns=10,
+            is_error=False,
+            session_id="sess-1",
+            stop_reason="end_turn",
+            usage={},
+            result="All done",
+        )
+
+        events = self._collect(msg)
+        assert len(events) == 1
+        assert isinstance(events[0], ResultEvent)
+        assert events[0].subtype == "success"
+        assert events[0].duration_ms == 12345
+        assert events[0].total_cost_usd == 0.75
+        assert events[0].num_turns == 10
+        assert events[0].is_error is False
+        assert events[0].session_id == "sess-1"
+        assert events[0].result_text == "All done"
+
+    def test_dict_message_emits_nothing(self):
+        """Dict messages (e.g. init) are silently skipped."""
+        events = self._collect({"type": "init", "session_id": "abc"})
+        assert events == []
+
+    def test_mixed_content_emits_multiple_events(self):
+        """AssistantMessage with text + tool blocks emits multiple events."""
+        from claude_agent_sdk.types import AssistantMessage
+
+        text_block = SimpleNamespace(text="Thinking...")
+        tool_block = SimpleNamespace(
+            id="t2", name="Read", input={"file_path": "/tmp/foo.py"}
+        )
+        msg = AssistantMessage(content=[text_block, tool_block], model="test")
+
+        events = self._collect(msg)
+        assert len(events) == 2
+        assert isinstance(events[0], TextEvent)
+        assert isinstance(events[1], ToolCallEvent)

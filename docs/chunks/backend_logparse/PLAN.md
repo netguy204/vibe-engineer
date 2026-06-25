@@ -1,179 +1,247 @@
 
-
-<!--
-This document captures HOW you'll achieve the chunk's GOAL.
-It should be specific enough that each step is a reasonable unit of work
-to hand to an agent.
--->
-
 # Implementation Plan
 
 ## Approach
 
-<!--
-How will you build this? Describe the strategy at a high level.
-What patterns or techniques will you use?
-What existing code will you build on?
+The current pipeline works like this:
 
-Reference docs/trunk/DECISIONS.md entries where relevant.
-If this approach represents a new significant decision, ask the user
-if we should add it to DECISIONS.md and reference it here.
+1. `ClaudeBackend` streams raw SDK message objects (e.g. `AssistantMessage`,
+   `ResultMessage`) and passes them to `request.on_log(message)`.
+2. `create_log_callback` in `agent.py` calls `str(message)` and writes
+   `[timestamp] repr-string` lines to disk.
+3. `log_parser.py` regex-parses those repr strings back into structured data
+   (`TextBlock`, `ToolUseBlock`, `ToolResultBlock`, `ResultMessage` patterns).
+4. Consumers (`log_streaming.py`, `api/streaming.py`) call the parser and
+   formatter to display activity summaries.
 
-Always include tests in your implementation plan and adhere to
-docs/trunk/TESTING_PHILOSOPHY.md in your planning.
+The fragility is in steps 2–3: round-tripping through `str()` and regex creates
+a tight coupling to the Claude SDK's `__repr__` format. Any repr change in a
+SDK release breaks parsing silently.
 
-Remember to update code_paths in the chunk's GOAL.md (e.g., docs/chunks/backend_logparse/GOAL.md)
-with references to the files that you expect to touch.
--->
+This chunk replaces steps 2–3 with a normalized event layer:
+
+- **Define normalized log event dataclasses** in `backend.py` alongside the
+  existing seam types (`LogEvent` with variants: `TextEvent`, `ToolCallEvent`,
+  `ToolResultEvent`, `ResultEvent`). These are backend-agnostic — any backend
+  can emit them.
+- **Have `ClaudeBackend` translate** SDK messages into `LogEvent`s before
+  calling `on_log`. The `on_log` callback signature narrows from
+  `Callable[[Any], None]` to `Callable[[LogEvent], None]`.
+- **Rewrite `create_log_callback`** to serialize `LogEvent`s as JSON lines
+  (one JSON object per line) instead of `str(message)`.
+- **Rewrite `log_parser.py`** to deserialize JSON lines into `LogEvent`s
+  (trivial `json.loads` + dataclass construction), removing all regex patterns.
+- **Keep the display/formatting layer unchanged** — `format_entry`,
+  `format_tool_call`, etc. continue to work; they just receive their input from
+  JSON deserialization instead of regex extraction.
+
+This approach follows the `backend_seam` chunk's design: the seam owns the
+normalized types, each backend translates its native events into them, and
+downstream consumers never touch vendor-specific shapes.
+
+Tests are written TDD-style per `docs/trunk/TESTING_PHILOSOPHY.md`: new tests
+for the normalized event types and JSON round-trip come first, then the
+implementation makes them pass. Existing formatting tests are updated to
+construct `ParsedLogEntry` from `LogEvent`s rather than from regex-parsed
+repr strings.
 
 ## Subsystem Considerations
 
-<!--
-Before designing your implementation, check docs/subsystems/ for relevant
-cross-cutting patterns.
-
-QUESTIONS TO CONSIDER:
-- Does this chunk touch any existing subsystem's scope?
-- Will this chunk implement part of a subsystem (contribute code) or use it
-  (depend on it)?
-- Did you discover code during exploration that should be part of a subsystem
-  but doesn't follow its patterns?
-
-If no subsystems are relevant, delete this section.
-
-WHEN SUBSYSTEMS ARE RELEVANT:
-List each relevant subsystem with its status and your relationship:
-- **docs/subsystems/validation** (DOCUMENTED): This chunk USES the validation
-  subsystem to check input
-- **docs/subsystems/error_handling** (REFACTORING): This chunk IMPLEMENTS a
-  new error type following the subsystem's patterns
-
-HOW SUBSYSTEM STATUS AFFECTS YOUR WORK:
-
-DOCUMENTED subsystems: The subsystem's patterns are captured but deviations are not
-being actively fixed. If you discover code that deviates from the subsystem's
-patterns, add it to the subsystem's Known Deviations section. Do NOT prioritize
-fixing those deviations—your chunk has its own goals.
-
-REFACTORING subsystems: The subsystem is being actively consolidated. If your chunk
-work touches code that deviates from the subsystem's patterns, attempt to bring it
-into compliance as part of your work. This is "opportunistic improvement"—improve
-what you touch, but don't expand scope to fix unrelated deviations.
-
-WHEN YOU DISCOVER DEVIATING CODE:
-- Add it to the subsystem's Known Deviations section
-- Note whether you will address it (REFACTORING status + relevant to your work)
-  or leave it for future work (DOCUMENTED status or outside your chunk's scope)
-
-Example:
-- **Discovered deviation**: src/legacy/parser.py#validate_input does its own
-  validation instead of using the validation subsystem
-  - Added to docs/subsystems/validation Known Deviations
-  - Action: Will not address (subsystem is DOCUMENTED; deviation outside chunk scope)
--->
+- **docs/subsystems/orchestrator**: This chunk USES the orchestrator subsystem.
+  The log parser is part of the orchestrator's observability surface. The change
+  is internal to the log pipeline and doesn't alter orchestrator scheduling,
+  state machine, or worktree management.
 
 ## Sequence
 
-<!--
-Ordered steps to implement this chunk. Each step should be:
-- Small enough to reason about in isolation
-- Large enough to be meaningful
-- Clear about its inputs and outputs
+### Step 1: Define normalized LogEvent types
 
-This sequence is your contract with yourself (and with agents).
-Work through it in order. Don't skip ahead.
+Add dataclasses to `src/orchestrator/backend.py` (co-located with the seam
+types they extend):
 
-Example:
+```python
+@dataclass
+class TextEvent:
+    text: str
 
-### Step 1: Define the SegmentHeader struct
+@dataclass
+class ToolCallEvent:
+    tool_id: str
+    name: str
+    input: dict
+    description: Optional[str] = None
 
-Create the struct that represents a segment's header with fields for:
-- magic number (4 bytes)
-- version (2 bytes)
-- segment_id (8 bytes)
-- message_count (4 bytes)
-- checksum (4 bytes)
+@dataclass
+class ToolResultEvent:
+    tool_use_id: str
+    content: str
+    is_error: bool
 
-Location: src/segment/format.rs
+@dataclass
+class ResultEvent:
+    subtype: str          # "success" | "error"
+    duration_ms: int
+    total_cost_usd: float
+    num_turns: int
+    is_error: bool
+    session_id: Optional[str] = None
+    result_text: Optional[str] = None
 
-### Step 2: Implement header serialization
-
-Add `to_bytes()` and `from_bytes()` methods to SegmentHeader.
-Use little-endian encoding per SPEC.md Section 3.1.
-
-### Step 3: ...
-
----
-
-**BACKREFERENCE COMMENTS**
-
-When implementing code, add backreference comments to help future agents trace
-code back to its governing documentation.
-
-**Valid backreference types:**
-- `# Subsystem: docs/subsystems/<name>` - For architectural patterns
-- `# Chunk: docs/chunks/<name>` - For implementation work
-
-Place comments at the appropriate level:
-- **Module-level**: If this code implements the subsystem/chunk's core functionality
-- **Class-level**: If this class is part of the pattern
-- **Method-level**: If this method implements a specific behavior
-
-Format (place immediately before the symbol):
-```
-# Subsystem: docs/subsystems/workflow_artifacts - Workflow artifact manager pattern
-# Chunk: docs/chunks/auth_refactor - Authentication system redesign
+LogEvent = TextEvent | ToolCallEvent | ToolResultEvent | ResultEvent
 ```
 
-Do NOT add narrative backreferences. Narratives decompose into chunks; reference
-the implementing chunk instead.
+Narrow the `on_log` callback type on `SessionRequest` from
+`Optional[Callable[[Any], None]]` to `Optional[Callable[["LogEvent"], None]]`.
 
-**Task context note**: In multi-project tasks, always use local paths (e.g.,
-`docs/chunks/chunk_name`) for chunk backreferences, not paths to the external
-artifact repo. Each project has `external.yaml` pointers that resolve to the
-actual chunk content.
--->
+Location: `src/orchestrator/backend.py`
+
+### Step 2: Translate SDK messages to LogEvents in ClaudeBackend
+
+In `src/orchestrator/backends/claude.py`, replace the raw
+`request.on_log(message)` call with a translation step. For each SDK message
+in the response stream:
+
+- `AssistantMessage` with `TextBlock` content → emit one `TextEvent` per block
+- `AssistantMessage` with `ToolUseBlock` content → emit one `ToolCallEvent`
+  per block (extract `id`, `name`, `input`, and the `description` field from
+  input if present)
+- `UserMessage` with `ToolResultBlock` content → emit one `ToolResultEvent`
+  per block
+- `ResultMessage` → emit one `ResultEvent` (extract `subtype`, `duration_ms`,
+  `total_cost_usd`, `num_turns`, `is_error`, `session_id`, `result`)
+- Other message types (dicts, init messages) → skip (no log event emitted;
+  these were already invisible in the formatted display)
+
+Extract a private `_emit_log_events(message, on_log)` helper to keep the
+main `run()` method readable.
+
+Location: `src/orchestrator/backends/claude.py`
+
+### Step 3: Rewrite create_log_callback to serialize LogEvents as JSON lines
+
+Change `create_log_callback` in `src/orchestrator/agent.py` to:
+
+1. Accept `LogEvent` instead of `Any`.
+2. Serialize each event as a JSON object with fields:
+   - `timestamp` (ISO 8601)
+   - `type` (the event class name: `"text"`, `"tool_call"`, `"tool_result"`,
+     `"result"`)
+   - The event's own fields (spread into the JSON object)
+3. Write one JSON line per event to the log file.
+
+Example log line:
+```json
+{"timestamp":"2026-01-31T19:31:07.670490+00:00","type":"text","text":"Now I understand the task."}
+```
+
+Location: `src/orchestrator/agent.py`
+
+### Step 4: Rewrite log_parser.py to deserialize JSON lines
+
+Replace the regex-based parsing with JSON deserialization:
+
+- `parse_log_line(line)` → `json.loads(line)`, then construct a
+  `ParsedLogEntry` from the JSON fields. Map `type` to `message_type`
+  (e.g. `"text"` → `"AssistantMessage"`, `"tool_call"` → `"AssistantMessage"`,
+  `"tool_result"` → `"UserMessage"`, `"result"` → `"ResultMessage"`).
+  Populate `content` with the same dict/dataclass shapes the formatters
+  already expect (`TextContent`, `ToolCall`, `ToolResult`, `ResultInfo`).
+- Remove all regex constants: `TEXT_BLOCK_PATTERN`, `TOOL_USE_PATTERN`,
+  `TOOL_RESULT_PATTERN`, `RESULT_MESSAGE_PATTERN`, `MESSAGE_TYPE_PATTERN`.
+- Remove `_parse_assistant_message`, `_parse_user_message`,
+  `_parse_result_message`, `_unescape_string`, and
+  `_extract_description_from_input`.
+- `parse_log_file` stays but now reads JSON lines.
+
+The formatting functions (`format_tool_call`, `format_entry`, etc.) remain
+unchanged — they operate on `ParsedLogEntry` with `content` dicts that have
+`text_blocks`, `tool_calls`, `tool_results` keys, and `ResultInfo` instances.
+The only difference is how `ParsedLogEntry.content` gets populated (JSON
+deserialization instead of regex extraction).
+
+Retain `ParsedLogEntry.raw_line` for debugging (set to the raw JSON string).
+
+Location: `src/orchestrator/log_parser.py`
+
+### Step 5: Update tests for the new JSON-based pipeline
+
+In `tests/test_orchestrator_log_parser.py`:
+
+- Remove tests that feed Claude SDK repr strings to `parse_log_line` (the
+  `TestParseLogLine` class). Replace with tests that feed JSON lines.
+- `TestParseLogFile` — update the fixture log files to use JSON lines.
+- `TestFormatToolCall`, `TestFormatToolResult`, `TestFormatAssistantText`,
+  `TestFormatPhaseHeader`, `TestFormatResultBanner`, `TestFormatEntry`,
+  `TestFormatEntryForHtml` — these construct `ParsedLogEntry` directly and
+  should remain unchanged (they don't go through parsing).
+
+Add new test cases:
+- Round-trip: construct a `LogEvent`, serialize via `create_log_callback`'s
+  logic, parse back with `parse_log_line`, verify the `ParsedLogEntry`
+  matches.
+- Malformed JSON lines return `None` from `parse_log_line`.
+- Each event type (`TextEvent`, `ToolCallEvent`, `ToolResultEvent`,
+  `ResultEvent`) round-trips correctly.
+
+Add a unit test for `_emit_log_events` in `ClaudeBackend` (or test via
+integration: feed a mock SDK message through the backend, verify the
+`on_log` callback receives the expected `LogEvent` type).
+
+Location: `tests/test_orchestrator_log_parser.py`,
+`tests/test_orchestrator_backend.py`
+
+### Step 6: Verify downstream consumers are unaffected
+
+`log_streaming.py` and `api/streaming.py` both call `parse_log_line` and
+`format_entry` / `format_entry_for_html`. Since Step 4 preserves the
+`ParsedLogEntry` shape and Step 4 doesn't change the formatter interfaces,
+these should work without modification. Verify by:
+
+- Running the existing test suite: `uv run pytest tests/`
+- Spot-checking that `display_phase_log` and `_stream_log_file` still
+  produce correct output with JSON-line log files.
+
+### Step 7: Update code_paths in GOAL.md
+
+Add the files touched to the chunk's `code_paths` frontmatter:
+- `src/orchestrator/backend.py`
+- `src/orchestrator/backends/claude.py`
+- `src/orchestrator/agent.py`
+- `src/orchestrator/log_parser.py`
+- `tests/test_orchestrator_log_parser.py`
+- `tests/test_orchestrator_backend.py`
 
 ## Dependencies
 
-<!--
-What must exist before this chunk can be implemented?
-- Other chunks that must be complete
-- External libraries to add
-- Infrastructure or configuration
-
-If there are no dependencies, delete this section.
--->
+- **backend_seam** (ACTIVE): This chunk depends on the `AgentBackend` seam,
+  `SessionRequest`, and `on_log` callback already existing. The seam chunk is
+  complete and merged.
 
 ## Risks and Open Questions
 
-<!--
-What might go wrong? What are you unsure about?
-Being explicit about uncertainty helps you (and agents) know where to
-be careful and when to stop and ask questions.
-
-Example:
-- fsync behavior may differ across filesystems; need to verify on ext4 and APFS
-- Unclear whether concurrent reads during write are safe; may need mutex
-- Performance target is aggressive; may need to iterate on buffer sizes
--->
+- **Existing log files**: Any log files written by the old `str(message)`
+  format will no longer parse. This is acceptable — log files are ephemeral
+  per-run artifacts, not persisted data. A brief note in the implementation
+  should document this (the parser can return `None` for non-JSON lines,
+  which is the existing behavior for malformed lines).
+- **SDK message content access**: `ClaudeBackend` currently accesses SDK
+  message attributes (`message.content`, `hasattr(message, "session_id")`,
+  etc.) to extract review decisions and session IDs. The translation step
+  needs to not interfere with that existing logic — it should emit events
+  *in addition to* the existing control-flow processing, not replace it.
+- **ToolUseBlock input field**: The SDK's `ToolUseBlock.input` is already a
+  dict. The old regex parser only extracted `file_path` and `command` from a
+  string representation. The new path can pass the full dict through, giving
+  the formatter richer data. The formatter's fallback behavior (check for
+  specific keys, else just show tool name) handles this naturally.
+- **`on_log` type narrowing**: Changing `Callable[[Any], None]` to
+  `Callable[[LogEvent], None]` is a breaking change to the `SessionRequest`
+  contract. Since no external code constructs `SessionRequest` today (only
+  `AgentRunner` does), this is safe. Called out as a breaking change per
+  project rules.
 
 ## Deviations
 
 <!--
 POPULATE DURING IMPLEMENTATION, not at planning time.
-
-When reality diverges from the plan, document it here:
-- What changed?
-- Why?
-- What was the impact?
-
-Minor deviations (renamed a function, used a different helper) don't need
-documentation. Significant deviations (changed the approach, skipped a step,
-added steps) do.
-
-Example:
-- Step 4: Originally planned to use std::fs::rename for atomic swap.
-  Testing revealed this isn't atomic across filesystems. Changed to
-  write-fsync-rename-fsync sequence per platform best practices.
 -->

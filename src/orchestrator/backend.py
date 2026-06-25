@@ -19,9 +19,61 @@ import re
 from dataclasses import dataclass, field
 from enum import StrEnum
 from pathlib import Path
-from typing import Any, Callable, Optional, Protocol
+from typing import Any, Callable, Optional, Protocol, Union
 
 from orchestrator.models import AgentResult, ReviewToolDecision
+
+
+# ---------------------------------------------------------------------------
+# Normalized log event types
+# ---------------------------------------------------------------------------
+# Chunk: docs/chunks/backend_logparse - Backend-agnostic log events
+#
+# Every backend translates its native message stream into these event types
+# before calling ``on_log``. Downstream consumers (log_parser, log_streaming)
+# never touch vendor-specific shapes.
+
+
+@dataclass
+class TextEvent:
+    """Agent emitted a text block."""
+
+    text: str
+
+
+@dataclass
+class ToolCallEvent:
+    """Agent invoked a tool."""
+
+    tool_id: str
+    name: str
+    input: dict
+    description: Optional[str] = None
+
+
+@dataclass
+class ToolResultEvent:
+    """A tool returned a result."""
+
+    tool_use_id: str
+    content: str
+    is_error: bool
+
+
+@dataclass
+class ResultEvent:
+    """Session completed (success or error)."""
+
+    subtype: str  # "success" | "error"
+    duration_ms: int
+    total_cost_usd: float
+    num_turns: int
+    is_error: bool
+    session_id: Optional[str] = None
+    result_text: Optional[str] = None
+
+
+LogEvent = Union[TextEvent, ToolCallEvent, ToolResultEvent, ResultEvent]
 
 
 class ToolDecision(StrEnum):
@@ -75,7 +127,7 @@ class SessionRequest:
     expose_review_tool: bool = False
     on_question: Optional[Callable[[dict], None]] = None
     on_review_decision: Optional[Callable[[ReviewToolDecision], None]] = None
-    on_log: Optional[Callable[[Any], None]] = None
+    on_log: Optional[Callable[["LogEvent"], None]] = None
 
 
 class AgentBackend(Protocol):
