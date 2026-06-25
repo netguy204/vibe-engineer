@@ -1,179 +1,206 @@
-
-
-<!--
-This document captures HOW you'll achieve the chunk's GOAL.
-It should be specific enough that each step is a reasonable unit of work
-to hand to an agent.
--->
-
 # Implementation Plan
 
 ## Approach
 
-<!--
-How will you build this? Describe the strategy at a high level.
-What patterns or techniques will you use?
-What existing code will you build on?
+Introduce an `AgentBackend` seam so the orchestrator executes phases through an
+abstraction instead of calling the Claude Agent SDK inline. Per operator
+decision (clean split + update tests), the SDK is physically relocated into its
+own module:
 
-Reference docs/trunk/DECISIONS.md entries where relevant.
-If this approach represents a new significant decision, ask the user
-if we should add it to DECISIONS.md and reference it here.
+- **`src/orchestrator/backend.py`** (new, SDK-free): the `AgentBackend` Protocol
+  and the normalized contract types `SessionRequest`, `ToolUse`, `ToolDecision`.
+  Reuses the existing `AgentResult` / `ReviewToolDecision` from
+  `orchestrator/models.py` as the return type — no new result type (see GOAL
+  Rejected Ideas). Also hosts `is_sandbox_violation` (pure path/string logic,
+  no SDK), so sandbox *policy* is backend-agnostic and reusable by the future
+  Cursor backend.
+- **`src/orchestrator/backends/claude.py`** (new): `ClaudeBackend` plus ALL
+  `claude_agent_sdk` imports, the message types (`AssistantMessage`,
+  `ResultMessage`, …), the hook helpers (`create_sandbox_enforcement_hook`,
+  `create_question_intercept_hook`, `create_review_decision_hook`,
+  `_merge_hooks`), the MCP server (`create_orchestrator_mcp_server`,
+  `review_decision_tool`), and the SDK receive-loop + message-stream parsing
+  that captures questions and review decisions. This is a near-verbatim
+  relocation of the SDK-touching code currently in `agent.py`.
+- **`src/orchestrator/agent.py`** (modified): `AgentRunner` keeps everything
+  backend-agnostic — prompt assembly (`get_phase_prompt`, feedback/re-entry
+  injection, the CWD/sandbox reminder), env setup (`GIT_DIR`/`GIT_WORK_TREE`),
+  and construction of the orchestrator policy callbacks. `run_phase` and
+  `resume_for_active_status` build a `SessionRequest` and `await
+  self.backend.run(request)`. `agent.py` no longer imports `claude_agent_sdk`
+  directly.
 
-Always include tests in your implementation plan and adhere to
-docs/trunk/TESTING_PHILOSOPHY.md in your planning.
+**Critical behavior-preserving facts discovered during planning:**
 
-Remember to update code_paths in the chunk's GOAL.md (e.g., docs/chunks/backend_seam/GOAL.md)
-with references to the files that you expect to touch.
--->
+1. The sandbox PreToolUse hook (Bash) is the *only* functional hook. Question
+   and ReviewDecision capture do **not** use hooks — `create_question_intercept_hook`
+   and `create_review_decision_hook` are dead code (their own docstrings say so);
+   the real capture parses `AssistantMessage` content in the receive loop
+   (`agent.py:744-818`). The relocation must preserve the message-parsing path,
+   not the dead hooks. The dead hook factories are retained in `claude.py` only
+   because tests import them (removing them is a separate cleanup, out of scope).
+2. Tests patch `orchestrator.agent.ClaudeSDKClient` (8 files) and import the hook
+   helpers + `AssistantMessage` from `orchestrator.agent`. After relocation these
+   become `orchestrator.backends.claude.*`. This is mechanical (patch strings,
+   import lines) with **no assertion changes** — that is the "no behavior change"
+   bar in practice.
+
+**Sandbox seam mapping.** `AgentRunner` builds `on_tool_use` from the pure
+`is_sandbox_violation(command, host_repo_path, worktree_path)`; for a Bash tool
+it returns `ToolDecision.DENY` on violation else `ALLOW`, non-Bash always
+`ALLOW` (preserving today's behavior). `ClaudeBackend` adapts `request.on_tool_use`
+into a PreToolUse Bash hook (the adapter replaces the body of
+`create_sandbox_enforcement_hook`, which now delegates to the same pure
+`is_sandbox_violation`). Net behavior is identical; the violation logic has one
+home.
+
+**Question/review seam mapping.** `AgentRunner` passes the orchestrator's
+`question_callback` → `request.on_question` and `review_decision_callback` →
+`request.on_review_decision`. `ClaudeBackend.run` invokes them from the same
+message-parsing code that exists today, and populates `AgentResult`
+(`suspended`/`question`/`review_decision`/`completed`/`error`). `expose_review_tool`
+on the request (set by `AgentRunner` when `phase == REVIEW`) tells `ClaudeBackend`
+to attach the orchestrator MCP server + allowed tool.
+
+Per TESTING_PHILOSOPHY, the existing orchestrator suite is the regression
+guard; new structural types get focused unit tests. This is a refactor, so the
+bar is "suite green with only mechanical test edits."
 
 ## Subsystem Considerations
 
-<!--
-Before designing your implementation, check docs/subsystems/ for relevant
-cross-cutting patterns.
-
-QUESTIONS TO CONSIDER:
-- Does this chunk touch any existing subsystem's scope?
-- Will this chunk implement part of a subsystem (contribute code) or use it
-  (depend on it)?
-- Did you discover code during exploration that should be part of a subsystem
-  but doesn't follow its patterns?
-
-If no subsystems are relevant, delete this section.
-
-WHEN SUBSYSTEMS ARE RELEVANT:
-List each relevant subsystem with its status and your relationship:
-- **docs/subsystems/validation** (DOCUMENTED): This chunk USES the validation
-  subsystem to check input
-- **docs/subsystems/error_handling** (REFACTORING): This chunk IMPLEMENTS a
-  new error type following the subsystem's patterns
-
-HOW SUBSYSTEM STATUS AFFECTS YOUR WORK:
-
-DOCUMENTED subsystems: The subsystem's patterns are captured but deviations are not
-being actively fixed. If you discover code that deviates from the subsystem's
-patterns, add it to the subsystem's Known Deviations section. Do NOT prioritize
-fixing those deviations—your chunk has its own goals.
-
-REFACTORING subsystems: The subsystem is being actively consolidated. If your chunk
-work touches code that deviates from the subsystem's patterns, attempt to bring it
-into compliance as part of your work. This is "opportunistic improvement"—improve
-what you touch, but don't expand scope to fix unrelated deviations.
-
-WHEN YOU DISCOVER DEVIATING CODE:
-- Add it to the subsystem's Known Deviations section
-- Note whether you will address it (REFACTORING status + relevant to your work)
-  or leave it for future work (DOCUMENTED status or outside your chunk's scope)
-
-Example:
-- **Discovered deviation**: src/legacy/parser.py#validate_input does its own
-  validation instead of using the validation subsystem
-  - Added to docs/subsystems/validation Known Deviations
-  - Action: Will not address (subsystem is DOCUMENTED; deviation outside chunk scope)
--->
+- **docs/subsystems/orchestrator** (DOCUMENTED): This chunk refactors within the
+  orchestrator subsystem (`agent.py` already carries its backreference). It
+  introduces the `AgentBackend` seam but does not change orchestration behavior.
+  New modules (`backend.py`, `backends/claude.py`) carry
+  `# Subsystem: docs/subsystems/orchestrator` and
+  `# Chunk: docs/chunks/backend_seam` backreferences.
 
 ## Sequence
 
-<!--
-Ordered steps to implement this chunk. Each step should be:
-- Small enough to reason about in isolation
-- Large enough to be meaningful
-- Clear about its inputs and outputs
+### Step 1: Define the backend contract (`src/orchestrator/backend.py`)
 
-This sequence is your contract with yourself (and with agents).
-Work through it in order. Don't skip ahead.
+New SDK-free module containing:
+- `class ToolDecision(StrEnum)`: `ALLOW = "allow"`, `DENY = "deny"`.
+- `@dataclass ToolUse`: `tool_name: str`, `tool_input: dict`,
+  `command: str | None`, `cwd: str | None`.
+- `@dataclass SessionRequest`: `prompt: str`, `cwd: Path`, `env: dict[str,str]`,
+  `max_turns: int`, `allowed_tools: list[str] = []`,
+  `resume_session_id: str | None = None`, `expose_review_tool: bool = False`,
+  and the policy callbacks `on_tool_use: Callable[[ToolUse], ToolDecision] | None`,
+  `on_question: Callable[[dict], None] | None`,
+  `on_review_decision: Callable[[ReviewToolDecision], None] | None`,
+  `on_log: Callable[[Any], None] | None`.
+- `class AgentBackend(Protocol)`: `async def run(self, request: SessionRequest) -> AgentResult: ...`
+- `def is_sandbox_violation(command, host_repo_path, worktree_path) -> tuple[bool, str | None]`:
+  moved verbatim from `agent.py:_is_sandbox_violation` (pure, no SDK).
 
-Example:
+### Step 2: Create `ClaudeBackend` (`src/orchestrator/backends/claude.py`)
 
-### Step 1: Define the SegmentHeader struct
+New package `src/orchestrator/backends/` (`__init__.py`) and `claude.py`. Move
+from `agent.py`, near-verbatim:
+- all `claude_agent_sdk` imports and message types;
+- `review_decision_tool`, `create_orchestrator_mcp_server`;
+- `create_sandbox_enforcement_hook` (reimplemented to wire a provided
+  `on_tool_use`/`ToolUse` and delegate to `backend.is_sandbox_violation`),
+  `create_question_intercept_hook`, `create_review_decision_hook`, `_merge_hooks`;
+- `class ClaudeBackend` implementing `AgentBackend.run`: builds
+  `ClaudeAgentOptions` from `SessionRequest` (cwd, env, `permission_mode="bypassPermissions"`,
+  `max_turns`, `setting_sources=["project"]`, `max_buffer_size`, `resume`),
+  attaches the sandbox PreToolUse hook driven by `request.on_tool_use`, attaches
+  the MCP server + `mcp__orchestrator__ReviewDecision` allowed tool when
+  `expose_review_tool`, runs `ClaudeSDKClient`, and contains the receive loop +
+  `AssistantMessage` parsing that fires `on_question`/`on_review_decision` and
+  builds the `AgentResult` (the logic from `agent.py:707-847`).
 
-Create the struct that represents a segment's header with fields for:
-- magic number (4 bytes)
-- version (2 bytes)
-- segment_id (8 bytes)
-- message_count (4 bytes)
-- checksum (4 bytes)
+`ClaudeBackend` is stateless aside from `host_repo_path` context it needs — note
+the sandbox paths flow through `on_tool_use` (closure built in `AgentRunner`), so
+`ClaudeBackend` needs no repo/worktree knowledge. Verify this holds; if the hook
+adapter needs the worktree path, carry it on `SessionRequest` rather than the
+backend constructor.
 
-Location: src/segment/format.rs
+### Step 3: Slim `AgentRunner.run_phase` to delegate (`src/orchestrator/agent.py`)
 
-### Step 2: Implement header serialization
+- Remove `claude_agent_sdk` imports; import `AgentBackend`, `SessionRequest`,
+  `ToolUse`, `ToolDecision`, `is_sandbox_violation` from `orchestrator.backend`
+  and `ClaudeBackend` from `orchestrator.backends.claude`.
+- `AgentRunner.__init__` gains `backend: AgentBackend | None = None`, defaulting
+  to `ClaudeBackend()`. (The `backend_config` chunk later moves construction to a
+  factory; here a default keeps callers unchanged.)
+- `run_phase` keeps all prompt/env construction, then builds `on_tool_use`
+  (sandbox closure over `self.host_repo_path` + `worktree_path` using
+  `is_sandbox_violation`), maps `question_callback`/`review_decision_callback`
+  to `on_question`/`on_review_decision`, sets `expose_review_tool = (phase ==
+  REVIEW)`, assembles `SessionRequest`, and returns `await self.backend.run(req)`.
+- The method signature (kwargs: `chunk`, `phase`, `worktree_path`,
+  `resume_session_id`, `answer`, `reentry_context`, `log_callback`,
+  `question_callback`, `review_decision_callback`) is unchanged so scheduler and
+  tests that call `run_phase(...)` are untouched.
 
-Add `to_bytes()` and `from_bytes()` methods to SegmentHeader.
-Use little-endian encoding per SPEC.md Section 3.1.
+### Step 4: Route `resume_for_active_status` through the backend
 
-### Step 3: ...
+Build a `SessionRequest` (fixed reminder prompt, `resume_session_id=session_id`,
+`max_turns=self.config.max_turns_complete`, sandbox `on_tool_use`, no
+question/review callbacks, `expose_review_tool=False`) and return
+`await self.backend.run(req)`. Preserve the `new_session_id or session_id`
+fallback in `AgentRunner` after the backend returns.
 
----
+### Step 5: Fix `scheduler.py` import
 
-**BACKREFERENCE COMMENTS**
+`scheduler.py:30` imports `create_review_decision_hook` from `orchestrator.agent`
+but never uses it. Drop it from the import (keep `AgentRunner`,
+`create_log_callback`). No other scheduler change — `AgentRunner` construction and
+`run_phase`/`resume_for_active_status` call sites are unchanged.
 
-When implementing code, add backreference comments to help future agents trace
-code back to its governing documentation.
+### Step 6: Update test imports and patch targets (mechanical)
 
-**Valid backreference types:**
-- `# Subsystem: docs/subsystems/<name>` - For architectural patterns
-- `# Chunk: docs/chunks/<name>` - For implementation work
+Across the 8 affected files, change:
+- `patch("orchestrator.agent.ClaudeSDKClient", ...)` →
+  `patch("orchestrator.backends.claude.ClaudeSDKClient", ...)`;
+- `from orchestrator.agent import (… create_*_hook, create_orchestrator_mcp_server,
+  review_decision_tool, _merge_hooks, AssistantMessage …)` →
+  import those from `orchestrator.backends.claude`;
+- `_is_sandbox_violation` → `is_sandbox_violation` from `orchestrator.backend`
+  (rename + relocate).
 
-Place comments at the appropriate level:
-- **Module-level**: If this code implements the subsystem/chunk's core functionality
-- **Class-level**: If this class is part of the pattern
-- **Method-level**: If this method implements a specific behavior
+No assertion or test-logic changes. Files: `test_orchestrator_agent_runner.py`,
+`test_orchestrator_agent_stream.py`, `test_orchestrator_agent_callbacks.py`,
+`test_orchestrator_agent_review.py`, `test_orchestrator_agent_sandbox.py`,
+`test_orchestrator_agent_skills.py`, `test_orchestrator_feedback_injection.py`,
+`test_orchestrator_reentry.py`.
 
-Format (place immediately before the symbol):
-```
-# Subsystem: docs/subsystems/workflow_artifacts - Workflow artifact manager pattern
-# Chunk: docs/chunks/auth_refactor - Authentication system redesign
-```
+### Step 7: Add focused unit tests for the seam (`tests/test_orchestrator_backend.py`)
 
-Do NOT add narrative backreferences. Narratives decompose into chunks; reference
-the implementing chunk instead.
+- `SessionRequest`/`ToolUse`/`ToolDecision` construct with expected defaults.
+- A trivial fake `AgentBackend` satisfies the Protocol and `AgentRunner(backend=fake)`
+  routes `run_phase` through it (proves the seam is real and injectable).
+- `is_sandbox_violation` parity check (can reuse a couple of existing cases) to
+  confirm the relocation preserved logic.
 
-**Task context note**: In multi-project tasks, always use local paths (e.g.,
-`docs/chunks/chunk_name`) for chunk backreferences, not paths to the external
-artifact repo. Each project has `external.yaml` pointers that resolve to the
-actual chunk content.
--->
+### Step 8: Run the full orchestrator suite and `ve validate`
+
+`uv run pytest tests/ -k orchestrator` (plus the reviewer/reentry/feedback
+files) must be green with only the mechanical edits from Step 6. Run
+`uv run ve validate` to confirm no new integrity errors and that the new modules
+carry correct backreference comments.
 
 ## Dependencies
 
-<!--
-What must exist before this chunk can be implemented?
-- Other chunks that must be complete
-- External libraries to add
-- Infrastructure or configuration
-
-If there are no dependencies, delete this section.
--->
+None. This is the root chunk of the `pluggable_backends` narrative
+(`depends_on: []`); `backend_config`, `backend_logparse`, and `backend_cursor`
+build on the seam it establishes.
 
 ## Risks and Open Questions
 
-<!--
-What might go wrong? What are you unsure about?
-Being explicit about uncertainty helps you (and agents) know where to
-be careful and when to stop and ask questions.
-
-Example:
-- fsync behavior may differ across filesystems; need to verify on ext4 and APFS
-- Unclear whether concurrent reads during write are safe; may need mutex
-- Performance target is aggressive; may need to iterate on buffer sizes
--->
-
-## Deviations
-
-<!--
-POPULATE DURING IMPLEMENTATION, not at planning time.
-
-When reality diverges from the plan, document it here:
-- What changed?
-- Why?
-- What was the impact?
-
-Minor deviations (renamed a function, used a different helper) don't need
-documentation. Significant deviations (changed the approach, skipped a step,
-added steps) do.
-
-Example:
-- Step 4: Originally planned to use std::fs::rename for atomic swap.
-  Testing revealed this isn't atomic across filesystems. Changed to
-  write-fsync-rename-fsync sequence per platform best practices.
--->
+- **Patch-target completeness.** If any test patches the SDK or imports a helper
+  through a path the grep missed, it will fail loudly; fix by repointing the
+  import/patch. Low risk, fast to detect.
+- **Sandbox closure context.** Confirm the `on_tool_use` adapter in
+  `ClaudeBackend` has everything it needs from `ToolUse` alone. If the PreToolUse
+  hook needs worktree/host paths beyond what the closure captures, carry them on
+  `SessionRequest` rather than reintroducing them into the backend constructor.
+- **Session-id capture parity.** The receive loop reads `session_id` from `init`
+  dicts, `ResultMessage`, and `AssistantMessage`. Move all three paths intact;
+  the `new_session_id or session_id` fallback for resume must stay.
+- **`query` deprecated import.** `agent.py` imports `query` "for backwards
+  compatibility in deprecated methods" — verify nothing still uses it before
+  dropping; if used, relocate alongside the SDK.

@@ -2,7 +2,7 @@
 status: IMPLEMENTING
 ticket: null
 parent_chunk: null
-code_paths: []
+code_paths: ["src/orchestrator/backend.py", "src/orchestrator/backends/__init__.py", "src/orchestrator/backends/claude.py", "src/orchestrator/agent.py", "src/orchestrator/scheduler.py", "tests/test_orchestrator_backend.py", "tests/test_orchestrator_agent_runner.py", "tests/test_orchestrator_agent_stream.py", "tests/test_orchestrator_agent_callbacks.py", "tests/test_orchestrator_agent_review.py", "tests/test_orchestrator_agent_sandbox.py", "tests/test_orchestrator_agent_skills.py", "tests/test_orchestrator_feedback_injection.py", "tests/test_orchestrator_reentry.py"]
 code_references: []
 narrative: pluggable_backends
 investigation: null
