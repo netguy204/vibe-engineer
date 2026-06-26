@@ -1,5 +1,5 @@
 ---
-status: DRAFTING
+status: COMPLETED
 advances_trunk_goal: "Required Properties: The workflow must not be locked to a single agent vendor; the orchestrator must support pluggable agent backends."
 proposed_chunks:
   - prompt: >-
