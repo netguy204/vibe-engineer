@@ -1,10 +1,12 @@
 ---
-status: IMPLEMENTING
+status: ACTIVE
 ticket: null
 parent_chunk: null
 code_paths:
 - docs/claude_smoketest.md
-code_references: []
+code_references:
+- ref: docs/claude_smoketest.md
+  implements: "Marker file confirming Claude backend executed the chunk end-to-end"
 narrative: null
 investigation: null
 subsystems: []
