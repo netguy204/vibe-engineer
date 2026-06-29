@@ -1,17 +1,18 @@
 ---
-status: FUTURE
+status: IMPLEMENTING
 ticket: null
 parent_chunk: null
-code_paths: []
+code_paths:
+- docs/claude_smoketest.md
 code_references: []
 narrative: null
 investigation: null
 subsystems: []
 friction_entries: []
 depends_on: []
-created_after: ["backend_live_validation"]
+created_after:
+- backend_live_validation
 ---
-
 # Chunk Goal
 
 ## Minor Goal
