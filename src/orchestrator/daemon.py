@@ -597,6 +597,11 @@ def _load_config(store: StateStore) -> OrchestratorConfig:
         except ValueError:
             pass
 
+    # Chunk: docs/chunks/backend_config - Load backend selection from config
+    backend_str = store.get_config("backend")
+    if backend_str is not None:
+        config.backend = backend_str
+
     return config
 
 

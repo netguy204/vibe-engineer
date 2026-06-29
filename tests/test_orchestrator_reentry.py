@@ -136,7 +136,7 @@ class TestReentryContextInjection:
         chunk_dir.mkdir(parents=True)
 
         MockClaudeSDKClient.reset()
-        with patch("orchestrator.agent.ClaudeSDKClient", MockClaudeSDKClient):
+        with patch("orchestrator.backends.claude.ClaudeSDKClient", MockClaudeSDKClient):
             await runner.run_phase(
                 chunk="test_chunk",
                 phase=WorkUnitPhase.IMPLEMENT,
@@ -165,7 +165,7 @@ class TestReentryContextInjection:
         chunk_dir.mkdir(parents=True)
 
         MockClaudeSDKClient.reset()
-        with patch("orchestrator.agent.ClaudeSDKClient", MockClaudeSDKClient):
+        with patch("orchestrator.backends.claude.ClaudeSDKClient", MockClaudeSDKClient):
             await runner.run_phase(
                 chunk="test_chunk",
                 phase=WorkUnitPhase.IMPLEMENT,
@@ -185,7 +185,7 @@ class TestReentryContextInjection:
         worktree_path.mkdir()
 
         MockClaudeSDKClient.reset()
-        with patch("orchestrator.agent.ClaudeSDKClient", MockClaudeSDKClient):
+        with patch("orchestrator.backends.claude.ClaudeSDKClient", MockClaudeSDKClient):
             await runner.run_phase(
                 chunk="test_chunk",
                 phase=WorkUnitPhase.PLAN,
@@ -209,7 +209,7 @@ class TestReentryContextInjection:
         chunk_dir.mkdir(parents=True)
 
         MockClaudeSDKClient.reset()
-        with patch("orchestrator.agent.ClaudeSDKClient", MockClaudeSDKClient):
+        with patch("orchestrator.backends.claude.ClaudeSDKClient", MockClaudeSDKClient):
             await runner.run_phase(
                 chunk="test_chunk",
                 phase=WorkUnitPhase.IMPLEMENT,
@@ -236,7 +236,7 @@ class TestReentryContextInjection:
         (chunk_dir / "REVIEW_FEEDBACK.md").write_text("# Feedback\n\nFix the bug.")
 
         MockClaudeSDKClient.reset()
-        with patch("orchestrator.agent.ClaudeSDKClient", MockClaudeSDKClient):
+        with patch("orchestrator.backends.claude.ClaudeSDKClient", MockClaudeSDKClient):
             await runner.run_phase(
                 chunk="test_chunk",
                 phase=WorkUnitPhase.IMPLEMENT,

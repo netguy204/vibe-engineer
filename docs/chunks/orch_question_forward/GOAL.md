@@ -10,7 +10,7 @@ code_paths:
 - tests/test_orchestrator_agent_callbacks.py
 - tests/test_orchestrator_scheduler_unblock.py
 code_references:
-  - ref: src/orchestrator/agent.py#create_question_intercept_hook
+  - ref: src/orchestrator/backends/claude.py#create_question_intercept_hook
     implements: "PreToolUse hook for intercepting AskUserQuestion calls"
   - ref: src/orchestrator/agent.py#AgentRunner::run_phase
     implements: "Accepts question_callback and configures hook to capture questions"

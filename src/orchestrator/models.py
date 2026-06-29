@@ -228,6 +228,8 @@ class OrchestratorConfig(BaseModel):
     # Chunk: docs/chunks/orch_max_turns_config - Per-phase agent turn budget
     max_turns_implement: int = 100  # Turn budget for IMPLEMENT/PLAN/COMPLETE/REVIEW phases
     max_turns_complete: int = 20  # Turn budget for resume_for_active_status fixup
+    # Chunk: docs/chunks/backend_config - Selects which AgentBackend the orchestrator uses
+    backend: str = "claude"  # Backend name resolved by create_backend()
 
     def model_dump_json_serializable(self) -> dict:
         """Return a JSON-serializable dict representation."""
@@ -241,6 +243,7 @@ class OrchestratorConfig(BaseModel):
             "api_retry_max_attempts": self.api_retry_max_attempts,
             "max_turns_implement": self.max_turns_implement,
             "max_turns_complete": self.max_turns_complete,
+            "backend": self.backend,
         }
 
 

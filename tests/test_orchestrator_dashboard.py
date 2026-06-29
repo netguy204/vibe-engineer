@@ -307,10 +307,16 @@ class TestLogStreamWebSocket:
         log_dir = tmp_path / ".ve" / "chunks" / "logs_test" / "log"
         log_dir.mkdir(parents=True)
         log_file = log_dir / "implement.txt"
+        import json as _json
         log_file.write_text(
-            "[2026-01-31T19:30:56.669473+00:00] AssistantMessage("
-            "content=[ToolUseBlock(id='toolu_test', name='Read', "
-            "input={'file_path': '/test.py'})])\n"
+            _json.dumps({
+                "timestamp": "2026-01-31T19:30:56.669473+00:00",
+                "type": "tool_call",
+                "tool_id": "toolu_test",
+                "name": "Read",
+                "input": {"file_path": "/test.py"},
+                "description": None,
+            }) + "\n"
         )
 
         with client.websocket_connect("/ws/log/logs_test") as websocket:
