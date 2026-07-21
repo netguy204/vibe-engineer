@@ -23,8 +23,8 @@ code_references:
   implements: "Validates plugin.json carries the required Claude Code plugin schema fields"
 - ref: tests/test_plugin_manifest.py#TestMarketplaceManifest
   implements: "Validates marketplace.json lists the plugin and its source resolves to the repo root"
-- ref: tests/test_plugin_manifest.py#TestPilotCommand
-  implements: "Validates the pilot command exists, is read-only, and wraps ve chunk list --current"
+- ref: tests/test_plugin_manifest.py#TestPilotSkill
+  implements: "Validates the pilot skill exists, is read-only, and wraps ve chunk list --current"
 - ref: tests/test_plugin_manifest.py#TestPluginLayout
   implements: "Validates the canonical plugin content layout (commands/, skills/, agents/, hooks/) exists at the plugin root"
 narrative: claude_plugin_port
