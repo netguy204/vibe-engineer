@@ -22,6 +22,7 @@ import inspect
 import json
 import logging
 import shutil
+import shlex
 from pathlib import Path
 from typing import Any, Optional
 
@@ -38,40 +39,35 @@ from orchestrator.models import AgentResult, ReviewToolDecision
 
 logger = logging.getLogger(__name__)
 
-# JSON schema for the ReviewDecision tool, matching the Claude MCP tool contract.
-REVIEW_DECISION_TOOL_SCHEMA: dict[str, Any] = {
-    "name": "ReviewDecision",
-    "description": "Submit the final review decision for the implementation",
-    "inputSchema": {
-        "type": "object",
-        "properties": {
-            "decision": {
-                "type": "string",
-                "enum": ["APPROVE", "FEEDBACK", "ESCALATE"],
-                "description": "The review decision",
-            },
-            "summary": {
-                "type": "string",
-                "description": "Brief summary of the review findings",
-            },
-            "criteria_assessment": {
-                "type": "array",
-                "description": "Optional structured assessment of success criteria",
-                "items": {"type": "object"},
-            },
-            "issues": {
-                "type": "array",
-                "description": "List of issues for FEEDBACK decisions",
-                "items": {"type": "object"},
-            },
-            "reason": {
-                "type": "string",
-                "description": "Reason for ESCALATE decisions",
-            },
-        },
-        "required": ["decision", "summary"],
-    },
-}
+# Wall-clock backstop for a single cursor-agent phase. A hung agent (e.g. one
+# whose stdout never closes) yields an error rather than blocking the
+# orchestrator forever.
+_PHASE_TIMEOUT_SECONDS = 1800
+
+
+def _snapshot(path: Path) -> Optional[bytes]:
+    """Return *path*'s current bytes, or None if it does not exist.
+
+    Used before the backend overwrites a ``.cursor/`` file so a project's own
+    committed version can be restored on cleanup instead of being clobbered.
+    """
+    try:
+        return path.read_bytes()
+    except FileNotFoundError:
+        return None
+
+
+def _restore_or_remove(path: Path, original: Optional[bytes]) -> None:
+    """Restore *path* to *original* bytes, or delete it if it did not pre-exist.
+
+    A None *original* means the backend created the file, so it is unlinked.
+    Otherwise the pre-existing bytes are written back verbatim.
+    """
+    if original is None:
+        if path.exists():
+            path.unlink()
+    else:
+        path.write_bytes(original)
 
 
 # ---------------------------------------------------------------------------
@@ -210,17 +206,25 @@ if __name__ == "__main__":
 '''
 
 
-def _write_cursor_mcp_config(worktree: Path) -> Path:
+def _write_cursor_mcp_config(worktree: Path) -> dict[str, Optional[bytes]]:
     """Write ``.cursor/mcp.json`` declaring the ReviewDecision MCP server.
 
     Creates the ``.cursor/`` directory if needed and writes both the config
-    file and the server script. Returns the path to the config file.
+    file and the server script. Any pre-existing target files are snapshotted
+    first and returned so :func:`_remove_cursor_mcp_config` can restore a
+    project's own committed versions instead of deleting them.
     """
     cursor_dir = worktree / ".cursor"
     cursor_dir.mkdir(parents=True, exist_ok=True)
 
-    # Write the MCP server script
     server_script = cursor_dir / "_review_mcp_server.py"
+    config_path = cursor_dir / "mcp.json"
+    originals: dict[str, Optional[bytes]] = {
+        "_review_mcp_server.py": _snapshot(server_script),
+        "mcp.json": _snapshot(config_path),
+    }
+
+    # Write the MCP server script
     server_script.write_text(_MCP_SERVER_SCRIPT)
 
     # Write mcp.json pointing to the server script
@@ -232,22 +236,24 @@ def _write_cursor_mcp_config(worktree: Path) -> Path:
             }
         }
     }
-    config_path = cursor_dir / "mcp.json"
     config_path.write_text(json.dumps(mcp_config, indent=2) + "\n")
-    return config_path
+    return originals
 
 
-def _remove_cursor_mcp_config(worktree: Path) -> None:
-    """Remove the ``.cursor/mcp.json`` and server script written by the backend.
+def _remove_cursor_mcp_config(
+    worktree: Path, originals: Optional[dict[str, Optional[bytes]]] = None
+) -> None:
+    """Restore or remove the ``.cursor/mcp.json`` and server script.
 
-    Silently succeeds if the files don't exist. Removes the ``.cursor/``
-    directory only if it is empty after cleanup.
+    Files that pre-existed the run (snapshotted in *originals*) are restored to
+    their original bytes; files the backend created are unlinked. Removes the
+    ``.cursor/`` directory only if it is empty after cleanup. Silently succeeds
+    if the files don't exist.
     """
     cursor_dir = worktree / ".cursor"
+    originals = originals or {}
     for name in ("mcp.json", "_review_mcp_server.py"):
-        path = cursor_dir / name
-        if path.exists():
-            path.unlink()
+        _restore_or_remove(cursor_dir / name, originals.get(name))
 
     # Remove .cursor/ if empty
     if cursor_dir.exists() and not any(cursor_dir.iterdir()):
@@ -275,7 +281,9 @@ class CursorAgentNotFoundError(RuntimeError):
 # ---------------------------------------------------------------------------
 
 
-def _write_sandbox_hook(worktree: Path, host_repo_path: Path) -> None:
+def _write_sandbox_hook(
+    worktree: Path, host_repo_path: Path
+) -> dict[str, Optional[bytes]]:
     """Write a ``.cursor/hooks.json`` beforeShellExecution hook that enforces
     the worktree sandbox.
 
@@ -284,16 +292,26 @@ def _write_sandbox_hook(worktree: Path, host_repo_path: Path) -> None:
     command. The script delegates to the shared
     :func:`~orchestrator.backend.is_sandbox_violation`; a deny overrides
     ``--force``.
+
+    Any pre-existing target files are snapshotted first and returned so
+    :func:`_remove_sandbox_hook` can restore a project's own committed versions
+    instead of clobbering them.
     """
     cursor_dir = worktree / ".cursor"
     cursor_dir.mkdir(parents=True, exist_ok=True)
+
+    hook_script = cursor_dir / "_sandbox_hook.py"
+    hooks_path = cursor_dir / "hooks.json"
+    originals: dict[str, Optional[bytes]] = {
+        "_sandbox_hook.py": _snapshot(hook_script),
+        "hooks.json": _snapshot(hooks_path),
+    }
 
     # Embed is_sandbox_violation's exact source so the hook is self-contained.
     # Importing orchestrator.backend would pull the heavy package __init__ and
     # crash the hook — which cursor-agent then fails OPEN on (allowing the
     # command). Embedding the source keeps the policy identical with no drift.
     fn_src = inspect.getsource(is_sandbox_violation)
-    hook_script = cursor_dir / "_sandbox_hook.py"
     hook_script.write_text(
         "#!/usr/bin/env python3\n"
         "from __future__ import annotations\n"
@@ -318,25 +336,37 @@ def _write_sandbox_hook(worktree: Path, host_repo_path: Path) -> None:
         "    print(json.dumps({'permission': 'allow'}))\n"
     )
 
-    hooks_path = cursor_dir / "hooks.json"
     hooks_config = {
         "version": 1,
         "hooks": {
             "beforeShellExecution": [
-                {"command": f"python3 {hook_script}", "type": "command"}
+                # shlex.quote so a worktree path with a space stays shell-safe;
+                # an unquoted path makes cursor-agent fail to spawn the hook and
+                # fall open, silently disabling the sandbox.
+                {
+                    "command": f"python3 {shlex.quote(str(hook_script))}",
+                    "type": "command",
+                }
             ]
         },
     }
     hooks_path.write_text(json.dumps(hooks_config, indent=2) + "\n")
+    return originals
 
 
-def _remove_sandbox_hook(worktree: Path) -> None:
-    """Remove the sandbox hook files; remove ``.cursor/`` if it becomes empty."""
+def _remove_sandbox_hook(
+    worktree: Path, originals: Optional[dict[str, Optional[bytes]]] = None
+) -> None:
+    """Restore or remove the sandbox hook files.
+
+    Files that pre-existed the run (snapshotted in *originals*) are restored;
+    files the backend created are unlinked. Removes ``.cursor/`` if it becomes
+    empty.
+    """
     cursor_dir = worktree / ".cursor"
+    originals = originals or {}
     for name in ("hooks.json", "_sandbox_hook.py"):
-        path = cursor_dir / name
-        if path.exists():
-            path.unlink()
+        _restore_or_remove(cursor_dir / name, originals.get(name))
     if cursor_dir.exists() and not any(cursor_dir.iterdir()):
         cursor_dir.rmdir()
 
@@ -378,12 +408,16 @@ class CursorBackend:
         session_id: Optional[str] = None
         error: Optional[str] = None
         completed = False
+        saw_result_event = False
+        proc = None
+        hook_originals: dict[str, Optional[bytes]] = {}
+        mcp_originals: dict[str, Optional[bytes]] = {}
 
         try:
             # Always enforce the sandbox via a beforeShellExecution hook.
-            _write_sandbox_hook(request.cwd, request.host_repo_path)
+            hook_originals = _write_sandbox_hook(request.cwd, request.host_repo_path)
             if request.expose_review_tool:
-                _write_cursor_mcp_config(request.cwd)
+                mcp_originals = _write_cursor_mcp_config(request.cwd)
                 wrote_mcp = True
 
             cmd = ["cursor-agent", "-p", "--force",
@@ -407,51 +441,87 @@ class CursorBackend:
                 limit=16 * 1024 * 1024,
             )
 
-            assert proc.stdout is not None
-            async for raw in proc.stdout:
-                line = raw.decode("utf-8", errors="replace").strip()
-                if not line:
-                    continue
-                try:
-                    event = json.loads(line)
-                except json.JSONDecodeError:
-                    logger.warning("stream-json: non-JSON line: %s", line[:200])
-                    continue
+            # Drain stderr concurrently: it is a PIPE, so >64KB of stderr would
+            # block the child while we iterate stdout, deadlocking the phase.
+            assert proc.stderr is not None
+            stderr_task = asyncio.create_task(proc.stderr.read())
 
-                captured_review_decision = self._handle_event(
-                    event, request, captured_review_decision
+            try:
+                (
+                    session_id,
+                    error,
+                    completed,
+                    saw_result_event,
+                    captured_review_decision,
+                ) = await asyncio.wait_for(
+                    self._consume_stream(request, proc),
+                    timeout=_PHASE_TIMEOUT_SECONDS,
                 )
+            except asyncio.TimeoutError:
+                error = (
+                    f"cursor-agent phase exceeded {_PHASE_TIMEOUT_SECONDS}s"
+                )
+                logger.error(
+                    "cursor-agent phase exceeded %ss; killing process",
+                    _PHASE_TIMEOUT_SECONDS,
+                )
+                stderr_task.cancel()
+                # The process is killed in the finally block below.
 
-                etype = event.get("type")
-                if etype == "system" and event.get("subtype") == "init":
-                    session_id = event.get("session_id") or session_id
-                elif etype == "result":
-                    if event.get("session_id"):
-                        session_id = event["session_id"]
-                    if event.get("is_error", False):
-                        error = event.get("result") or "Agent returned error"
-                    else:
-                        completed = True
-
-            await proc.wait()
-            if not completed and error is None and proc.returncode not in (0, None):
+            if error is None or not saw_result_event:
+                await proc.wait()
                 stderr_text = ""
-                if proc.stderr is not None:
-                    stderr_text = (await proc.stderr.read()).decode(
+                try:
+                    stderr_text = (await stderr_task).decode(
                         "utf-8", errors="replace"
                     )
-                error = (
-                    f"cursor-agent exited with code {proc.returncode}: "
-                    f"{stderr_text.strip()[:500]}"
-                ).strip()
+                except asyncio.CancelledError:
+                    pass
+                rc = proc.returncode
+                if not completed and error is None and rc not in (0, None):
+                    error = (
+                        f"cursor-agent exited with code {rc}: "
+                        f"{stderr_text.strip()[:500]}"
+                    ).strip()
+                    logger.error(
+                        "cursor-agent exited non-zero (code %s): %s",
+                        rc,
+                        stderr_text.strip()[:500],
+                    )
+                # Exit cleanly but no result event: the phase outcome is
+                # ambiguous, so surface it as an error rather than reporting an
+                # empty success.
+                elif not saw_result_event and error is None:
+                    error = (
+                        f"cursor-agent produced no result event "
+                        f"(exit {rc})"
+                    )
+                    logger.warning(
+                        "cursor-agent produced no result event (exit %s)", rc
+                    )
+            else:
+                await proc.wait()
+                try:
+                    await stderr_task
+                except asyncio.CancelledError:
+                    pass
         except CursorAgentNotFoundError:
             raise
-        except Exception as e:  # pragma: no cover - defensive
+        except Exception as e:
             error = str(e)
+            logger.error("cursor-agent backend failed: %s", e, exc_info=True)
         finally:
-            _remove_sandbox_hook(request.cwd)
+            # Always kill a still-running process so a hung or timed-out agent
+            # cannot leak.
+            if proc is not None and proc.returncode is None:
+                try:
+                    proc.kill()
+                    await proc.wait()
+                except Exception:  # pragma: no cover - defensive
+                    pass
+            _remove_sandbox_hook(request.cwd, hook_originals)
             if wrote_mcp:
-                _remove_cursor_mcp_config(request.cwd)
+                _remove_cursor_mcp_config(request.cwd, mcp_originals)
 
         if error:
             return AgentResult(
@@ -468,6 +538,50 @@ class CursorBackend:
             review_decision=captured_review_decision,
         )
 
+    async def _consume_stream(
+        self, request: SessionRequest, proc: Any
+    ) -> tuple[Optional[str], Optional[str], bool, bool, Optional[ReviewToolDecision]]:
+        """Iterate the stream-json stdout, returning the accumulated outcome.
+
+        Returns ``(session_id, error, completed, saw_result_event,
+        captured_review_decision)``. Wrapped by :meth:`run` in a wall-clock
+        timeout so a never-ending stdout cannot hang the orchestrator.
+        """
+        captured_review_decision: Optional[ReviewToolDecision] = None
+        session_id: Optional[str] = None
+        error: Optional[str] = None
+        completed = False
+        saw_result_event = False
+
+        assert proc.stdout is not None
+        async for raw in proc.stdout:
+            line = raw.decode("utf-8", errors="replace").strip()
+            if not line:
+                continue
+            try:
+                event = json.loads(line)
+            except json.JSONDecodeError:
+                logger.warning("stream-json: non-JSON line: %s", line[:200])
+                continue
+
+            captured_review_decision = self._handle_event(
+                event, request, captured_review_decision
+            )
+
+            etype = event.get("type")
+            if etype == "system" and event.get("subtype") == "init":
+                session_id = event.get("session_id") or session_id
+            elif etype == "result":
+                saw_result_event = True
+                if event.get("session_id"):
+                    session_id = event["session_id"]
+                if event.get("is_error", False):
+                    error = event.get("result") or "Agent returned error"
+                else:
+                    completed = True
+
+        return session_id, error, completed, saw_result_event, captured_review_decision
+
     def _handle_event(
         self,
         event: dict,
@@ -478,7 +592,8 @@ class CursorBackend:
         etype = event.get("type")
 
         if etype == "assistant":
-            content = event.get("message", {}).get("content", []) or []
+            # ``message`` may be JSON null, so guard before .get("content").
+            content = (event.get("message") or {}).get("content", []) or []
             for block in content:
                 if isinstance(block, dict) and block.get("type") == "text":
                     if request.on_log:
@@ -493,7 +608,8 @@ class CursorBackend:
             for key, body in tool_call.items():
                 if not isinstance(body, dict):
                     continue
-                args = body.get("args") if isinstance(body.get("args"), dict) else {}
+                raw_args = body.get("args")
+                args = raw_args if isinstance(raw_args, dict) else {}
                 if subtype == "started":
                     if request.on_log:
                         request.on_log(ToolCallEvent(
@@ -510,6 +626,14 @@ class CursorBackend:
                     is_err = isinstance(result, dict) and (
                         "rejected" in result or "error" in result
                     )
+                    if is_err:
+                        # Surface sandbox denies / tool rejections in the daemon
+                        # log, not just the per-phase stream.
+                        logger.warning(
+                            "cursor-agent tool %s rejected/errored: %s",
+                            key,
+                            json.dumps(result)[:500],
+                        )
                     if request.on_log:
                         content_text = json.dumps(result)[:2000] if result is not None else ""
                         request.on_log(ToolResultEvent(
@@ -550,8 +674,18 @@ class CursorBackend:
         """
         if captured is not None or not request.expose_review_tool:
             return captured
-        if not isinstance(args, dict):
+        # Identify a ReviewDecision call by the tool name/key, not by a loose
+        # substring scan of the whole payload: an unrelated tool that happens to
+        # carry a top-level ``decision`` key must not be mistaken for a review.
+        raw_name = args.get("name")
+        tool_name = raw_name if isinstance(raw_name, str) else ""
+        looks_like_review = any(
+            name in str(key) or name in tool_name
+            for name in _REVIEW_DECISION_NAMES
+        )
+        if not looks_like_review:
             return captured
+
         payload = args
         if "decision" not in payload:
             for nest_key in ("args", "arguments"):
@@ -560,11 +694,7 @@ class CursorBackend:
                     payload = inner
                     break
         decision = payload.get("decision")
-        looks_like_review = (
-            any(name in str(key) for name in _REVIEW_DECISION_NAMES)
-            or "ReviewDecision" in json.dumps(args)
-        )
-        if decision and looks_like_review:
+        if decision:
             captured = ReviewToolDecision(
                 decision=str(decision).upper(),
                 summary=payload.get("summary", ""),

@@ -13,6 +13,7 @@ Covers:
 
 from __future__ import annotations
 
+import asyncio
 import json
 import subprocess
 from pathlib import Path
@@ -73,7 +74,11 @@ class TestCursorAgentMissing:
 
 class TestMCPConfigHelpers:
     def test_write_creates_config_and_script(self, tmp_path):
-        config_path = _write_cursor_mcp_config(tmp_path)
+        # Returns a per-file snapshot of pre-existing bytes (all None on a clean
+        # worktree) so cleanup can restore a project's own committed versions.
+        originals = _write_cursor_mcp_config(tmp_path)
+        assert originals == {"mcp.json": None, "_review_mcp_server.py": None}
+        config_path = tmp_path / ".cursor" / "mcp.json"
         assert config_path.exists() and config_path.name == "mcp.json"
         config = json.loads(config_path.read_text())
         assert config["mcpServers"]["orchestrator"]["command"] == "python3"
@@ -375,3 +380,227 @@ class TestCursorBackendReviewCapture:
         ]
         result, _ = await _run(_make_request(tmp_path, expose_review_tool=False), lines)
         assert result.review_decision is None
+
+    @pytest.mark.asyncio
+    async def test_unrelated_tool_with_decision_key_not_captured(self, tmp_path):
+        """A non-review tool carrying a top-level ``decision`` is NOT captured.
+
+        Guards against the loose ``"ReviewDecision" in json.dumps(args)`` match:
+        the tool name/key must identify a review, not an incidental key.
+        """
+        captured: list[ReviewToolDecision] = []
+        worktree = tmp_path / "wt"
+        worktree.mkdir()
+        request = SessionRequest(
+            prompt="review", cwd=worktree, host_repo_path=tmp_path, env={},
+            max_turns=10, expose_review_tool=True,
+            on_review_decision=captured.append,
+        )
+        lines = [
+            _init(),
+            # A plain shell tool that happens to carry a top-level "decision".
+            _tool_started("shellToolCall",
+                          {"command": "echo hi", "decision": "APPROVE"}),
+            _result(True),
+        ]
+        result, _ = await _run(request, lines)
+        assert result.review_decision is None
+        assert captured == []
+
+
+# ---------------------------------------------------------------------------
+# Robustness: null message, no-result, timeout/kill, logging, .cursor clobber
+# ---------------------------------------------------------------------------
+
+
+class _CapturingStdout:
+    """Stdout fake that records the process cwd on first iteration.
+
+    Used to prove sandbox/MCP scaffolding is on disk *while* the agent runs,
+    via an assertion hook invoked on the first ``__anext__``.
+    """
+
+    def __init__(self, lines: list[str], on_first):
+        self._lines = [(line + "\n").encode() for line in lines]
+        self._on_first = on_first
+        self._first = True
+
+    def __aiter__(self):
+        self._it = iter(self._lines)
+        return self
+
+    async def __anext__(self) -> bytes:
+        if self._first:
+            self._first = False
+            self._on_first()
+        try:
+            return next(self._it)
+        except StopIteration:
+            raise StopAsyncIteration
+
+
+class _HangingStdout:
+    """Stdout fake whose iterator never yields and never ends (simulates hang)."""
+
+    def __aiter__(self):
+        return self
+
+    async def __anext__(self) -> bytes:
+        # Sleep far longer than the (monkeypatched) phase timeout.
+        await asyncio.sleep(3600)
+        raise StopAsyncIteration  # pragma: no cover
+
+
+class _StdoutProc:
+    """Fake proc wrapping an arbitrary stdout iterator (already-finished proc)."""
+
+    def __init__(self, stdout, returncode: int = 0, stderr: bytes = b""):
+        self.stdout = stdout
+        self.stderr = _FakeStderr(stderr)
+        self.returncode = returncode
+
+    async def wait(self):
+        return self.returncode
+
+
+class _KillableProc:
+    """Fake proc that starts running (returncode None) and records kill()."""
+
+    def __init__(self, stdout, stderr: bytes = b""):
+        self.stdout = stdout
+        self.stderr = _FakeStderr(stderr)
+        self.returncode = None
+        self.killed = False
+
+    def kill(self):
+        self.killed = True
+        self.returncode = -9
+
+    async def wait(self):
+        return self.returncode
+
+
+class TestCursorBackendRobustness:
+    @pytest.mark.asyncio
+    async def test_null_message_does_not_crash(self, tmp_path):
+        """An assistant event with ``message: null`` must not crash the phase."""
+        lines = [
+            _init(),
+            json.dumps({"type": "assistant", "message": None}),
+            _result(True, "done"),
+        ]
+        result, _ = await _run(_make_request(tmp_path), lines)
+        assert result.completed is True
+        assert result.error is None
+
+    @pytest.mark.asyncio
+    async def test_no_result_event_clean_exit_is_error(self, tmp_path):
+        """Exit 0 with no result event is ambiguous: surface it as an error."""
+        result, _ = await _run(
+            _make_request(tmp_path), [_init(), _assistant("working")],
+            returncode=0,
+        )
+        assert result.completed is False
+        assert result.error is not None
+        assert "no result event" in result.error
+        assert "exit 0" in result.error
+
+    @pytest.mark.asyncio
+    async def test_nonzero_exit_logs_error(self, tmp_path, caplog):
+        """A non-zero exit is logged at ERROR so failures are visible."""
+        import logging
+        with caplog.at_level(logging.ERROR, logger="orchestrator.backends.cursor"):
+            result, _ = await _run(
+                _make_request(tmp_path), [_init()], returncode=1, stderr=b"boom"
+            )
+        assert result.error is not None
+        assert any(
+            r.levelno == logging.ERROR and "non-zero" in r.getMessage()
+            for r in caplog.records
+        )
+
+    @pytest.mark.asyncio
+    async def test_timeout_kills_process_and_errors(self, tmp_path, monkeypatch):
+        """A hung stdout trips the wall-clock backstop, errors, and kills proc."""
+        monkeypatch.setattr(
+            "orchestrator.backends.cursor._PHASE_TIMEOUT_SECONDS", 0.05
+        )
+        proc = _KillableProc(_HangingStdout())
+        exec_mock = AsyncMock(return_value=proc)
+        with (
+            patch("orchestrator.backends.cursor.shutil.which",
+                  return_value="/usr/bin/cursor-agent"),
+            patch("orchestrator.backends.cursor.asyncio.create_subprocess_exec",
+                  exec_mock),
+        ):
+            result = await CursorBackend().run(_make_request(tmp_path))
+        assert result.completed is False
+        assert result.error is not None
+        assert "exceeded" in result.error
+        assert proc.killed is True
+
+    @pytest.mark.asyncio
+    async def test_preexisting_cursor_hooks_restored(self, tmp_path):
+        """A project's own .cursor/hooks.json is restored, not clobbered."""
+        worktree = tmp_path / "wt"
+        (worktree / ".cursor").mkdir(parents=True)
+        sentinel = worktree / ".cursor" / "hooks.json"
+        sentinel.write_text('{"project": "keep me"}')
+        await _run(_make_request(worktree), [_init(), _result()])
+        # The pre-existing file survives unchanged; .cursor/ is not removed.
+        assert sentinel.exists()
+        assert json.loads(sentinel.read_text()) == {"project": "keep me"}
+
+    @pytest.mark.asyncio
+    async def test_sandbox_hook_present_during_run(self, tmp_path):
+        """The hook is on disk *while* the agent runs, not just written/removed.
+
+        Fails if _write_sandbox_hook is dropped from run(): the assertion fires
+        on the first stdout iteration, i.e. mid-run.
+        """
+        worktree = tmp_path / "wt"
+        worktree.mkdir()
+        hooks_path = worktree / ".cursor" / "hooks.json"
+        seen: dict[str, bool] = {}
+
+        def _check():
+            seen["present"] = hooks_path.exists()
+
+        stdout = _CapturingStdout([_init(), _result()], _check)
+        proc = _StdoutProc(stdout, returncode=0)
+        exec_mock = AsyncMock(return_value=proc)
+        with (
+            patch("orchestrator.backends.cursor.shutil.which",
+                  return_value="/usr/bin/cursor-agent"),
+            patch("orchestrator.backends.cursor.asyncio.create_subprocess_exec",
+                  exec_mock),
+        ):
+            await CursorBackend().run(_make_request(worktree))
+        assert seen.get("present") is True  # written before the agent ran
+        assert not (worktree / ".cursor").exists()  # cleaned up after
+
+
+class TestSandboxHookShellSafety:
+    def test_hook_command_is_shell_safe_with_space_in_path(self, tmp_path):
+        """A worktree path with a space yields a shell-safe hook command.
+
+        Without shlex.quote, ``python3 /a b/.cursor/_sandbox_hook.py`` splits on
+        the space and cursor-agent fails to spawn the hook (failing open). The
+        quoted command must still deny a worktree-escaping command when run via
+        a real shell.
+        """
+        host = Path("/home/user/project")
+        worktree = tmp_path / "work tree with space"
+        worktree.mkdir()
+        _write_sandbox_hook(worktree, host)
+        hooks = json.loads((worktree / ".cursor" / "hooks.json").read_text())
+        cmd = hooks["hooks"]["beforeShellExecution"][0]["command"]
+        # The script path appears quoted (or escaped) so the space is preserved.
+        assert "_sandbox_hook.py" in cmd
+        r = subprocess.run(
+            cmd, shell=True,
+            input=json.dumps({"command": "git -C /home/user/project status"}),
+            capture_output=True, text=True,
+        )
+        assert r.returncode == 0, r.stderr
+        assert json.loads(r.stdout)["permission"] == "deny"

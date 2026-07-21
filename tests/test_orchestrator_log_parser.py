@@ -194,6 +194,34 @@ class TestParseLogLine:
         }
         assert parse_log_line(json.dumps(record)) is None
 
+    def test_parse_result_non_numeric_duration_returns_none(self):
+        """A non-numeric duration_ms yields None (malformed), never raises."""
+        record = {
+            "timestamp": "2026-01-31T19:37:02+00:00",
+            "type": "result",
+            "subtype": "success",
+            "duration_ms": "abc",
+            "total_cost_usd": 0.1,
+            "num_turns": 1,
+            "is_error": False,
+        }
+        # The ValueError from int("abc") must be swallowed, not propagated.
+        assert parse_log_line(json.dumps(record)) is None
+
+    def test_parse_result_null_num_turns_returns_none(self):
+        """A null num_turns yields None (malformed), never raises."""
+        record = {
+            "timestamp": "2026-01-31T19:37:02+00:00",
+            "type": "result",
+            "subtype": "success",
+            "duration_ms": 100,
+            "total_cost_usd": 0.1,
+            "num_turns": None,
+            "is_error": False,
+        }
+        # int(None) raises TypeError; the parser must treat it as malformed.
+        assert parse_log_line(json.dumps(record)) is None
+
     def test_raw_line_preserved(self):
         """The raw JSON string is preserved in raw_line."""
         record = {
@@ -254,6 +282,39 @@ class TestParseLogFile:
         ]
         log_file.write_text("\n".join(lines) + "\n")
 
+        entries = parse_log_file(log_file)
+        assert len(entries) == 1
+        assert entries[0].content["text_blocks"][0].text == "Valid line"
+
+    def test_parse_file_skips_bad_numeric_result_lines(self, tmp_path):
+        """Result lines with bad numeric fields are skipped, not crash the file."""
+        log_file = tmp_path / "test.txt"
+        lines = [
+            json.dumps({
+                "timestamp": "2026-01-31T19:31:00+00:00",
+                "type": "result",
+                "subtype": "success",
+                "duration_ms": "abc",  # non-numeric -> ValueError
+                "num_turns": 1,
+                "is_error": False,
+            }),
+            json.dumps({
+                "timestamp": "2026-01-31T19:31:01+00:00",
+                "type": "result",
+                "subtype": "success",
+                "duration_ms": 100,
+                "num_turns": None,  # null -> TypeError
+                "is_error": False,
+            }),
+            json.dumps({
+                "timestamp": "2026-01-31T19:31:02+00:00",
+                "type": "text",
+                "text": "Valid line",
+            }),
+        ]
+        log_file.write_text("\n".join(lines) + "\n")
+
+        # Must not raise; the two malformed result lines are skipped.
         entries = parse_log_file(log_file)
         assert len(entries) == 1
         assert entries[0].content["text_blocks"][0].text == "Valid line"

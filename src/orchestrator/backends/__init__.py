@@ -10,11 +10,15 @@ construction site for backends — callers (``create_scheduler``) never
 import a backend class directly.
 """
 
+import logging
+
 from orchestrator.backend import AgentBackend
 from orchestrator.backends.claude import ClaudeBackend
 
-# Registry mapping config values to backend constructors.
-# Each value is a zero-arg callable returning an AgentBackend instance.
+logger = logging.getLogger(__name__)
+
+# Registry mapping config values to AgentBackend classes.
+# Each value is an AgentBackend subclass; create_backend() instantiates it.
 # CursorBackend is lazily imported so the module loads cleanly even when
 # cursor-agent is not installed — the binary check happens at run() time.
 BACKEND_REGISTRY: dict[str, type] = {
@@ -25,8 +29,11 @@ try:
     from orchestrator.backends.cursor import CursorBackend
 
     BACKEND_REGISTRY["cursor"] = CursorBackend
-except ImportError:  # pragma: no cover — only if cursor module itself fails
-    pass
+except Exception as e:  # pragma: no cover - degrade gracefully but visibly
+    # A genuine import failure in cursor.py (not just a missing dependency)
+    # would otherwise silently de-register the cursor backend. Log it so the
+    # cause is visible while still allowing the orchestrator to run on claude.
+    logger.warning("cursor backend unavailable: %s", e)
 
 
 def create_backend(name: str) -> AgentBackend:

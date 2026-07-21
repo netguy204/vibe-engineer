@@ -9,11 +9,9 @@ code_paths:
 - tests/test_orchestrator_backend_factory.py
 code_references:
 - ref: src/orchestrator/backends/cursor.py#CursorBackend
-  implements: "AgentBackend implementation that drives cursor-agent via ACP JSON-RPC"
+  implements: "AgentBackend implementation that drives cursor-agent print mode"
 - ref: src/orchestrator/backends/cursor.py#CursorBackend::run
-  implements: "Session lifecycle: init, create/resume, event loop, result assembly"
-- ref: src/orchestrator/backends/cursor.py#ACPTransport
-  implements: "JSON-RPC 2.0 transport over cursor-agent acp subprocess"
+  implements: "Session lifecycle: spawn, stream-json event loop, result assembly"
 - ref: src/orchestrator/backends/cursor.py#CursorAgentNotFoundError
   implements: "Actionable error when cursor-agent binary is missing"
 - ref: src/orchestrator/backends/cursor.py#_write_cursor_mcp_config
@@ -39,6 +37,11 @@ created_after:
 # Chunk Goal
 
 ## Minor Goal
+
+Note: the ACP approach described below was superseded by `cursor-agent` print
+mode (`-p --output-format stream-json`); the live implementation is owned by
+`docs/chunks/backend_live_validation`. The ACP design is retained here for
+historical context.
 
 A `CursorBackend` implements the `AgentBackend` protocol by driving the
 `cursor-agent` CLI over ACP (Agent Client Protocol — JSON-RPC 2.0 on stdio via

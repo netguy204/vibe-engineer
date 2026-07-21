@@ -51,7 +51,7 @@ from any backend's native types.
 - Given equivalent normalized events from a non-Claude backend, the parser renders
   equivalent summaries.
 - Log-summarize tests pass, fed normalized events rather than SDK reprs where
-  needed (`tests/test_orchestrator_log_summarize.py`).
+  needed (`tests/test_orchestrator_log_parser.py`).
 
 ## Rejected Ideas
 

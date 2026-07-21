@@ -18,7 +18,7 @@ import re
 from dataclasses import asdict
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Optional, Any, Callable
+from typing import Optional, Callable
 
 from orchestrator.backend import (
     AgentBackend,

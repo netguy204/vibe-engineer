@@ -152,11 +152,20 @@ def parse_log_line(line: str) -> Optional[ParsedLogEntry]:
 
     elif event_type == "result":
         message_type = "ResultMessage"
+        # A null (TypeError) or non-numeric (ValueError) numeric field must not
+        # crash the parser: the contract is "malformed line -> None, never
+        # raise", so treat the whole line as malformed and skip it.
+        try:
+            duration_ms = int(record.get("duration_ms", 0))
+            total_cost_usd = float(record.get("total_cost_usd", 0.0))
+            num_turns = int(record.get("num_turns", 0))
+        except (TypeError, ValueError):
+            return None
         content = ResultInfo(
             subtype=record.get("subtype", "success"),
-            duration_ms=int(record.get("duration_ms", 0)),
-            total_cost_usd=float(record.get("total_cost_usd", 0.0)),
-            num_turns=int(record.get("num_turns", 0)),
+            duration_ms=duration_ms,
+            total_cost_usd=total_cost_usd,
+            num_turns=num_turns,
             is_error=record.get("is_error", False),
             result_text=record.get("result_text"),
         )
