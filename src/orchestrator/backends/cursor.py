@@ -466,7 +466,13 @@ class CursorBackend:
                     _PHASE_TIMEOUT_SECONDS,
                 )
                 stderr_task.cancel()
-                # The process is killed in the finally block below.
+                # Kill here rather than in `finally`: the wait below blocks
+                # until the agent exits on its own, and a genuinely hung agent
+                # never does — which would make the timeout meaningless.
+                try:
+                    proc.kill()
+                except ProcessLookupError:  # pragma: no cover - already exited
+                    pass
 
             if error is None or not saw_result_event:
                 await proc.wait()

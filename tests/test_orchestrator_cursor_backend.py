@@ -464,19 +464,28 @@ class _StdoutProc:
 
 
 class _KillableProc:
-    """Fake proc that starts running (returncode None) and records kill()."""
+    """Fake proc that starts running (returncode None) and records kill().
+
+    ``wait()`` blocks until ``kill()``, exactly like a real process. A fake
+    that returns from ``wait()`` unconditionally hides the bug where the
+    timeout path waits on the process *before* killing it: that wait never
+    returns for a genuinely hung agent.
+    """
 
     def __init__(self, stdout, stderr: bytes = b""):
         self.stdout = stdout
         self.stderr = _FakeStderr(stderr)
         self.returncode = None
         self.killed = False
+        self._exited = asyncio.Event()
 
     def kill(self):
         self.killed = True
         self.returncode = -9
+        self._exited.set()
 
     async def wait(self):
+        await self._exited.wait()
         return self.returncode
 
 
@@ -533,7 +542,11 @@ class TestCursorBackendRobustness:
             patch("orchestrator.backends.cursor.asyncio.create_subprocess_exec",
                   exec_mock),
         ):
-            result = await CursorBackend().run(_make_request(tmp_path))
+            # Bounded: if run() waits on the process before killing it, this
+            # never returns, so a regression fails loudly instead of hanging.
+            result = await asyncio.wait_for(
+                CursorBackend().run(_make_request(tmp_path)), timeout=5
+            )
         assert result.completed is False
         assert result.error is not None
         assert "exceeded" in result.error
