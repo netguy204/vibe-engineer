@@ -2,7 +2,19 @@
 status: IMPLEMENTING
 ticket: null
 parent_chunk: null
-code_paths: []
+code_paths:
+- skills/
+- commands/
+- src/orchestrator/agent.py
+- pyproject.toml
+- agents/chunk-executor.md
+- tests/test_plugin_commands.py
+- tests/test_plugin_manifest.py
+- tests/test_plugin_agents.py
+- tests/test_orchestrator_agent_skills.py
+- docs/trunk/DECISIONS.md
+- docs/trunk/ORCHESTRATOR.md
+- README.md
 code_references: []
 narrative: null
 investigation: null
