@@ -236,6 +236,122 @@ ve orch inject my_chunk
 
 **Important:** For new chunks, always wait for operator approval before committing. For existing chunks the operator is explicitly requesting execution, so proceed directly.
 
+## Cursor Backend
+
+<!-- Chunk: docs/chunks/backend_live_validation - Cursor print-mode backend, live-validated -->
+
+The orchestrator can run chunk phases on Cursor's Composer via the
+`cursor-agent` CLI in **print mode** (non-interactive). A full chunk lifecycle
+(PLAN → IMPLEMENT → REBASE → REVIEW → COMPLETE) has been validated end-to-end on
+Composer, including worktree sandbox enforcement and ReviewDecision capture.
+
+> **Why print mode, not ACP?** An earlier implementation drove `cursor-agent acp`
+> (the interactive Agent Client Protocol). Live validation showed ACP is
+> *interactive by design*: Composer holds a turn open waiting for the operator
+> ("say if you want adjustments…") and never emits a completion signal, so an
+> unattended orchestrator phase hangs indefinitely. Print mode
+> (`cursor-agent -p`) runs the prompt to autonomous completion and emits a
+> terminal `result` event — the behavior the orchestrator requires. See
+> `docs/chunks/backend_live_validation` for the full findings.
+
+### Prerequisites
+
+1. **Install `cursor-agent`** and ensure it is on your `$PATH`:
+
+   ```bash
+   cursor-agent --version
+   ```
+
+   If missing, the orchestrator raises `CursorAgentNotFoundError` with
+   installation guidance.
+
+2. **Authenticate once** with `cursor-agent login`. Print mode uses your stored
+   Cursor credentials; the daemon (same user) reads them from disk.
+
+3. **Model**: print mode uses cursor-agent's configured default model, which is
+   Composer (`composer-2.5` at time of writing). `cursor-agent` print mode does
+   not take a per-invocation model flag for this path; pin a different model via
+   your Cursor settings if needed.
+
+4. **No project-level cursor config is required ahead of time.** The backend
+   writes `.cursor/hooks.json` (sandbox) and, during REVIEW, `.cursor/mcp.json`
+   (ReviewDecision tool) into the worktree, and removes them after the phase.
+
+### Backend Selection
+
+```bash
+ve orch config --backend cursor   # run phases on Composer
+ve orch config --backend claude   # back to the default
+```
+
+Resolved by `create_backend()` in `src/orchestrator/backends/__init__.py`
+(`BACKEND_REGISTRY`: `"claude"` default, `"cursor"`). The daemon loads the
+backend **at startup**, so restart the daemon after changing it.
+
+> **Do not start the daemon from inside another agent session.** If `CLAUDECODE`
+> is set in the daemon's environment, Claude-backed phases refuse to launch
+> (cursor-agent's and Claude Code's nested-session guards). Start the daemon from
+> a plain shell, or with `env -u CLAUDECODE ve orch start`.
+
+### How it works (print mode)
+
+`CursorBackend.run()` spawns:
+
+```
+cursor-agent -p --force --output-format stream-json [--approve-mcps] [--resume <id>] <prompt>
+```
+
+and parses the newline-delimited JSON event stream:
+
+- `system/init` → session id and model
+- `assistant` → text blocks → `TextEvent`
+- `tool_call` (`started` / `completed`) → `ToolCallEvent` / `ToolResultEvent`
+- `result` → terminal event (`is_error`, `result`, `session_id`) → completion
+
+The subprocess stdout buffer is raised to 16 MB because stream-json lines (a
+single large content block) easily exceed asyncio's 64 KB default.
+
+### `.cursor/` configuration (written per phase, removed after)
+
+- **`hooks.json` + `_sandbox_hook.py`** — a `beforeShellExecution` hook that
+  enforces the worktree sandbox. The hook script **embeds the exact source of
+  `is_sandbox_violation`** rather than importing it: importing the orchestrator
+  package pulls a heavy `__init__` that crashes the hook, and **cursor-agent
+  fails _open_ on a crashed hook** (allowing the command). A `deny` from the
+  hook overrides `--force`. Verified live: a host-targeting `git -C` is blocked.
+- **`mcp.json` + `_review_mcp_server.py`** (REVIEW phase only) — a stdio MCP
+  server exposing the `ReviewDecision` tool, enabled with `--approve-mcps`.
+  Composer calls it as `orchestrator-ReviewDecision`; the backend captures the
+  decision from the `mcpToolCall` event whose real arguments nest under `args`.
+
+### Known divergences from Claude
+
+| Area | Claude | Cursor (print mode) |
+|------|--------|---------------------|
+| **Invocation** | Claude Agent SDK, in-process | `cursor-agent -p` subprocess + stream-json |
+| **Turn budget** | `ClaudeAgentOptions.max_turns` | **No equivalent** — cursor-agent has no `maxTurns`; Composer runs to completion |
+| **Operator questions** | Suspend + forward to attention queue | **Not supported** — print mode is non-interactive; the agent decides autonomously and never suspends |
+| **Sandbox** | in-process `PreToolUse` hook | out-of-process `.cursor/hooks.json` `beforeShellExecution` (overrides `--force`) |
+| **Permission gating** | every tool | shell/`execute` tools only (file edits within `cwd` auto-allow) |
+| **ReviewDecision** | in-process SDK MCP tool | `.cursor/mcp.json` stdio server + `--approve-mcps` |
+| **Model** | `claude-*` via config | cursor-agent default (Composer) |
+
+**No turn budget and no operator-question suspension are the two real
+divergences.** Both are inherent to print mode / cursor-agent and acceptable for
+autonomous orchestration: the agent runs to a decision, and there is no operator
+to answer a question mid-phase.
+
+### Troubleshooting
+
+| Symptom | Cause | Fix |
+|---------|-------|-----|
+| `CursorAgentNotFoundError` | `cursor-agent` not on `$PATH` | Install the Cursor CLI; ensure `cursor-agent` is accessible |
+| `RetriableError: getaddrinfo ENOTFOUND ...cursor.sh` | No network / Cursor API unreachable | Restore connectivity, then `ve orch retry <chunk>` |
+| "Separator is found, but chunk is longer than limit" | A stream-json line exceeded the stdout buffer | Mitigated by the 16 MB limit; raise further if a phase emits enormous single lines |
+| Phase "ended in unknown state" | `result` event missing / malformed stream | Inspect `.ve/chunks/<chunk>/log/<phase>.txt`; check `cursor-agent` stderr |
+| Sandbox not enforced (host command ran) | Hook script crashed → cursor-agent failed open | The hook is self-contained; verify it runs: `echo '{"command":"git -C /repo status"}' \| python3 .cursor/_sandbox_hook.py` should print `"deny"` |
+| ReviewDecision not captured | MCP tool args shape changed | The backend reads `mcpToolCall` args nested under `args`/`arguments`; check the event shape in the REVIEW log |
+
 ## Proactive Orchestrator Support
 
 When working interactively with the operator:

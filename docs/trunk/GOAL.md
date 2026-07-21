@@ -49,6 +49,12 @@ context-switch. This enables an operator working on Project A to report a
 deficiency in Tool B to Tool B's steward, who can triage and act on it
 independently.
 
+The workflow must not be locked to a single agent vendor. The tooling that
+executes agentic work — most significantly the orchestrator — must support
+pluggable agent backends so an operator can run the workflow on the agent of
+their choice (e.g. Claude Code, Cursor's Composer). The workflow's value comes
+from the documentation discipline it codifies, not from any one model provider.
+
 ## Constraints
 
 The artifacts produced by the workflow must be comprehensible and valuable to

@@ -12,13 +12,15 @@ from orchestrator.agent import (
     AgentRunnerError,
     PHASE_SKILL_FILES,
     create_log_callback,
+    _load_skill_content,
+)
+from orchestrator.backend import is_sandbox_violation
+from orchestrator.backends.claude import (
     create_question_intercept_hook,
     create_review_decision_hook,
     create_sandbox_enforcement_hook,
     create_orchestrator_mcp_server,
     review_decision_tool,
-    _load_skill_content,
-    _is_sandbox_violation,
     _merge_hooks,
 )
 from orchestrator.models import AgentResult, ReviewToolDecision, WorkUnitPhase
@@ -146,7 +148,7 @@ class TestRunPhaseWithQuestionCallback:
         worktree_path = tmp_path / "worktree"
         worktree_path.mkdir()
 
-        from orchestrator.agent import ResultMessage
+        from orchestrator.backends.claude import ResultMessage
 
         mock_result = MagicMock(spec=ResultMessage)
         mock_result.result = "Success"
@@ -154,7 +156,7 @@ class TestRunPhaseWithQuestionCallback:
         mock_result.session_id = None
 
         MockClient = create_mock_claude_sdk_client(messages=[mock_result])
-        with patch("orchestrator.agent.ClaudeSDKClient", MockClient):
+        with patch("orchestrator.backends.claude.ClaudeSDKClient", MockClient):
             # Provide a question callback
             captured = []
             await runner.run_phase(
@@ -177,7 +179,7 @@ class TestRunPhaseWithQuestionCallback:
         worktree_path = tmp_path / "worktree"
         worktree_path.mkdir()
 
-        from orchestrator.agent import ResultMessage
+        from orchestrator.backends.claude import ResultMessage
 
         mock_result = MagicMock(spec=ResultMessage)
         mock_result.result = "Success"
@@ -185,7 +187,7 @@ class TestRunPhaseWithQuestionCallback:
         mock_result.session_id = None
 
         MockClient = create_mock_claude_sdk_client(messages=[mock_result])
-        with patch("orchestrator.agent.ClaudeSDKClient", MockClient):
+        with patch("orchestrator.backends.claude.ClaudeSDKClient", MockClient):
             # No question callback
             await runner.run_phase(
                 chunk="test_chunk",
@@ -255,7 +257,7 @@ class TestRunPhaseWithQuestionCallback:
                 # Don't yield any more messages - the hook stopped the loop
 
         MockClaudeSDKClient.reset()
-        with patch("orchestrator.agent.ClaudeSDKClient", HookSimulatingMock):
+        with patch("orchestrator.backends.claude.ClaudeSDKClient", HookSimulatingMock):
             # Run with question callback
             result = await runner.run_phase(
                 chunk="test_chunk",
@@ -283,14 +285,14 @@ class TestRunPhaseWithQuestionCallback:
 
 # Chunk: docs/chunks/orch_sandbox_enforcement - Unit tests for sandbox violation detection
 class TestSandboxViolationDetection:
-    """Tests for _is_sandbox_violation helper function."""
+    """Tests for is_sandbox_violation helper function."""
 
     def test_blocks_cd_to_host_repo(self):
         """Detects cd to host repository path as violation."""
         host = Path("/home/user/project")
         worktree = Path("/home/user/project/.ve/chunks/test/worktree")
 
-        is_violation, reason = _is_sandbox_violation(
+        is_violation, reason = is_sandbox_violation(
             "cd /home/user/project", host, worktree
         )
         assert is_violation is True
@@ -301,7 +303,7 @@ class TestSandboxViolationDetection:
         host = Path("/home/user/project")
         worktree = Path("/home/user/project/.ve/chunks/test/worktree")
 
-        is_violation, reason = _is_sandbox_violation(
+        is_violation, reason = is_sandbox_violation(
             "cd '/home/user/project'", host, worktree
         )
         assert is_violation is True
@@ -311,7 +313,7 @@ class TestSandboxViolationDetection:
         host = Path("/home/user/project")
         worktree = Path("/home/user/project/.ve/chunks/test/worktree")
 
-        is_violation, reason = _is_sandbox_violation(
+        is_violation, reason = is_sandbox_violation(
             'cd "/home/user/project"', host, worktree
         )
         assert is_violation is True
@@ -321,7 +323,7 @@ class TestSandboxViolationDetection:
         host = Path("/home/user/project")
         worktree = Path("/home/user/project/.ve/chunks/test/worktree")
 
-        is_violation, reason = _is_sandbox_violation(
+        is_violation, reason = is_sandbox_violation(
             "cd /home/user/project/", host, worktree
         )
         assert is_violation is True
@@ -331,7 +333,7 @@ class TestSandboxViolationDetection:
         host = Path("/home/user/project")
         worktree = Path("/home/user/project/.ve/chunks/test/worktree")
 
-        is_violation, reason = _is_sandbox_violation(
+        is_violation, reason = is_sandbox_violation(
             "git -C /home/user/project commit -m 'test'", host, worktree
         )
         assert is_violation is True
@@ -342,7 +344,7 @@ class TestSandboxViolationDetection:
         host = Path("/home/user/project")
         worktree = Path("/home/user/project/.ve/chunks/test/worktree")
 
-        is_violation, reason = _is_sandbox_violation(
+        is_violation, reason = is_sandbox_violation(
             "git --git-dir=/home/user/project/.git status", host, worktree
         )
         assert is_violation is True
@@ -353,7 +355,7 @@ class TestSandboxViolationDetection:
         host = Path("/home/user/project")
         worktree = Path("/home/user/project/.ve/chunks/test/worktree")
 
-        is_violation, reason = _is_sandbox_violation(
+        is_violation, reason = is_sandbox_violation(
             "cd /home/user/other", host, worktree
         )
         assert is_violation is True
@@ -364,7 +366,7 @@ class TestSandboxViolationDetection:
         host = Path("/home/user/project")
         worktree = Path("/home/user/project/.ve/chunks/test/worktree")
 
-        is_violation, reason = _is_sandbox_violation(
+        is_violation, reason = is_sandbox_violation(
             "ls -la && cat README.md", host, worktree
         )
         assert is_violation is False
@@ -375,7 +377,7 @@ class TestSandboxViolationDetection:
         host = Path("/home/user/project")
         worktree = Path("/home/user/project/.ve/chunks/test/worktree")
 
-        is_violation, reason = _is_sandbox_violation(
+        is_violation, reason = is_sandbox_violation(
             "cd docs/chunks && ls", host, worktree
         )
         assert is_violation is False
@@ -386,7 +388,7 @@ class TestSandboxViolationDetection:
         host = Path("/home/user/project")
         worktree = Path("/home/user/project/.ve/chunks/test/worktree")
 
-        is_violation, reason = _is_sandbox_violation(
+        is_violation, reason = is_sandbox_violation(
             "cd /home/user/project/.ve/chunks/test/worktree/src", host, worktree
         )
         assert is_violation is False
@@ -397,7 +399,7 @@ class TestSandboxViolationDetection:
         host = Path("/home/user/project")
         worktree = Path("/home/user/project/.ve/chunks/test/worktree")
 
-        is_violation, reason = _is_sandbox_violation(
+        is_violation, reason = is_sandbox_violation(
             "cd /tmp && ls", host, worktree
         )
         assert is_violation is False
@@ -409,7 +411,7 @@ class TestSandboxViolationDetection:
         host1 = Path("/foo/bar")
         worktree1 = Path("/foo/bar/.ve/chunks/test/worktree")
 
-        is_violation, reason = _is_sandbox_violation(
+        is_violation, reason = is_sandbox_violation(
             "cd /foo/bar", host1, worktree1
         )
         assert is_violation is True
@@ -418,7 +420,7 @@ class TestSandboxViolationDetection:
         host2 = Path("/different/path")
         worktree2 = Path("/different/path/.ve/chunks/test/worktree")
 
-        is_violation, reason = _is_sandbox_violation(
+        is_violation, reason = is_sandbox_violation(
             "cd /foo/bar", host2, worktree2
         )
         # This should still be blocked as it's outside worktree2

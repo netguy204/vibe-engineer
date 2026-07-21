@@ -1,9 +1,11 @@
+# Chunk: docs/chunks/backend_logparse - Tests for JSON-line log parser
 # Chunk: docs/chunks/orch_tail_command - Log parsing and tail command for orchestrator
 """Tests for the orchestrator log parser module.
 
-Tests parsing of the raw log format and display formatting functions.
+Tests parsing of the JSON-line log format and display formatting functions.
 """
 
+import json
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -51,21 +53,16 @@ class TestParseTimestamp:
 
 
 class TestParseLogLine:
-    """Tests for parsing individual log lines."""
+    """Tests for parsing individual JSON log lines."""
 
-    def test_parse_system_message(self):
-        """Parses SystemMessage line."""
-        line = "[2026-01-31T19:30:56.669473+00:00] SystemMessage(subtype='init', data={'type': 'system'})"
-        result = parse_log_line(line)
-
-        assert result is not None
-        assert result.message_type == "SystemMessage"
-        assert result.timestamp.hour == 19
-
-    def test_parse_assistant_message_text_block(self):
-        """Parses AssistantMessage with TextBlock."""
-        line = "[2026-01-31T19:31:07.670490+00:00] AssistantMessage(content=[TextBlock(text='Now I understand the task.')])"
-        result = parse_log_line(line)
+    def test_parse_text_event(self):
+        """Parses a text event JSON line."""
+        record = {
+            "timestamp": "2026-01-31T19:31:07.670490+00:00",
+            "type": "text",
+            "text": "Now I understand the task.",
+        }
+        result = parse_log_line(json.dumps(record))
 
         assert result is not None
         assert result.message_type == "AssistantMessage"
@@ -73,10 +70,17 @@ class TestParseLogLine:
         assert len(result.content["text_blocks"]) == 1
         assert result.content["text_blocks"][0].text == "Now I understand the task."
 
-    def test_parse_assistant_message_tool_use_block(self):
-        """Parses AssistantMessage with ToolUseBlock."""
-        line = "[2026-01-31T19:31:00.138584+00:00] AssistantMessage(content=[ToolUseBlock(id='toolu_01UtHBmypBvy2ttkTqMZAqJx', name='Bash', input={'command': 'ls', 'description': 'List files'})])"
-        result = parse_log_line(line)
+    def test_parse_tool_call_event(self):
+        """Parses a tool_call event JSON line."""
+        record = {
+            "timestamp": "2026-01-31T19:31:00.138584+00:00",
+            "type": "tool_call",
+            "tool_id": "toolu_01UtHBmypBvy2ttkTqMZAqJx",
+            "name": "Bash",
+            "input": {"command": "ls", "description": "List files"},
+            "description": "List files",
+        }
+        result = parse_log_line(json.dumps(record))
 
         assert result is not None
         assert result.message_type == "AssistantMessage"
@@ -84,12 +88,19 @@ class TestParseLogLine:
         assert len(result.content["tool_calls"]) == 1
         tool_call = result.content["tool_calls"][0]
         assert tool_call.name == "Bash"
+        assert tool_call.tool_id == "toolu_01UtHBmypBvy2ttkTqMZAqJx"
         assert tool_call.description == "List files"
 
-    def test_parse_user_message_tool_result(self):
-        """Parses UserMessage with ToolResultBlock."""
-        line = "[2026-01-31T19:31:01.226200+00:00] UserMessage(content=[ToolResultBlock(tool_use_id='toolu_01UtHBmypBvy2ttkTqMZAqJx', content='file1.txt\\nfile2.txt', is_error=False)])"
-        result = parse_log_line(line)
+    def test_parse_tool_result_event(self):
+        """Parses a tool_result event JSON line."""
+        record = {
+            "timestamp": "2026-01-31T19:31:01.226200+00:00",
+            "type": "tool_result",
+            "tool_use_id": "toolu_01UtHBmypBvy2ttkTqMZAqJx",
+            "content": "file1.txt\nfile2.txt",
+            "is_error": False,
+        }
+        result = parse_log_line(json.dumps(record))
 
         assert result is not None
         assert result.message_type == "UserMessage"
@@ -97,20 +108,37 @@ class TestParseLogLine:
         assert len(result.content["tool_results"]) == 1
         tool_result = result.content["tool_results"][0]
         assert tool_result.is_error is False
+        assert tool_result.content == "file1.txt\nfile2.txt"
 
-    def test_parse_user_message_tool_result_error(self):
-        """Parses UserMessage with error result."""
-        line = "[2026-01-31T19:31:01.226200+00:00] UserMessage(content=[ToolResultBlock(tool_use_id='toolu_01UtHBmypBvy2ttkTqMZAqJx', content='Command failed', is_error=True)])"
-        result = parse_log_line(line)
+    def test_parse_tool_result_error(self):
+        """Parses a tool_result event with error flag."""
+        record = {
+            "timestamp": "2026-01-31T19:31:01.226200+00:00",
+            "type": "tool_result",
+            "tool_use_id": "toolu_01UtHBmypBvy2ttkTqMZAqJx",
+            "content": "Command failed",
+            "is_error": True,
+        }
+        result = parse_log_line(json.dumps(record))
 
         assert result is not None
         tool_result = result.content["tool_results"][0]
         assert tool_result.is_error is True
 
-    def test_parse_result_message_success(self):
-        """Parses successful ResultMessage."""
-        line = "[2026-01-31T19:37:02.518279+00:00] ResultMessage(subtype='success', duration_ms=365854, duration_api_ms=318398, is_error=False, num_turns=40, session_id='49455da2', total_cost_usd=1.42, usage={}, result='Done')"
-        result = parse_log_line(line)
+    def test_parse_result_event_success(self):
+        """Parses a successful result event."""
+        record = {
+            "timestamp": "2026-01-31T19:37:02.518279+00:00",
+            "type": "result",
+            "subtype": "success",
+            "duration_ms": 365854,
+            "total_cost_usd": 1.42,
+            "num_turns": 40,
+            "is_error": False,
+            "session_id": "49455da2",
+            "result_text": "Done",
+        }
+        result = parse_log_line(json.dumps(record))
 
         assert result is not None
         assert result.message_type == "ResultMessage"
@@ -121,10 +149,18 @@ class TestParseLogLine:
         assert result.content.num_turns == 40
         assert result.content.total_cost_usd == 1.42
 
-    def test_parse_result_message_error(self):
-        """Parses error ResultMessage."""
-        line = "[2026-01-31T19:37:02.518279+00:00] ResultMessage(subtype='error', duration_ms=1000, duration_api_ms=500, is_error=True, num_turns=5, session_id='abc', total_cost_usd=0.10, usage={}, result='Error occurred')"
-        result = parse_log_line(line)
+    def test_parse_result_event_error(self):
+        """Parses an error result event."""
+        record = {
+            "timestamp": "2026-01-31T19:37:02.518279+00:00",
+            "type": "result",
+            "subtype": "error",
+            "duration_ms": 1000,
+            "total_cost_usd": 0.10,
+            "num_turns": 5,
+            "is_error": True,
+        }
+        result = parse_log_line(json.dumps(record))
 
         assert result is not None
         assert result.content.is_error is True
@@ -133,34 +169,177 @@ class TestParseLogLine:
         """Returns None for malformed lines."""
         assert parse_log_line("") is None
         assert parse_log_line("not a log line") is None
-        assert parse_log_line("[bad timestamp] SomeMessage()") is None
+        assert parse_log_line("{bad json") is None
 
     def test_parse_empty_line_returns_none(self):
         """Returns None for empty lines."""
         assert parse_log_line("") is None
         assert parse_log_line("   ") is None
 
+    def test_parse_missing_type_returns_none(self):
+        """Returns None when type field is missing."""
+        record = {"timestamp": "2026-01-31T19:31:00+00:00"}
+        assert parse_log_line(json.dumps(record)) is None
+
+    def test_parse_missing_timestamp_returns_none(self):
+        """Returns None when timestamp field is missing."""
+        record = {"type": "text", "text": "hello"}
+        assert parse_log_line(json.dumps(record)) is None
+
+    def test_parse_unknown_type_returns_none(self):
+        """Returns None for unknown event types."""
+        record = {
+            "timestamp": "2026-01-31T19:31:00+00:00",
+            "type": "unknown_type",
+        }
+        assert parse_log_line(json.dumps(record)) is None
+
+    def test_raw_line_preserved(self):
+        """The raw JSON string is preserved in raw_line."""
+        record = {
+            "timestamp": "2026-01-31T19:31:07+00:00",
+            "type": "text",
+            "text": "Hello",
+        }
+        json_str = json.dumps(record)
+        result = parse_log_line(json_str)
+        assert result is not None
+        assert result.raw_line == json_str
+
 
 class TestParseLogFile:
     """Tests for parsing entire log files."""
 
     def test_parse_log_file_basic(self, tmp_path):
-        """Parses a simple log file."""
+        """Parses a simple JSON-line log file."""
         log_file = tmp_path / "test.txt"
-        log_file.write_text(
-            "[2026-01-31T19:31:00.000000+00:00] SystemMessage(subtype='init', data={})\n"
-            "[2026-01-31T19:31:01.000000+00:00] AssistantMessage(content=[TextBlock(text='Hello')])\n"
-        )
+        lines = [
+            json.dumps({
+                "timestamp": "2026-01-31T19:31:00.000000+00:00",
+                "type": "text",
+                "text": "Starting work",
+            }),
+            json.dumps({
+                "timestamp": "2026-01-31T19:31:01.000000+00:00",
+                "type": "tool_call",
+                "tool_id": "t1",
+                "name": "Bash",
+                "input": {"command": "ls"},
+                "description": None,
+            }),
+        ]
+        log_file.write_text("\n".join(lines) + "\n")
 
         entries = parse_log_file(log_file)
         assert len(entries) == 2
-        assert entries[0].message_type == "SystemMessage"
+        assert entries[0].message_type == "AssistantMessage"
         assert entries[1].message_type == "AssistantMessage"
 
     def test_parse_nonexistent_file(self, tmp_path):
         """Returns empty list for nonexistent file."""
         entries = parse_log_file(tmp_path / "nonexistent.txt")
         assert entries == []
+
+    def test_parse_file_skips_malformed_lines(self, tmp_path):
+        """Skips malformed lines and parses valid ones."""
+        log_file = tmp_path / "test.txt"
+        lines = [
+            "not json at all",
+            json.dumps({
+                "timestamp": "2026-01-31T19:31:00+00:00",
+                "type": "text",
+                "text": "Valid line",
+            }),
+            "{bad json",
+        ]
+        log_file.write_text("\n".join(lines) + "\n")
+
+        entries = parse_log_file(log_file)
+        assert len(entries) == 1
+        assert entries[0].content["text_blocks"][0].text == "Valid line"
+
+
+class TestRoundTrip:
+    """Tests for round-tripping events through serialize → parse."""
+
+    def _make_json_line(self, event_type: str, **fields) -> str:
+        """Helper to create a JSON log line."""
+        record = {
+            "timestamp": "2026-01-31T19:31:00.000000+00:00",
+            "type": event_type,
+            **fields,
+        }
+        return json.dumps(record)
+
+    def test_text_event_round_trip(self):
+        """TextEvent round-trips through JSON serialization."""
+        line = self._make_json_line("text", text="Hello world")
+        entry = parse_log_line(line)
+
+        assert entry is not None
+        assert entry.message_type == "AssistantMessage"
+        assert entry.content["text_blocks"][0].text == "Hello world"
+        assert entry.content["tool_calls"] == []
+
+    def test_tool_call_event_round_trip(self):
+        """ToolCallEvent round-trips through JSON serialization."""
+        line = self._make_json_line(
+            "tool_call",
+            tool_id="t1",
+            name="Read",
+            input={"file_path": "/tmp/foo.py"},
+            description="Read a file",
+        )
+        entry = parse_log_line(line)
+
+        assert entry is not None
+        assert entry.message_type == "AssistantMessage"
+        tc = entry.content["tool_calls"][0]
+        assert tc.tool_id == "t1"
+        assert tc.name == "Read"
+        assert tc.input == {"file_path": "/tmp/foo.py"}
+        assert tc.description == "Read a file"
+
+    def test_tool_result_event_round_trip(self):
+        """ToolResultEvent round-trips through JSON serialization."""
+        line = self._make_json_line(
+            "tool_result",
+            tool_use_id="t1",
+            content="file contents here",
+            is_error=False,
+        )
+        entry = parse_log_line(line)
+
+        assert entry is not None
+        assert entry.message_type == "UserMessage"
+        tr = entry.content["tool_results"][0]
+        assert tr.tool_use_id == "t1"
+        assert tr.content == "file contents here"
+        assert tr.is_error is False
+
+    def test_result_event_round_trip(self):
+        """ResultEvent round-trips through JSON serialization."""
+        line = self._make_json_line(
+            "result",
+            subtype="success",
+            duration_ms=12345,
+            total_cost_usd=0.75,
+            num_turns=10,
+            is_error=False,
+            session_id="sess-123",
+            result_text="All done",
+        )
+        entry = parse_log_line(line)
+
+        assert entry is not None
+        assert entry.message_type == "ResultMessage"
+        assert isinstance(entry.content, ResultInfo)
+        assert entry.content.subtype == "success"
+        assert entry.content.duration_ms == 12345
+        assert entry.content.total_cost_usd == 0.75
+        assert entry.content.num_turns == 10
+        assert entry.content.is_error is False
+        assert entry.content.result_text == "All done"
 
 
 class TestFormatTimestamp:
@@ -370,7 +549,6 @@ class TestFormatAssistantText:
 
         lines = format_assistant_text(entry, max_width=40)
         assert len(lines) > 1
-        # First line has timestamp and emoji
         assert "💬" in lines[0]
 
 
@@ -410,7 +588,6 @@ class TestFormatResultBanner:
         assert "14:37:02" in result
         assert "$1.42" in result
         assert "40 turns" in result
-        # Duration should be formatted as minutes/seconds
         assert "6m" in result or "365" in result
 
     def test_format_result_banner_error(self):
@@ -499,7 +676,6 @@ class TestFormatEntryForHtml:
         )
 
         lines = format_entry_for_html(entry)
-        # The output should be HTML-escaped
         for line in lines:
             assert "<script>" not in line
             assert "&lt;script&gt;" in line or "script" not in line
@@ -517,7 +693,6 @@ class TestFormatEntryForHtml:
         )
 
         lines = format_entry_for_html(entry)
-        # At least one line should contain the speech emoji
         joined = " ".join(lines)
         assert "💬" in joined
 
@@ -567,7 +742,6 @@ class TestFormatEntryForHtml:
     def test_format_phase_header_for_html_escapes_html(self):
         """Escapes HTML in phase header."""
         dt = datetime(2026, 1, 31, 14, 30, 56)
-        # Phase names shouldn't contain HTML, but test escaping anyway
         result = format_phase_header_for_html("<script>", dt)
 
         assert "<script>" not in result
@@ -590,7 +764,7 @@ class TestFormatEntryForHtml:
 
         result = format_result_banner_for_html(entry)
         assert "SUCCESS" in result
-        assert "══" in result  # Unicode double lines preserved
+        assert "══" in result
 
     def test_format_result_banner_for_html_empty_for_non_result(self):
         """Returns empty string for non-ResultMessage."""

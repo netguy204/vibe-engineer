@@ -12,13 +12,15 @@ from orchestrator.agent import (
     AgentRunnerError,
     PHASE_SKILL_FILES,
     create_log_callback,
+    _load_skill_content,
+)
+from orchestrator.backend import TextEvent, ToolCallEvent, is_sandbox_violation
+from orchestrator.backends.claude import (
     create_question_intercept_hook,
     create_review_decision_hook,
     create_sandbox_enforcement_hook,
     create_orchestrator_mcp_server,
     review_decision_tool,
-    _load_skill_content,
-    _is_sandbox_violation,
     _merge_hooks,
 )
 from orchestrator.models import AgentResult, ReviewToolDecision, WorkUnitPhase
@@ -145,7 +147,7 @@ class TestAgentRunnerPhaseExecution:
         worktree_path = tmp_path / "worktree"
         worktree_path.mkdir()
 
-        from orchestrator.agent import ResultMessage
+        from orchestrator.backends.claude import ResultMessage
 
         mock_result = MagicMock(spec=ResultMessage)
         mock_result.result = "Success"
@@ -153,7 +155,7 @@ class TestAgentRunnerPhaseExecution:
         mock_result.session_id = None
 
         MockClient = create_mock_claude_sdk_client(messages=[mock_result])
-        with patch("orchestrator.agent.ClaudeSDKClient", MockClient):
+        with patch("orchestrator.backends.claude.ClaudeSDKClient", MockClient):
             result = await runner.run_phase(
                 chunk="test_chunk",
                 phase=WorkUnitPhase.PLAN,
@@ -172,7 +174,7 @@ class TestAgentRunnerPhaseExecution:
         worktree_path.mkdir()
 
         MockClient = create_mock_claude_sdk_client(exception=Exception("Test error"))
-        with patch("orchestrator.agent.ClaudeSDKClient", MockClient):
+        with patch("orchestrator.backends.claude.ClaudeSDKClient", MockClient):
             result = await runner.run_phase(
                 chunk="test_chunk",
                 phase=WorkUnitPhase.PLAN,
@@ -191,7 +193,7 @@ class TestAgentRunnerPhaseExecution:
         worktree_path = tmp_path / "worktree"
         worktree_path.mkdir()
 
-        from orchestrator.agent import ResultMessage
+        from orchestrator.backends.claude import ResultMessage
 
         mock_result = MagicMock(spec=ResultMessage)
         mock_result.result = "Unknown slash command: foo"
@@ -199,7 +201,7 @@ class TestAgentRunnerPhaseExecution:
         mock_result.session_id = None
 
         MockClient = create_mock_claude_sdk_client(messages=[mock_result])
-        with patch("orchestrator.agent.ClaudeSDKClient", MockClient):
+        with patch("orchestrator.backends.claude.ClaudeSDKClient", MockClient):
             result = await runner.run_phase(
                 chunk="test_chunk",
                 phase=WorkUnitPhase.PLAN,
@@ -226,7 +228,7 @@ class TestSettingSourcesConfiguration:
         worktree_path = tmp_path / "worktree"
         worktree_path.mkdir()
 
-        from orchestrator.agent import ResultMessage
+        from orchestrator.backends.claude import ResultMessage
 
         mock_result = MagicMock(spec=ResultMessage)
         mock_result.result = "Success"
@@ -234,7 +236,7 @@ class TestSettingSourcesConfiguration:
         mock_result.session_id = None
 
         MockClient = create_mock_claude_sdk_client(messages=[mock_result])
-        with patch("orchestrator.agent.ClaudeSDKClient", MockClient):
+        with patch("orchestrator.backends.claude.ClaudeSDKClient", MockClient):
             await runner.run_phase(
                 chunk="test_chunk",
                 phase=WorkUnitPhase.PLAN,
@@ -258,7 +260,7 @@ class TestSettingSourcesConfiguration:
         worktree_path = tmp_path / "worktree"
         worktree_path.mkdir()
 
-        from orchestrator.agent import ResultMessage
+        from orchestrator.backends.claude import ResultMessage
 
         mock_result = MagicMock(spec=ResultMessage)
         mock_result.result = "Success"
@@ -266,7 +268,7 @@ class TestSettingSourcesConfiguration:
         mock_result.session_id = None
 
         MockClient = create_mock_claude_sdk_client(messages=[mock_result])
-        with patch("orchestrator.agent.ClaudeSDKClient", MockClient):
+        with patch("orchestrator.backends.claude.ClaudeSDKClient", MockClient):
             await runner.resume_for_active_status(
                 chunk="test_chunk",
                 worktree_path=worktree_path,
@@ -283,18 +285,20 @@ class TestLogCallback:
     """Tests for log callback creation."""
 
     def test_create_log_callback(self, tmp_path):
-        """Creates callback that writes to file."""
+        """Creates callback that writes JSON lines to file."""
         log_dir = tmp_path / "logs"
 
         callback = create_log_callback("test_chunk", WorkUnitPhase.PLAN, log_dir)
 
-        # Call the callback
-        callback("test message")
+        # Call the callback with a LogEvent
+        callback(TextEvent(text="test message"))
 
-        # Check file was created
+        # Check file was created with JSON content
         log_file = log_dir / "plan.txt"
         assert log_file.exists()
-        assert "test message" in log_file.read_text()
+        content = log_file.read_text()
+        assert "test message" in content
+        assert '"type": "text"' in content
 
     def test_log_callback_appends(self, tmp_path):
         """Callback appends to existing log."""
@@ -302,20 +306,22 @@ class TestLogCallback:
 
         callback = create_log_callback("test_chunk", WorkUnitPhase.PLAN, log_dir)
 
-        callback("message 1")
-        callback("message 2")
+        callback(TextEvent(text="message 1"))
+        callback(ToolCallEvent(tool_id="t1", name="Bash", input={"command": "ls"}))
 
         log_file = log_dir / "plan.txt"
         content = log_file.read_text()
         assert "message 1" in content
-        assert "message 2" in content
+        assert "Bash" in content
+        lines = [l for l in content.strip().split("\n") if l]
+        assert len(lines) == 2
 
     def test_log_callback_creates_dir(self, tmp_path):
         """Callback creates log directory if needed."""
         log_dir = tmp_path / "nested" / "logs"
 
         callback = create_log_callback("test_chunk", WorkUnitPhase.IMPLEMENT, log_dir)
-        callback("test")
+        callback(TextEvent(text="test"))
 
         assert (log_dir / "implement.txt").exists()
 
@@ -369,7 +375,7 @@ class TestQuestionInterceptHook:
         }
 
         # Call the hook
-        from orchestrator.agent import HookContext
+        from orchestrator.backends.claude import HookContext
 
         result = await hook_handler(hook_input, None, {"signal": None})
 
