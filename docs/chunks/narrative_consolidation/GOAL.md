@@ -26,7 +26,7 @@ code_references:
     implements: "CLI command 've narrative compact' for consolidation"
   - ref: src/ve.py#update_refs
     implements: "CLI command 've narrative update-refs' for backreference updates"
-  - ref: commands/narrative-compact.md
+  - ref: skills/narrative-compact/SKILL.md
     implements: "Slash command template for /narrative-compact workflow"
   - ref: tests/test_narrative_consolidation.py
     implements: "Test suite for consolidation workflow"

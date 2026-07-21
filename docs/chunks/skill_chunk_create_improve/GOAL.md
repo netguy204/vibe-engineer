@@ -5,7 +5,7 @@ parent_chunk: null
 code_paths:
 - src/templates/commands/chunk-create.md.jinja2
 code_references:
-  - ref: commands/chunk-create.md
+  - ref: skills/chunk-create/SKILL.md
     implements: "Skill description improvement for discoverability and context capture instructions for implementing agents"
 narrative: null
 investigation: null

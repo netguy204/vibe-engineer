@@ -6,7 +6,7 @@ code_paths:
 - src/templates/commands/chunk-execute.md.jinja2
 - src/templates/claude/CLAUDE.md.jinja2
 code_references:
-  - ref: commands/chunk-execute.md
+  - ref: skills/chunk-execute/SKILL.md
     implements: "Chunk-execute slash command — orchestrates plan → implement → complete lifecycle inline (static plugin command)"
 narrative: null
 investigation: null

@@ -19,46 +19,46 @@ code_paths:
 - commands/audit-intent.md
 - commands/migrate-managed-claude-md.md
 code_references:
-- ref: commands/orchestrator-inject.md
+- ref: skills/orchestrator-inject/SKILL.md
   implements: 'Static plugin command: commit pre-flight + ve orch inject with monitoring
     offer'
-- ref: commands/orchestrator-monitor.md
+- ref: skills/orchestrator-monitor/SKILL.md
   implements: 'Static plugin command: recurring orchestrator polling with status handlers
     and guardrails'
-- ref: commands/orchestrator-investigate.md
+- ref: skills/orchestrator-investigate/SKILL.md
   implements: 'Static plugin command: stuck work-unit diagnosis scenarios A-G and
     resolutions'
-- ref: commands/orchestrator-submit-future.md
+- ref: skills/orchestrator-submit-future/SKILL.md
   implements: 'Static plugin command: batch FUTURE-chunk submission with eligibility
     guards'
-- ref: commands/steward-setup.md
+- ref: skills/steward-setup/SKILL.md
   implements: 'Static plugin command: steward SOP interview producing docs/trunk/STEWARD.md'
-- ref: commands/steward-watch.md
+- ref: skills/steward-watch/SKILL.md
   implements: 'Static plugin command: watch-respond-rewatch steward loop with cursor
     safety'
-- ref: commands/steward-send.md
+- ref: skills/steward-send/SKILL.md
   implements: 'Static plugin command: send to a steward channel; carries the target-project
     channel-naming guidance and common-mistake warning'
-- ref: commands/steward-changelog.md
+- ref: skills/steward-changelog/SKILL.md
   implements: 'Static plugin command: watch a project''s changelog channel with project-local
     cursor'
-- ref: commands/swarm-monitor.md
+- ref: skills/swarm-monitor/SKILL.md
   implements: 'Static plugin command: multi-channel changelog monitoring; carries
     cross-project channel-naming guidance'
-- ref: commands/swarm-request-response.md
+- ref: skills/swarm-request-response/SKILL.md
   implements: 'Static plugin command: request-response over channel pairs; carries
     the target-project channel-naming guidance'
-- ref: commands/entity-startup.md
+- ref: skills/entity-startup/SKILL.md
   implements: 'Static plugin command: entity wake sequence (identity, memories, wiki,
     SOP)'
-- ref: commands/entity-shutdown.md
+- ref: skills/entity-shutdown/SKILL.md
   implements: 'Static plugin command: entity sleep cycle for wiki and legacy entities'
-- ref: commands/entity-episodic.md
+- ref: skills/entity-episodic/SKILL.md
   implements: 'Static plugin command: episodic transcript search workflow'
-- ref: commands/audit-intent.md
+- ref: skills/audit-intent/SKILL.md
   implements: 'Static plugin command: parallel chunk-corpus intent audit with inline
     sub-agent prompt template'
-- ref: commands/migrate-managed-claude-md.md
+- ref: skills/migrate-managed-claude-md/SKILL.md
   implements: 'Static plugin command: CLAUDE.md magic-marker migration phases'
 narrative: claude_plugin_port
 investigation: null

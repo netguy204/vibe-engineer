@@ -24,45 +24,45 @@ code_paths:
 - commands/friction-log.md
 - commands/validate-fix.md
 code_references:
-- ref: commands/chunk-plan.md
+- ref: skills/chunk-plan/SKILL.md
   implements: "Static plugin port of chunk-plan with runtime task-context guidance"
-- ref: commands/chunk-implement.md
+- ref: skills/chunk-implement/SKILL.md
   implements: "Static plugin port of chunk-implement with runtime task-context guidance"
-- ref: commands/chunk-complete.md
+- ref: skills/chunk-complete/SKILL.md
   implements: "Static plugin port of chunk-complete preserving both single-project and task-workspace reference formats"
-- ref: commands/chunk-execute.md
+- ref: skills/chunk-execute/SKILL.md
   implements: "Static plugin port of chunk-execute (plan/implement/review/complete loop)"
-- ref: commands/chunk-review.md
+- ref: skills/chunk-review/SKILL.md
   implements: "Static plugin port of chunk-review (four-phase review workflow)"
-- ref: commands/chunk-commit.md
+- ref: skills/chunk-commit/SKILL.md
   implements: "Static plugin port of chunk-commit with canonical preamble added to its git context"
-- ref: commands/chunk-rebase.md
+- ref: skills/chunk-rebase/SKILL.md
   implements: "Static plugin port of chunk-rebase (merge trunk before review)"
-- ref: commands/chunk-demote.md
+- ref: skills/chunk-demote/SKILL.md
   implements: "Static plugin port of chunk-demote"
-- ref: commands/chunk-update-references.md
+- ref: skills/chunk-update-references/SKILL.md
   implements: "Static plugin port of chunk-update-references preserving both symbolic reference format variants"
-- ref: commands/chunks-resolve-references.md
+- ref: skills/chunks-resolve-references/SKILL.md
   implements: "Static plugin port of chunks-resolve-references (parallel reference fan-out)"
-- ref: commands/cluster-rename.md
+- ref: skills/cluster-rename/SKILL.md
   implements: "Static plugin port of cluster-rename"
-- ref: commands/narrative-create.md
+- ref: skills/narrative-create/SKILL.md
   implements: "Static plugin port of narrative-create"
-- ref: commands/narrative-compact.md
+- ref: skills/narrative-compact/SKILL.md
   implements: "Static plugin port of narrative-compact with runtime task-context guidance"
-- ref: commands/narrative-execute.md
+- ref: skills/narrative-execute/SKILL.md
   implements: "Static plugin port of narrative-execute (wave execution with inline chunk-executor agent prompt)"
-- ref: commands/investigation-create.md
+- ref: skills/investigation-create/SKILL.md
   implements: "Static plugin port of investigation-create with runtime task-context guidance"
-- ref: commands/subsystem-discover.md
+- ref: skills/subsystem-discover/SKILL.md
   implements: "Static plugin port of subsystem-discover with runtime task-context guidance"
-- ref: commands/discover-subsystems.md
+- ref: skills/discover-subsystems/SKILL.md
   implements: "Static plugin port of discover-subsystems"
-- ref: commands/decision-create.md
+- ref: skills/decision-create/SKILL.md
   implements: "Static plugin port of decision-create"
-- ref: commands/friction-log.md
+- ref: skills/friction-log/SKILL.md
   implements: "Static plugin port of friction-log (raw block unwrapped)"
-- ref: commands/validate-fix.md
+- ref: skills/validate-fix/SKILL.md
   implements: "Static plugin port of validate-fix (raw block unwrapped)"
 narrative: claude_plugin_port
 investigation: null

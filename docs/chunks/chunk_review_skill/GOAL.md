@@ -6,7 +6,7 @@ code_paths:
   - src/templates/commands/chunk-review.md.jinja2
   - src/templates/claude/CLAUDE.md.jinja2
 code_references:
-  - ref: commands/chunk-review.md
+  - ref: skills/chunk-review/SKILL.md
     implements: "Complete chunk-review command with four-phase review workflow (static plugin command)"
 narrative: null
 investigation: orchestrator_quality_assurance

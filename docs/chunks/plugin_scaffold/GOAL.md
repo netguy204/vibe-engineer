@@ -17,7 +17,7 @@ code_references:
   implements: "Plugin manifest defining the vibe-engineer Claude Code plugin (name, version, description, author)"
 - ref: .claude-plugin/marketplace.json
   implements: "Marketplace manifest making this repository installable via /plugin marketplace add + /plugin install"
-- ref: commands/ve-status.md
+- ref: skills/ve-status/SKILL.md
   implements: "Read-only pilot command wrapping ve chunk list --current, proving the plugin install path end-to-end"
 - ref: tests/test_plugin_manifest.py#TestPluginManifest
   implements: "Validates plugin.json carries the required Claude Code plugin schema fields"

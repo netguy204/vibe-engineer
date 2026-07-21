@@ -21,9 +21,9 @@ code_references:
     implements: "Removed scratchpad CLI command group"
   - ref: tests/conftest.py
     implements: "Removed isolated_scratchpad and scratchpad_for_project fixtures"
-  - ref: commands/chunk-create.md
+  - ref: skills/chunk-create/SKILL.md
     implements: "Updated to reflect in-repo workflow instead of scratchpad"
-  - ref: commands/narrative-create.md
+  - ref: skills/narrative-create/SKILL.md
     implements: "Updated to reflect in-repo workflow instead of scratchpad"
 narrative: revert_scratchpad_chunks
 investigation: null

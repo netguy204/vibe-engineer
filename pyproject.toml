@@ -54,14 +54,16 @@ build-backend = "hatchling.build"
 only-include = ["src"]
 sources = ["src"]
 
-# Chunk: docs/chunks/plugin_legacy_migration - Ship plugin command sources as
+# Chunk: docs/chunks/plugin_legacy_migration - Ship plugin skill sources as
 # orchestrator package data so phase prompts no longer depend on a project's
 # legacy .agents/skills/ layout.
+# Chunk: docs/chunks/plugin_crossharness_skills - Sources are the cross-harness
+# skills/<name>/SKILL.md layout.
 [tool.hatch.build.targets.wheel.force-include]
-"commands" = "orchestrator/skills"
+"skills" = "orchestrator/skills"
 
 [tool.hatch.build.targets.sdist]
-include = ["src/**", "commands/**", "README.md"]
+include = ["src/**", "skills/**", "README.md"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

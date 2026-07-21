@@ -33,7 +33,7 @@ code_references:
     implements: "Main orchestration function for cluster rename operation"
   - ref: src/cluster_rename.py#format_dry_run_output
     implements: "Dry-run output formatter"
-  - ref: commands/cluster-rename.md
+  - ref: skills/cluster-rename/SKILL.md
     implements: "Slash command for /cluster-rename (static plugin command)"
   - ref: tests/test_cluster_rename.py
     implements: "Test suite for cluster rename functionality"

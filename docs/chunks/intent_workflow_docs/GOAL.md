@@ -13,7 +13,7 @@ code_references:
     implements: "Chunks section framing qualified for intent-bearing work"
   - ref: src/templates/claude/AGENTS.md.jinja2
     implements: "Mirror of CLAUDE.md.jinja2 intent-bearing framing for agent surfaces"
-  - ref: commands/chunk-create.md
+  - ref: skills/chunk-create/SKILL.md
     implements: "Command description qualified to signal chunks are for intent-bearing work (static plugin command)"
   - ref: docs/trunk/ARTIFACTS.md
     implements: "Choosing-between-artifacts table and backreference lifespan updated for intent framing"

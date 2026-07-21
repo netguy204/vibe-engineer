@@ -161,7 +161,7 @@ Each chunk has two files. `GOAL.md` records the problem, the success criteria, a
 
 #### Claude Code Slash Commands
 
-The workflow slash commands ship with the [vibe-engineer Claude Code plugin](#claude-code-plugin) — nothing is rendered into your repository, and command updates arrive via `/plugin update vibe-engineer` rather than by re-running `ve init`. The core chunk-lifecycle commands:
+The workflow ships with the [vibe-engineer Claude Code plugin](#claude-code-plugin) as cross-harness skills (`skills/<name>/SKILL.md`, agentskills.io layout) that surface as slash commands — nothing is rendered into your repository, and updates arrive via `/plugin update vibe-engineer` rather than by re-running `ve init`. The core chunk-lifecycle commands:
 
 | Command | Description |
 |---------|-------------|
@@ -314,7 +314,8 @@ For the full command reference and advanced topics (worktree retention, batch op
 ```
 vibe-engineer/
 ├── .claude-plugin/       # Plugin + marketplace manifests (Claude Code plugin)
-├── commands/             # Plugin slash-command sources (also orchestrator phase prompts)
+├── skills/               # Cross-harness workflow skills (also orchestrator phase prompts)
+├── commands/             # Reserved for genuinely command-shaped future UX (empty)
 ├── agents/               # Plugin subagents
 ├── hooks/                # Plugin hooks (SessionStart)
 ├── src/                  # `ve` CLI (Python)

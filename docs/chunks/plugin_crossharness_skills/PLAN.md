@@ -63,8 +63,8 @@ suite moved in lockstep:
    genuinely command-shaped future UX. README.md's repo-layout tree and
    ORCHESTRATOR.md's phase-prompt paragraph are updated to name `skills/`.
 6. **Reference integrity**: every chunk GOAL.md carrying a live
-   `ref: commands/<name>.md` code reference (72 files — a previous mass
-   resolution pointed them all at the plugin command sources) is updated
+   `ref: commands/<name>.md` code reference (71 files, 126 refs — a previous
+   mass resolution pointed them all at the plugin command sources) is updated
    mechanically to `ref: skills/<name>/SKILL.md`. Historical `code_paths`
    lists are left as-is (they are planning-time records; precedent: the
    pre-plugin chunks kept `src/templates/...` code_paths when their refs
@@ -151,3 +151,10 @@ plugin_subagents, plugin_legacy_migration).
   mechanical; historical `code_paths` untouched.
 - Step 4 extended to `agents/intent-auditor.md`? No — only chunk-executor.md
   references command paths; intent-auditor does not. (Verified by grep.)
+- Step 5: `tests/test_plugin_commands.py` was renamed to
+  `tests/test_plugin_skills.py` (classes `TestCommandInvariants` →
+  `TestSkillInvariants`, `TestChunkCreateCommand` → `TestChunkCreateSkill`)
+  rather than retargeted in place — the module's subject is now the skills
+  surface, and a stale filename would mislead. The `plugin_runtime_context`
+  and `localexec_chunk_execute_all` references to the old module/class names
+  were updated alongside.

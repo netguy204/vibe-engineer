@@ -6,7 +6,7 @@ code_paths:
   - src/templates/commands/orchestrator-submit-future.md.jinja2
   - .claude/commands/orchestrator-submit-future.md
 code_references:
-  - ref: commands/orchestrator-submit-future.md
+  - ref: skills/orchestrator-submit-future/SKILL.md
     implements: "Slash command template for batch-submitting FUTURE chunks to orchestrator"
 narrative: null
 investigation: null

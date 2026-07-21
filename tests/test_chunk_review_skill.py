@@ -1,7 +1,7 @@
 """Tests for the per-file review decision workflow."""
 # Chunk: docs/chunks/reviewer_use_decision_files - Test skill template uses new decision file workflow
 # Chunk: docs/chunks/plugin_init_slimdown - Removed chunk-review template rendering tests;
-# the command now ships statically with the Claude Code plugin (see tests/test_plugin_commands.py)
+# the command now ships statically with the Claude Code plugin (see tests/test_plugin_skills.py)
 
 
 class TestConcurrentReviewsNoConflicts:

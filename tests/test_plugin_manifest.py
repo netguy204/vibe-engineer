@@ -2,9 +2,11 @@
 
 Verifies the install contract that `claude plugin marketplace add` and
 `claude plugin install` depend on: valid manifests that agree with each
-other, a read-only pilot command, and the canonical plugin layout.
+other, a read-only pilot skill, and the canonical plugin layout.
 
 # Chunk: docs/chunks/plugin_scaffold - Claude Code plugin scaffold
+# Chunk: docs/chunks/plugin_crossharness_skills - Pilot ships as a
+# cross-harness skill at skills/ve-status/SKILL.md
 """
 
 import json
@@ -16,7 +18,7 @@ import yaml
 REPO_ROOT = Path(__file__).parent.parent
 PLUGIN_MANIFEST = REPO_ROOT / ".claude-plugin" / "plugin.json"
 MARKETPLACE_MANIFEST = REPO_ROOT / ".claude-plugin" / "marketplace.json"
-PILOT_COMMAND = REPO_ROOT / "commands" / "ve-status.md"
+PILOT_SKILL = REPO_ROOT / "skills" / "ve-status" / "SKILL.md"
 
 
 def _load_json(path: Path) -> dict:
@@ -69,29 +71,29 @@ class TestMarketplaceManifest:
         assert (source_dir / ".claude-plugin" / "plugin.json").is_file()
 
 
-class TestPilotCommand:
-    def test_pilot_command_exists_with_frontmatter(self):
-        frontmatter = _parse_frontmatter(PILOT_COMMAND)
+class TestPilotSkill:
+    def test_pilot_skill_exists_with_frontmatter(self):
+        frontmatter = _parse_frontmatter(PILOT_SKILL)
         assert frontmatter["name"] == "ve-status"
-        assert frontmatter["description"], "pilot command needs a description"
+        assert frontmatter["description"], "pilot skill needs a description"
 
-    def test_pilot_command_is_read_only(self):
+    def test_pilot_skill_is_read_only(self):
         """The pilot proves the install path; it must not mutate state."""
-        frontmatter = _parse_frontmatter(PILOT_COMMAND)
+        frontmatter = _parse_frontmatter(PILOT_SKILL)
         allowed = frontmatter["allowed-tools"]
         tools = [t.strip() for t in allowed.split(",")]
         for tool in tools:
             assert tool.startswith("Bash(ve "), (
-                f"pilot command allows non-ve tool: {tool}"
+                f"pilot skill allows non-ve tool: {tool}"
             )
             # No write-capable ve invocations.
             assert not re.search(
                 r"\bve (chunk (create|activate|demote|complete)|init|orch inject)",
                 tool,
-            ), f"pilot command allows a write-capable invocation: {tool}"
+            ), f"pilot skill allows a write-capable invocation: {tool}"
 
-    def test_pilot_command_wraps_chunk_list(self):
-        body = PILOT_COMMAND.read_text()
+    def test_pilot_skill_wraps_chunk_list(self):
+        body = PILOT_SKILL.read_text()
         assert "ve chunk list --current" in body
 
 

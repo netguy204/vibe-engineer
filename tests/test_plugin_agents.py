@@ -1,16 +1,16 @@
-"""Tests for the named plugin agents and the commands that reference them.
+"""Tests for the named plugin agents and the skills that reference them.
 
 Inline agent prompts that clear the promotion bar (invoked from more than
-one command, or substantial) are versioned once as plugin agents under
-agents/ instead of being embedded in command bodies. These tests verify:
+one skill, or substantial) are versioned once as plugin agents under
+agents/ instead of being embedded in skill bodies. These tests verify:
 
 1. Generic invariants every agent in agents/ must satisfy (valid
    frontmatter with name/description/tools, no Jinja2 syntax, no
    auto-generated header) — the same static-file discipline that governs
-   commands/ (DEC-010).
+   skills/ (DEC-010).
 2. The two promoted roles exist: chunk-executor (narrative-execute's wave
    execution) and intent-auditor (audit-intent's fan-out).
-3. The rewired commands reference the agents by name and no longer embed
+3. The rewired skills reference the agents by name and no longer embed
    the promoted prompt bodies inline, and the load-bearing protocol rules
    survived the move into the agent definitions.
 
@@ -22,12 +22,14 @@ import pytest
 from test_plugin_manifest import REPO_ROOT, _parse_frontmatter
 
 AGENTS_DIR = REPO_ROOT / "agents"
-COMMANDS_DIR = REPO_ROOT / "commands"
+# Chunk: docs/chunks/plugin_crossharness_skills - Workflow docs live at
+# skills/<name>/SKILL.md
+SKILLS_DIR = REPO_ROOT / "skills"
 
 CHUNK_EXECUTOR = AGENTS_DIR / "chunk-executor.md"
 INTENT_AUDITOR = AGENTS_DIR / "intent-auditor.md"
-NARRATIVE_EXECUTE = COMMANDS_DIR / "narrative-execute.md"
-AUDIT_INTENT = COMMANDS_DIR / "audit-intent.md"
+NARRATIVE_EXECUTE = SKILLS_DIR / "narrative-execute" / "SKILL.md"
+AUDIT_INTENT = SKILLS_DIR / "audit-intent" / "SKILL.md"
 
 
 def _agent_files() -> list:

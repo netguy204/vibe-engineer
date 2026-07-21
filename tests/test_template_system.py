@@ -1229,4 +1229,4 @@ class TestManagedClaudeMdMigrationTemplate:
 
 # Chunk: docs/chunks/plugin_init_slimdown - Slash-command template tests removed with the
 # commands collection; the static commands ship with the Claude Code plugin and are
-# covered by tests/test_plugin_commands.py
+# covered by tests/test_plugin_skills.py

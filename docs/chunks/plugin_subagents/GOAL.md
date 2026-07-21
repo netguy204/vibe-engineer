@@ -13,9 +13,9 @@ code_references:
   implements: "chunk-executor plugin agent — full chunk lifecycle (plan/implement/review/complete) in a parallel session, promoted from narrative-execute's inline prompt"
 - ref: agents/intent-auditor.md
   implements: "intent-auditor plugin agent — self-contained 5-chunk audit protocol (detection criteria, action rules, veto rule, symmetric verification), promoted from audit-intent's sub-agent prompt template"
-- ref: commands/narrative-execute.md
+- ref: skills/narrative-execute/SKILL.md
   implements: "Phase 4 wave execution references the chunk-executor agent by name instead of embedding the lifecycle prompt"
-- ref: commands/audit-intent.md
+- ref: skills/audit-intent/SKILL.md
   implements: "Step 3 fan-out spawns intent-auditor agents; the inline sub-agent prompt template is replaced by 'The intent-auditor agent' section"
 - ref: tests/test_plugin_agents.py#TestAgentInvariants
   implements: "Static-file invariants for agents/ (frontmatter name/description/tools, no Jinja2, no auto-generated header)"

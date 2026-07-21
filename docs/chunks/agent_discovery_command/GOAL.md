@@ -5,7 +5,7 @@ parent_chunk: null
 code_paths:
 - src/templates/commands/subsystem-discover.md.jinja2
 code_references:
-- ref: commands/subsystem-discover.md
+- ref: skills/subsystem-discover/SKILL.md
   implements: 'Agent command template guiding collaborative subsystem discovery through
     7 phases: name derivation, pattern identification, boundary exploration, invariant
     discovery, implementation mapping, chunk relationship mapping, and consolidation

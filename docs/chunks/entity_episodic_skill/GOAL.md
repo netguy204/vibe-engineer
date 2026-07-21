@@ -6,9 +6,9 @@ code_paths:
   - src/templates/commands/entity-episodic.md.jinja2
   - src/templates/commands/entity-startup.md.jinja2
 code_references:
-  - ref: commands/entity-episodic.md
+  - ref: skills/entity-episodic/SKILL.md
     implements: "New skill template teaching agents episodic search usage, triggers, two-phase workflow, and caveats"
-  - ref: commands/entity-startup.md
+  - ref: skills/entity-startup/SKILL.md
     implements: "Updated startup skill with Step 9 (episodic memory) inserted after touch protocol (renumbered from Step 7 by entity_startup_wiki which added Steps 5-6 for wiki orientation)"
 narrative: null
 investigation: entity_session_harness

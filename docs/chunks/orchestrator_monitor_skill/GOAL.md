@@ -7,9 +7,9 @@ code_paths:
 - src/templates/commands/steward-watch.md.jinja2
 - src/templates/claude/CLAUDE.md.jinja2
 code_references:
-- ref: commands/orchestrator-monitor.md
+- ref: skills/orchestrator-monitor/SKILL.md
   implements: "Orchestrator monitor slash command with status handler logic, loop setup, and lifecycle management (static plugin command)"
-- ref: commands/steward-watch.md
+- ref: skills/steward-watch/SKILL.md
   implements: "Step 6 delegates monitoring to /orchestrator-monitor instead of inline loop construction (static plugin command)"
 narrative: null
 investigation: null

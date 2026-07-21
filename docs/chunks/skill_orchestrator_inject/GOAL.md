@@ -6,7 +6,7 @@ code_paths:
 - src/templates/commands/orchestrator-inject.md.jinja2
 - src/templates/claude/CLAUDE.md.jinja2
 code_references:
-  - ref: commands/orchestrator-inject.md
+  - ref: skills/orchestrator-inject/SKILL.md
     implements: "Slash command with pre-flight commit check and orchestrator injection workflow (static plugin command)"
 narrative: null
 investigation: null

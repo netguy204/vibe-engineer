@@ -8,7 +8,7 @@ code_paths:
 - .claude/commands/narrative-execute.md
 - CLAUDE.md
 code_references:
-- ref: commands/narrative-execute.md
+- ref: skills/narrative-execute/SKILL.md
   implements: "Slash command with full narrative execution workflow: DAG parsing, wave computation, parallel Agent dispatch, failure handling, and finalization (static plugin command)"
 narrative: null
 investigation: null

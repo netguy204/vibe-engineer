@@ -302,20 +302,23 @@ class TestAgentRunner:
     """Tests for AgentRunner class."""
 
     # Chunk: docs/chunks/plugin_legacy_migration - Phase prompts resolve to
-    # package-shipped plugin command sources, independent of the project layout
-    def test_get_skill_path_resolves_packaged_command_source(self, project_dir):
-        """Every phase resolves to an existing plugin command source file.
+    # package-shipped plugin skill sources, independent of the project layout
+    # Chunk: docs/chunks/plugin_crossharness_skills - Sources live at
+    # skills/<name>/SKILL.md
+    def test_get_skill_path_resolves_packaged_skill_source(self, project_dir):
+        """Every phase resolves to an existing plugin skill source file.
 
         In this development checkout the dev fallback resolves to the
-        repo-root commands/ directory; an installed wheel resolves to the
+        repo-root skills/ directory; an installed wheel resolves to the
         force-included orchestrator/skills/ package data. Either way the
-        file must exist and be named after the command.
+        file must exist at the cross-harness <skill-name>/SKILL.md layout.
         """
         runner = AgentRunner(project_dir)
 
         for phase, skill_name in PHASE_SKILL_FILES.items():
             path = runner.get_skill_path(phase)
-            assert path.name == f"{skill_name}.md"
+            assert path.name == "SKILL.md"
+            assert path.parent.name == skill_name
             assert path.is_file(), f"Missing phase prompt source for {phase}: {path}"
             # The prompt must not come from the target project (legacy layout)
             assert not path.is_relative_to(project_dir)

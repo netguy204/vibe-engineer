@@ -26,7 +26,7 @@ code_references:
     implements: "Sets up review_decision_callback during REVIEW phase dispatch"
   - ref: src/orchestrator/state.py#StateStore::_migrate_v10
     implements: "Schema migration adding review_nudge_count column to work_units table"
-  - ref: commands/chunk-review.md
+  - ref: skills/chunk-review/SKILL.md
     implements: "Updated reviewer skill instructions requiring ReviewDecision tool usage"
   - ref: tests/test_orchestrator_scheduler_review.py#TestReviewDecisionTool
     implements: "Test class verifying tool submission, nudging, and escalation behavior"

@@ -31,7 +31,7 @@ code_references:
     implements: "Unit tests for scratchpad command functions"
   - ref: tests/test_chunk_scratchpad_cli.py
     implements: "CLI integration tests for scratchpad chunk commands"
-  - ref: commands/chunk-create.md
+  - ref: skills/chunk-create/SKILL.md
     implements: "Updated skill template for scratchpad-based workflow"
 narrative: global_scratchpad
 investigation: bidirectional_doc_code_sync

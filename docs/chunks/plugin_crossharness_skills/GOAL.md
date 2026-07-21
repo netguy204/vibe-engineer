@@ -8,7 +8,7 @@ code_paths:
 - src/orchestrator/agent.py
 - pyproject.toml
 - agents/chunk-executor.md
-- tests/test_plugin_commands.py
+- tests/test_plugin_skills.py
 - tests/test_plugin_manifest.py
 - tests/test_plugin_agents.py
 - tests/test_orchestrator_agent_skills.py

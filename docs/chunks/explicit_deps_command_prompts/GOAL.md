@@ -7,11 +7,11 @@ code_paths:
   - src/templates/commands/narrative-create.md.jinja2
   - src/templates/commands/investigation-create.md.jinja2
 code_references:
-  - ref: commands/chunk-create.md
+  - ref: skills/chunk-create/SKILL.md
     implements: "Step 7: depends_on null vs empty semantics guidance for chunk creation"
-  - ref: commands/narrative-create.md
+  - ref: skills/narrative-create/SKILL.md
     implements: "Step 4: depends_on semantics for proposed_chunks entries"
-  - ref: commands/investigation-create.md
+  - ref: skills/investigation-create/SKILL.md
     implements: "Phase 2A step 6: reference to depends_on semantics in Proposed Chunks"
 narrative: explicit_deps_null_semantics
 investigation: null

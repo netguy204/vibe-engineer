@@ -4,7 +4,7 @@ ticket: null
 parent_chunk: null
 code_paths: ["commands/chunk-execute-all.md", "agents/chunk-executor.md", "docs/trunk/DECISIONS.md", "README.md"]
 code_references:
-  - ref: commands/chunk-execute-all.md
+  - ref: skills/chunk-execute-all/SKILL.md
     implements: "Wave-based session-local execution command: target selection, pre-flight baseline, DAG/waves, worktree-isolated parallel execution, per-wave merge-back, failure handling, finalization"
   - ref: agents/chunk-executor.md
     implements: "Worktree-mode protocol (self-activation, ff to main tip, commit-on-branch, no merging) and extended report contract"
@@ -60,8 +60,8 @@ SDK-based orchestrator bills at standard API token rates.
   FUTURE, commit on the branch, never merge, report branch + worktree path +
   handoffs).
 - Test invariants that govern the new files:
-  `tests/test_plugin_commands.py#TestCommandInvariants` is parameterized over
-  every commands/*.md (frontmatter name+description, no Jinja2, no
+  `tests/test_plugin_skills.py#TestSkillInvariants` is parameterized over
+  every skills/*/SKILL.md (frontmatter name+description, no Jinja2, no
   AUTO-GENERATED header); `tests/test_plugin_agents.py#TestChunkExecutorPromotion`
   requires agents/chunk-executor.md to keep the `/chunk-plan` →
   `/chunk-implement` → `/chunk-review` → `/chunk-complete` lifecycle text, the

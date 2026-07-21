@@ -20,16 +20,17 @@ The orchestrator (`ve orch`) manages parallel chunk execution across multiple gi
 ## Phase Prompts and Command Distribution
 
 <!-- Chunk: docs/chunks/plugin_legacy_migration - Phase prompts ship with the ve package, not the project -->
+<!-- Chunk: docs/chunks/plugin_crossharness_skills - Phase prompts are the cross-harness skills/<name>/SKILL.md sources -->
 
-Workflow commands (and the orchestrator's phase prompts, which are the same
-command sources) are distributed via the vibe-engineer Claude Code plugin and
-the `ve` Python package — they are **not** stored in the target project
-(DEC-010). The agent runner loads each phase's prompt (chunk-create,
-chunk-plan, chunk-implement, chunk-rebase, chunk-review, chunk-complete) from
-package data shipped with the installed `ve` package, so the orchestrator
-works against any project regardless of its layout. Earlier versions read
-prompts from the project's `.agents/skills/` directory; that layout is
-removed by re-running `ve init`.
+Workflow skills (and the orchestrator's phase prompts, which are the same
+`skills/<name>/SKILL.md` sources) are distributed via the vibe-engineer
+Claude Code plugin and the `ve` Python package — they are **not** stored in
+the target project (DEC-010). The agent runner loads each phase's prompt
+(chunk-create, chunk-plan, chunk-implement, chunk-rebase, chunk-review,
+chunk-complete) from package data shipped with the installed `ve` package, so
+the orchestrator works against any project regardless of its layout. Earlier
+versions read prompts from the project's `.agents/skills/` directory; that
+layout is removed by re-running `ve init`.
 
 Upgrades follow the same story: command and phase-prompt updates arrive by
 updating the plugin (`/plugin update vibe-engineer`) and the `ve` package
