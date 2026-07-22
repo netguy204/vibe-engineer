@@ -2,7 +2,22 @@
 status: IMPLEMENTING
 ticket: null
 parent_chunk: null
-code_paths: []
+code_paths:
+  - src/hooks.py
+  - src/cli/hooks.py
+  - src/cli/__init__.py
+  - src/frontmatter.py
+  - src/integrity.py
+  - src/templates/claude/CLAUDE.md.jinja2
+  - commands/
+  - docs/hooks/chunk-complete.md
+  - docs/trunk/ARTIFACTS.md
+  - docs/trunk/DECISIONS.md
+  - docs/chunks/plugin_runtime_context/PORTING_GUIDE.md
+  - tests/test_hooks.py
+  - tests/test_hooks_cli.py
+  - tests/test_frontmatter.py
+  - tests/test_plugin_commands.py
 code_references: []
 narrative: null
 investigation: null
@@ -260,8 +275,11 @@ them. That limit is accepted here. Determinism is the job of the deferred
 
 - `ve hooks show <command-name>` prints the rendered fragment for
   `docs/hooks/<command-name>.md` relative to the project root, and prints
-  nothing with exit 0 when the file is absent. Absent is the common case:
-  every wired command runs this on every invocation in every project.
+  `(no project hook)` with exit 0 when the file is absent. Absent is the
+  common case: every command runs this on every invocation in every project.
+  The explicit negative matches the rest of the canonical preamble, every
+  line of which prints one — a blank value in a context bullet reads to an
+  agent as a broken command rather than an absent file.
 - The command never fails a lifecycle command it is embedded in. Malformed
   frontmatter, unreadable file, or absent `docs/hooks/` yields exit 0 and
   either empty output or a single diagnostic line — never a traceback and
@@ -277,14 +295,21 @@ them. That limit is accepted here. Determinism is the job of the deferred
   hook never firing.
 - `ve validate` reports an unrecognised `docs/hooks/` filename as a warning,
   for the same reason.
-- The wired commands span artifact types, not just chunks: `chunk-create`,
-  `chunk-plan`, `chunk-implement`, `chunk-complete`, `chunk-review`,
-  `chunk-commit`, `investigation-create`, `narrative-create`, and
-  `subsystem-discover`. Each gains one context line in its `## Context`
-  section and one bullet in its `## Runtime context` section describing how
-  to treat the content. Wiring only the chunk commands would make the
-  mechanism read as chunk-only in practice regardless of what the namespace
-  permits.
+- Every plugin command is wired, via the canonical preamble that
+  `docs/chunks/plugin_runtime_context/PORTING_GUIDE.md` requires each command
+  to carry verbatim: one context line in `## Context` and one bullet in
+  `## Runtime context`. The set of valid event names is therefore exactly the
+  set of plugin commands, with no separately maintained allowlist to drift
+  against it — a hand-picked subset would have to be represented both in
+  Python (so `ve hooks list` and `ve validate` can flag a hook that will
+  never fire) and in N markdown files, with nothing holding the two in
+  agreement.
+- `src/hooks.py` carries the known-event set as a literal, because the CLI is
+  installed separately from the plugin (DEC-010) and cannot reliably read the
+  plugin's `commands/` directory at runtime. A test pins that literal to
+  `commands/*.md` by exact equality in both directions, so a command added
+  without updating the constant fails, and a stale entry for a deleted
+  command fails too.
 - The runtime-context bullet establishes precedence: hook content is a
   binding operator requirement for that phase and must be satisfied before
   the command reports completion; where a hook contradicts the command's own

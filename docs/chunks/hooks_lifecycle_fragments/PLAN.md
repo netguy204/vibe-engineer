@@ -1,162 +1,347 @@
-
-
-<!--
-This document captures HOW you'll achieve the chunk's GOAL.
-It should be specific enough that each step is a reasonable unit of work
-to hand to an agent.
--->
-
 # Implementation Plan
 
 ## Approach
 
-<!--
-How will you build this? Describe the strategy at a high level.
-What patterns or techniques will you use?
-What existing code will you build on?
+The mechanism is three thin layers, each of which already has an established
+pattern in this repository to copy:
 
-Reference docs/trunk/DECISIONS.md entries where relevant.
-If this approach represents a new significant decision, ask the user
-if we should add it to DECISIONS.md and reference it here.
+1. **Resolution and rendering** — `src/hooks.py`, a business-logic module in
+   the shape of `src/friction.py`. Locates `docs/hooks/<event>.md` under a
+   project directory, splits frontmatter from body, renders the injectable
+   block. Total-function by construction: every failure mode returns a value,
+   nothing raises.
+2. **CLI surface** — `src/cli/hooks.py` defining a `hooks` Click group with
+   `show` and `list`, registered in `src/cli/__init__.py` exactly as `friction`
+   and `config` are. Follows the repo-wide `--project-dir` default-`"."`
+   convention; there is no project-root discovery helper in this codebase and
+   this chunk does not introduce one.
+3. **Injection** — one line in the canonical command preamble, plus a
+   `Bash(ve hooks show:*)` entry in each command's `allowed-tools`.
 
-Always include tests in your implementation plan and adhere to
-docs/trunk/TESTING_PHILOSOPHY.md in your planning.
+### Universal wiring via the canonical preamble
 
-Remember to update code_paths in the chunk's GOAL.md (e.g., docs/chunks/hooks_lifecycle_fragments/GOAL.md)
-with references to the files that you expect to touch.
--->
+`docs/chunks/plugin_runtime_context/PORTING_GUIDE.md` establishes a canonical
+preamble that **every** plugin command carries verbatim (`## Context` lines
+followed by `## Runtime context` interpretation bullets). The hook line belongs
+in that preamble rather than in a hand-maintained subset of commands.
+
+This supersedes the GOAL's nine-command wired list. The reason is the drift
+problem: a wired subset must be represented both in Python (so
+`ve hooks list` and `ve validate` can flag a hook filename that will never
+fire) and in N markdown files, and nothing keeps the two in agreement. Wiring
+universally collapses the question — the set of valid event names becomes
+exactly the set of plugin commands, and one test pins the Python constant to
+`commands/*.md` on disk.
+
+The marginal cost is one `ve hooks show` subprocess per command invocation,
+which in the overwhelmingly common case stats one absent path and exits. A
+hook on `swarm-monitor` may be a strange thing to want, but permitting it costs
+nothing and refusing it costs an allowlist.
+
+### Absent-hook output
+
+`ve hooks show <event>` prints `(no project hook)` and exits 0 when the file is
+absent — it does not print nothing. Every other line in the canonical preamble
+prints an explicit negative (`(not a task workspace)`, `(no .ve-config.yaml —
+defaults apply)`), because a blank value in a context bullet reads to an agent
+as a broken command rather than an absent file. This refines the GOAL success
+criterion, which said "prints nothing"; the intent behind that criterion —
+never fail, never be noisy — is preserved.
+
+### Decision record
+
+The advisory-not-enforced stance is an architectural commitment with real
+alternatives already rejected in the GOAL (enforced shell checks, `CLAUDE.md`,
+Claude Code lifecycle hooks). It warrants a DECISIONS.md entry (DEC-014) rather
+than living only in a chunk goal, because future chunks adding `checks:` need
+the reasoning to push against. Step 9 drafts it; **the operator must approve
+before it lands.**
+
+Testing follows `docs/trunk/TESTING_PHILOSOPHY.md`: failing tests first for
+everything that resolves, renders, or rejects. The command-file wiring is
+covered by extending the existing parametrised invariants in
+`tests/test_plugin_commands.py`, which already asserts per-command properties
+across `commands/*.md`.
 
 ## Subsystem Considerations
 
-<!--
-Before designing your implementation, check docs/subsystems/ for relevant
-cross-cutting patterns.
+- **docs/subsystems/workflow_artifacts** (STABLE): This chunk **uses** it.
+  `src/frontmatter.py` carries a `workflow_artifacts` backreference, and step 1
+  extends that module. Because the subsystem is STABLE, step 1 adds a new
+  function alongside the existing parsers rather than changing their behaviour;
+  any deviation found from its patterns is flagged to the operator, not
+  unilaterally corrected.
 
-QUESTIONS TO CONSIDER:
-- Does this chunk touch any existing subsystem's scope?
-- Will this chunk implement part of a subsystem (contribute code) or use it
-  (depend on it)?
-- Did you discover code during exploration that should be part of a subsystem
-  but doesn't follow its patterns?
+  VE hooks are deliberately **not** workflow artifacts in the subsystem's sense:
+  they have no status, no state machine, no ordering, no `ArtifactManager`. They
+  are inert operator-authored content keyed by filename. Do not model them on
+  chunks/narratives/investigations, and do not route them through
+  `ArtifactManager` (DEC-009) — that template-method pattern exists for
+  artifacts with lifecycle, and a hook has none.
 
-If no subsystems are relevant, delete this section.
-
-WHEN SUBSYSTEMS ARE RELEVANT:
-List each relevant subsystem with its status and your relationship:
-- **docs/subsystems/validation** (DOCUMENTED): This chunk USES the validation
-  subsystem to check input
-- **docs/subsystems/error_handling** (REFACTORING): This chunk IMPLEMENTS a
-  new error type following the subsystem's patterns
-
-HOW SUBSYSTEM STATUS AFFECTS YOUR WORK:
-
-DOCUMENTED subsystems: The subsystem's patterns are captured but deviations are not
-being actively fixed. If you discover code that deviates from the subsystem's
-patterns, add it to the subsystem's Known Deviations section. Do NOT prioritize
-fixing those deviations—your chunk has its own goals.
-
-REFACTORING subsystems: The subsystem is being actively consolidated. If your chunk
-work touches code that deviates from the subsystem's patterns, attempt to bring it
-into compliance as part of your work. This is "opportunistic improvement"—improve
-what you touch, but don't expand scope to fix unrelated deviations.
-
-WHEN YOU DISCOVER DEVIATING CODE:
-- Add it to the subsystem's Known Deviations section
-- Note whether you will address it (REFACTORING status + relevant to your work)
-  or leave it for future work (DOCUMENTED status or outside your chunk's scope)
-
-Example:
-- **Discovered deviation**: src/legacy/parser.py#validate_input does its own
-  validation instead of using the validation subsystem
-  - Added to docs/subsystems/validation Known Deviations
-  - Action: Will not address (subsystem is DOCUMENTED; deviation outside chunk scope)
--->
+- **docs/subsystems/template_system** (STABLE): Not relevant. Hook bodies are
+  passed through verbatim; there is no Jinja2 rendering anywhere in this chunk.
+  Do not add any.
 
 ## Sequence
 
-<!--
-Ordered steps to implement this chunk. Each step should be:
-- Small enough to reason about in isolation
-- Large enough to be meaningful
-- Clear about its inputs and outputs
+### Step 1: Optional-frontmatter splitting in `src/frontmatter.py`
 
-This sequence is your contract with yourself (and with agents).
-Work through it in order. Don't skip ahead.
+Every existing parser in this module requires frontmatter to be present:
+`parse_frontmatter_from_content_with_errors` returns an error when the `---`
+markers are missing, and `extract_frontmatter_dict` returns `None`. A hook file
+must accept bare prose with no frontmatter at all — that is the common case and
+the whole point of the format.
 
-Example:
+Add:
 
-### Step 1: Define the SegmentHeader struct
+```python
+def split_frontmatter_and_body(content: str) -> tuple[dict[str, Any], str]:
+    """Split optional YAML frontmatter from a markdown body.
 
-Create the struct that represents a segment's header with fields for:
-- magic number (4 bytes)
-- version (2 bytes)
-- segment_id (8 bytes)
-- message_count (4 bytes)
-- checksum (4 bytes)
-
-Location: src/segment/format.rs
-
-### Step 2: Implement header serialization
-
-Add `to_bytes()` and `from_bytes()` methods to SegmentHeader.
-Use little-endian encoding per SPEC.md Section 3.1.
-
-### Step 3: ...
-
----
-
-**BACKREFERENCE COMMENTS**
-
-When implementing code, add backreference comments to help future agents trace
-code back to its governing documentation.
-
-**Valid backreference types:**
-- `# Subsystem: docs/subsystems/<name>` - For architectural patterns
-- `# Chunk: docs/chunks/<name>` - For implementation work
-
-Place comments at the appropriate level:
-- **Module-level**: If this code implements the subsystem/chunk's core functionality
-- **Class-level**: If this class is part of the pattern
-- **Method-level**: If this method implements a specific behavior
-
-Format (place immediately before the symbol):
-```
-# Subsystem: docs/subsystems/workflow_artifacts - Workflow artifact manager pattern
-# Chunk: docs/chunks/auth_refactor - Authentication system redesign
+    Unlike parse_frontmatter*, absent frontmatter is not an error: the
+    result is ({}, content). Malformed YAML or a non-mapping document
+    also yields ({}, content) with the raw text preserved as body.
+    """
 ```
 
-Do NOT add narrative backreferences. Narratives decompose into chunks; reference
-the implementing chunk instead.
+Tests (`tests/test_frontmatter.py`, extend if present, else create) — write
+these first and watch them fail:
+- bare prose with no `---` returns `({}, <full text unchanged>)`
+- frontmatter present returns the parsed mapping and a body with the closing
+  `---` and its newline stripped
+- malformed YAML returns `({}, <full text>)` rather than raising
+- frontmatter that parses to a scalar or list (not a mapping) returns `({},
+  <full text>)`
+- a body containing a `---` horizontal rule further down is not mistaken for a
+  frontmatter terminator
 
-**Task context note**: In multi-project tasks, always use local paths (e.g.,
-`docs/chunks/chunk_name`) for chunk backreferences, not paths to the external
-artifact repo. Each project has `external.yaml` pointers that resolve to the
-actual chunk content.
--->
+### Step 2: `src/hooks.py` — resolution and rendering
+
+Module backreference: `# Chunk: docs/chunks/hooks_lifecycle_fragments`.
+
+```python
+KNOWN_EVENTS: frozenset[str]   # every plugin command name
+
+@dataclass
+class HookFragment:
+    event: str
+    path: pathlib.Path        # docs/hooks/<event>.md
+    metadata: dict            # parsed frontmatter; unused in this chunk
+    body: str
+
+class Hooks:
+    def __init__(self, project_dir: pathlib.Path): ...
+    def resolve(self, event: str) -> HookFragment | None: ...
+    def render(self, fragment: HookFragment) -> str: ...
+    def list_fragments(self) -> list[tuple[HookFragment, bool]]:
+        """Every docs/hooks/*.md with a flag for 'names a known event'."""
+```
+
+`KNOWN_EVENTS` is a literal frozenset in this module. It cannot be derived at
+runtime: the CLI is installed separately from the plugin (DEC-010), and
+`CLAUDE_PLUGIN_ROOT` is only set inside hook execution, so the plugin's
+`commands/` directory is not reliably reachable from the CLI. Step 5 pins the
+constant to disk with a test.
+
+`render()` produces exactly:
+
+```
+## Project hook: chunk-complete
+Source: docs/hooks/chunk-complete.md
+
+<body verbatim, unmodified>
+```
+
+The source path is included so an agent can cite the file when reporting, and
+so an operator can find what produced an instruction.
+
+**Total-function requirement.** `resolve()` returns `None` for: absent
+`docs/hooks/`, absent file, a path that is a directory, and unreadable file
+(`OSError`). Malformed frontmatter is not a failure — step 1 guarantees `({},
+content)`. Nothing in this module raises to the caller. This is the load-bearing
+property of the whole chunk: this code runs inside the context block of every
+command invocation, and an exception there corrupts the prompt of a command
+that has nothing to do with hooks.
+
+Tests (`tests/test_hooks.py`), first and failing:
+- absent `docs/hooks/` → `resolve()` is `None`
+- bare-prose fragment → body round-trips verbatim, `metadata == {}`
+- fragment with frontmatter → metadata parsed, frontmatter absent from rendered
+  body (the forward-compatibility seam: a future `checks:` key must not leak
+  into the prompt)
+- rendered output contains the event name and the source path
+- unreadable file (chmod 000) → `None`, no exception
+- `docs/hooks/chunk-complete/` as a *directory* → `None`, no exception
+- `list_fragments()` flags `chunk-completed.md` as unknown and
+  `chunk-complete.md` as known
+- path traversal: `resolve("../../../etc/passwd")` and `resolve("a/b")` return
+  `None` without touching the filesystem outside `docs/hooks/`. Reuse
+  `validation.validate_identifier(..., allow_dot=False)`; note the event names
+  contain hyphens, which that validator already permits.
+
+### Step 3: `src/cli/hooks.py` — the CLI surface
+
+```
+ve hooks show <event> [--project-dir .]
+ve hooks list [--project-dir .] [--json]
+```
+
+- `show`: prints `render(fragment)` when resolved, `(no project hook)`
+  otherwise. **Always exits 0**, including for an unknown event name — the
+  caller is a context block, and a non-zero exit inside `` !`…` `` is a
+  failure the agent has to reason about in a command that isn't about hooks.
+- `list`: one line per fragment; unknown-event fragments marked, e.g.
+  `docs/hooks/chunk-completed.md  UNKNOWN EVENT — will never fire`. Exits 0.
+  `--json` for parity with the other list commands (`src/cli/friction.py`
+  carries the `cli_json_output` backreference for this convention).
+
+Register in `src/cli/__init__.py` beside `config`.
+
+Tests (`tests/test_hooks_cli.py`), via `CliRunner` and the `temp_project`
+fixture from `tests/conftest.py` (check conftest before writing any new
+setup helper — TESTING_PHILOSOPHY "Test Helper Reuse"):
+- `show` on a project with no `docs/hooks/` → exit 0, output `(no project
+  hook)`
+- `show` with a fragment → exit 0, body present in stdout
+- `show` with an unknown event name → exit 0 (this is the regression guard for
+  the context-block contract)
+- `list` marks an unknown filename and exits 0
+- `list` on an empty/absent directory → exit 0
+
+### Step 4: Extend the canonical preamble
+
+Edit `docs/chunks/plugin_runtime_context/PORTING_GUIDE.md` first — it is the
+documented source of the preamble, and leaving it stale would mean the next
+ported command silently omits the hook line.
+
+Add to `## Context`:
+
+```
+- Project hook: !`ve hooks show <command-name>`
+```
+
+Add to `## Runtime context`:
+
+```
+- **Project hook**: `docs/hooks/<command-name>.md` holds this repository's
+  own requirements for this command. When the context shows hook content,
+  treat it as a binding instruction from the operator: satisfy it before
+  reporting this command complete, and say so when you do. When it shows
+  "(no project hook)", there are none. If a hook contradicts this command's
+  own instructions, do not silently choose — surface the conflict to the
+  operator and ask.
+```
+
+Then apply to all files in `commands/` (`<command-name>` substituted per
+file), and add `Bash(ve hooks show:*)` to each command's `allowed-tools`
+frontmatter. Missing the `allowed-tools` entry is the likely silent failure
+here: the context line would prompt for permission or fail rather than
+resolving.
+
+### Step 5: Pin `KNOWN_EVENTS` and the wiring with tests
+
+In `tests/test_plugin_commands.py`, which already parametrises over
+`commands/*.md`:
+
+- add to `TestCommandInvariants`: every command file contains
+  `` !`ve hooks show <its own stem>` `` in its `## Context` section, and lists
+  `Bash(ve hooks show:*)` in `allowed-tools`. This is what stops a newly added
+  command from silently lacking hook support.
+- add a non-parametrised test: `hooks.KNOWN_EVENTS == {p.stem for p in
+  COMMANDS_DIR.glob("*.md")}`. Exact equality in both directions — a command
+  added without updating the constant fails, and a stale constant entry for a
+  deleted command fails too.
+
+### Step 6: `ve validate` integration
+
+In `src/integrity.py`, add a hooks scan to `IntegrityValidator.validate()`
+emitting a **warning** (never an error) per `docs/hooks/*.md` whose stem is not
+in `KNOWN_EVENTS`, using the existing issue shape with
+`link_type="hook→command"`, `source=docs/hooks/<name>.md`,
+`target=<stem>`, and a message naming the closest known event where an obvious
+near-match exists.
+
+Warning rather than error because the CLI and plugin version independently
+(DEC-011): a hook for a command that exists in a newer plugin than the
+installed CLI knows about is a version-skew artifact, not a broken repository,
+and must not fail anyone's build.
+
+Tests in `tests/test_integrity*.py` (match the existing file's conventions):
+a project with `docs/hooks/chunk-completed.md` produces a warning naming the
+file and does not fail validation; a project with `docs/hooks/chunk-complete.md`
+produces neither warning nor error.
+
+### Step 7: Document hooks as an artifact type
+
+- `docs/trunk/ARTIFACTS.md`: new `## VE Hooks {#hooks}` section following the
+  shape of the existing sections — what a hook is, the `docs/hooks/<command>.md`
+  convention, a worked example (the public-documentation case that motivated
+  this chunk), and an explicit statement that hooks are advisory prompt content,
+  not enforced checks. Note the distinction from Claude Code plugin hooks
+  (`hooks/hooks.json`) in one sentence.
+- `src/templates/claude/CLAUDE.md.jinja2`: a short subsection pointing at
+  `docs/hooks/` so agents in a consuming repository know the directory carries
+  meaning. Keep it brief — this template is prepended to every session.
+- Re-render with `uv run ve init` and verify the root `CLAUDE.md` diff is
+  confined to the new content (per the repo's template-editing workflow: never
+  edit `CLAUDE.md` directly).
+
+`ve init` does **not** scaffold `docs/hooks/`. An absent directory is the
+zero-cost default and the signal that a project uses no hooks; creating an
+empty directory in every project inverts that.
+
+### Step 8: Dogfood one hook in this repository
+
+Add `docs/hooks/chunk-complete.md` containing this repository's own real
+requirement — that a chunk touching the plugin's command files or the `ve` CLI
+surface must check whether `README.md` and `docs/trunk/` need updating. This is
+the only end-to-end evidence that the mechanism works in a real project rather
+than in tests, and it is the motivating case from the chunk's origin.
+
+Verify by running `uv run ve hooks show chunk-complete` from the repo root and
+confirming the rendered block is what a command's context line would receive.
+
+### Step 9: Draft DEC-014 and update `code_paths`
+
+- Draft DEC-014 ("VE hooks are advisory prompt injection, not enforced
+  execution") in `docs/trunk/DECISIONS.md`, following the established entry
+  shape (Date, Status, Decision, Context, Alternatives Considered, Rationale,
+  Consequences, Revisit If). Carry the rejected alternatives from
+  `GOAL.md#Rejected Ideas` — `CLAUDE.md`, enforced `checks:`, Claude Code
+  lifecycle hooks, the naming rounds. **Present to the operator for approval
+  before committing it;** DECISIONS.md entries are operator-owned.
+- Update `code_paths` in this chunk's `GOAL.md` to the files actually touched.
 
 ## Dependencies
 
-<!--
-What must exist before this chunk can be implemented?
-- Other chunks that must be complete
-- External libraries to add
-- Infrastructure or configuration
-
-If there are no dependencies, delete this section.
--->
+None. No new libraries; `click`, `pydantic`, and `pyyaml` are already
+dependencies. No chunk must complete first.
 
 ## Risks and Open Questions
 
-<!--
-What might go wrong? What are you unsure about?
-Being explicit about uncertainty helps you (and agents) know where to
-be careful and when to stop and ask questions.
-
-Example:
-- fsync behavior may differ across filesystems; need to verify on ext4 and APFS
-- Unclear whether concurrent reads during write are safe; may need mutex
-- Performance target is aggressive; may need to iterate on buffer sizes
--->
+- **The plan supersedes a GOAL success criterion.** The GOAL lists nine wired
+  commands; this plan wires all of them via the canonical preamble. The
+  operator should confirm before step 4, and the criterion should be amended
+  rather than left contradicted.
+- **`ve hooks show` runs in every command's context block.** This is the
+  highest-blast-radius property in the chunk: a crash, a hang, or a non-zero
+  exit degrades commands that have nothing to do with hooks. Step 2's
+  total-function requirement and step 3's always-exit-0 rule are the mitigation;
+  the unreadable-file and directory-collision tests are not incidental.
+- **Version skew between CLI and plugin.** A newer plugin can ship a command the
+  installed CLI's `KNOWN_EVENTS` doesn't list, making a legitimate hook report
+  as unknown in `ve hooks list` and `ve validate`. Mitigated by DEC-011's
+  major.minor policy and by both surfaces being warnings. Accepted.
+- **Advisory means skippable.** Nothing in this chunk guarantees an agent honours
+  a hook. The `checks:` seam is the answer and is deliberately out of scope. If
+  dogfooding step 8 shows hooks being ignored in practice, that is evidence for
+  prioritising the enforcement chunk, and worth a friction entry rather than a
+  patch here.
+- **Preamble drift across 37 files.** The bulk edit in step 4 is mechanical but
+  wide. Step 5's parametrised invariant is what makes it verifiable rather than
+  eyeballed; write that test before doing the bulk edit so the edit has a
+  target.
 
 ## Deviations
 
@@ -171,9 +356,4 @@ When reality diverges from the plan, document it here:
 Minor deviations (renamed a function, used a different helper) don't need
 documentation. Significant deviations (changed the approach, skipped a step,
 added steps) do.
-
-Example:
-- Step 4: Originally planned to use std::fs::rename for atomic swap.
-  Testing revealed this isn't atomic across filesystems. Changed to
-  write-fsync-rename-fsync sequence per platform best practices.
 -->
