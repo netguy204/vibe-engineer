@@ -339,6 +339,39 @@ class TestSandboxViolationDetection:
         assert is_violation is True
         assert "git -C" in reason
 
+    def test_allows_git_c_into_the_worktree(self):
+        """`git -C <worktree>` is ordinary work, not a host escape.
+
+        VE nests worktrees under the host repo, so the worktree path contains
+        the host path; without an exemption every in-worktree `-C` reads as an
+        escape and legitimate agent commands are denied.
+        """
+        host = Path("/home/user/project")
+        worktree = Path("/home/user/project/.ve/chunks/test/worktree")
+
+        for command in [
+            f"git -C {worktree} status",
+            f"git -C {worktree}/src log",
+            f"git -C '{worktree}' add .",
+        ]:
+            is_violation, _ = is_sandbox_violation(command, host, worktree)
+            assert is_violation is False, command
+
+    def test_blocks_git_c_into_worktree_sibling(self):
+        """The worktree exemption must not cover a sibling that extends its name.
+
+        `<worktree>-evil` is a different directory; a bare prefix test would
+        treat it as inside the sandbox and hand back write access to the host.
+        """
+        host = Path("/home/user/project")
+        worktree = Path("/home/user/project/.ve/chunks/test/worktree")
+
+        is_violation, reason = is_sandbox_violation(
+            f"git -C {worktree}-evil status", host, worktree
+        )
+        assert is_violation is True
+        assert "host repository" in reason
+
     def test_blocks_git_command_with_host_path(self):
         """Detects git commands referencing host repo path."""
         host = Path("/home/user/project")

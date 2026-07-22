@@ -201,6 +201,16 @@ def is_sandbox_violation(
     ]
     for pattern in git_c_patterns:
         if pattern in command:
+            # The worktree lives under the host repo, so `git -C <worktree>` --
+            # ordinary in-worktree work -- matches these patterns too. Exempt it,
+            # the way Patterns 1 and 3 already do. Anchored at a path boundary:
+            # a sibling such as <worktree>-evil is outside the sandbox, and a
+            # bare startswith would wave it through.
+            c_target_match = re.search(r"git\s+-C\s+['\"]?([^'\"\s]+)", command)
+            if c_target_match:
+                c_target = c_target_match.group(1).rstrip("/")
+                if c_target == worktree_str or c_target.startswith(worktree_str + "/"):
+                    continue
             return (True, f"Blocked: git -C targeting host repository ({host_str})")
 
     # Pattern 3: Any git command containing host repo path as argument
