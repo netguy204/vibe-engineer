@@ -20,7 +20,7 @@ code_references:
   - ref: src/orchestrator/agent.py#AgentRunner::resume_for_active_status
     implements: "Sandbox hook and git environment for resume operations"
   - ref: tests/test_orchestrator_agent_callbacks.py#TestSandboxViolationDetection
-    implements: "Unit tests for _is_sandbox_violation detection logic"
+    implements: "Unit tests for is_sandbox_violation detection logic"
   - ref: tests/test_orchestrator_agent_callbacks.py#TestMergeHooks
     implements: "Unit tests for hook configuration merging"
   - ref: tests/test_orchestrator_agent_sandbox.py#TestSandboxEnforcementHook
