@@ -315,7 +315,16 @@ def _write_sandbox_hook(
     hook_script.write_text(
         "#!/usr/bin/env python3\n"
         "from __future__ import annotations\n"
-        "import json, re, sys\n"
+        # The script lives in the agent-writable worktree, so its own directory
+        # is sys.path[0] and a dropped-in re.py/json.py would shadow the stdlib:
+        # the hook then crashes or lies, and cursor-agent falls open either way.
+        # Scrub that entry before importing anything. Only `sys` is touched
+        # first, and it is already loaded before user code can interfere.
+        "import sys, os\n"
+        "_d = os.path.realpath(os.path.dirname(os.path.abspath(__file__)))\n"
+        "sys.path[:] = [p for p in sys.path\n"
+        "               if p and os.path.realpath(p) != _d]\n"
+        "import json, re\n"
         "from pathlib import Path\n"
         "from typing import Optional\n"
         "\n"

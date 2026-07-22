@@ -140,6 +140,29 @@ class TestSandboxHook:
         assert r.returncode == 0, r.stderr
         assert json.loads(r.stdout)["permission"] == "allow"
 
+    def test_hook_ignores_modules_dropped_beside_it(self, tmp_path):
+        """The hook must not import its stdlib from its own directory.
+
+        The script lives inside the worktree, which the agent can write to, so
+        its directory is sys.path[0]. A dropped-in re.py or json.py would
+        otherwise shadow the stdlib and the hook would crash or lie -- and
+        cursor-agent treats either as permission granted.
+        """
+        host = tmp_path / "host"
+        worktree = host / "wt"
+        worktree.mkdir(parents=True)
+        _write_sandbox_hook(worktree, host)
+        cursor_dir = worktree / ".cursor"
+        (cursor_dir / "re.py").write_text("def search(*a, **k):\n    return None\n")
+        (cursor_dir / "json.py").write_text("def load(*a, **k):\n    return {}\n")
+        r = subprocess.run(
+            ["python3", str(cursor_dir / "_sandbox_hook.py")],
+            input=json.dumps({"command": f"cd {host}"}),
+            capture_output=True, text=True,
+        )
+        assert r.returncode == 0, r.stderr
+        assert json.loads(r.stdout)["permission"] == "deny"
+
     def test_remove_cleans_up(self, tmp_path):
         _write_sandbox_hook(tmp_path, tmp_path.parent)
         _remove_sandbox_hook(tmp_path)
