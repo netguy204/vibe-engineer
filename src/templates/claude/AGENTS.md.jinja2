@@ -71,6 +71,29 @@ When you see these, read the referenced artifact to understand context.
 
 See: `docs/trunk/ARTIFACTS.md#code-backreferences` for valid types and usage.
 
+{# Chunk: docs/chunks/federation_tree_discovery - Nearest-enclosing-tree rule for bare backreferences #}
+### Resolving a Backreference: Nearest Enclosing Tree
+
+A bare reference (`docs/chunks/...`, `docs/narratives/...`, `docs/subsystems/...`)
+resolves against the **nearest enclosing VE tree of the file that contains it** —
+the closest ancestor directory of that file holding a `docs/trunk/`.
+
+- **Not** your current working directory. The file's location decides, not yours.
+- **Not** the repository root. In a repository containing several VE trees, the
+  root tree is just another tree; it has no addressing privilege.
+
+This matters when a repository holds more than one tree. If you read
+`packages/libs/pybusiness/savings/realized.py` and it says
+`# Subsystem: docs/subsystems/commitment_baseline`, that means
+`packages/libs/pybusiness/docs/subsystems/commitment_baseline` when
+`packages/libs/pybusiness/` is a VE tree. Resolving it from the repository root
+can land you in a *different, real* directory of the same name — a wrong answer
+that looks right. When in doubt, walk up from the file until you find
+`docs/trunk/`, and read the reference there.
+
+References that cross a tree boundary must say so explicitly rather than relying
+on this rule.
+
 {# Chunk: docs/chunks/template_artifact_guidance - Creating Artifacts section with artifact creation guidance #}
 ## Creating Artifacts
 

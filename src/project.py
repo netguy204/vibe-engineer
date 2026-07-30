@@ -4,6 +4,7 @@
 # Subsystem: docs/subsystems/template_system - Uses template rendering
 # Chunk: docs/chunks/project_init_command - Project initialization CLI command
 
+import os
 import pathlib
 from dataclasses import dataclass, field
 from datetime import date
@@ -27,6 +28,144 @@ from template_system import (
 # Magic marker constants for CLAUDE.md managed content
 MARKER_START = "<!-- VE:MANAGED:START -->"
 MARKER_END = "<!-- VE:MANAGED:END -->"
+
+
+# Chunk: docs/chunks/federation_tree_discovery - Tree marker and boundary constants
+# A directory is a VE tree if it contains all of these (relative to itself).
+# Kept as a tuple so later federation work (pointer-only trees that carry
+# external.yaml edges but no trunk) can extend the marker set deliberately
+# rather than by accident.
+TREE_MARKERS: tuple[str, ...] = ("docs/trunk",)
+
+# Filenames that end the upward walk. Neither is parsed here: presence alone
+# marks a boundary.
+# - .ve-workspace.yaml delimits a federation of member trees. A member's
+#   references belong to the workspace, so the walk must not escape into an
+#   unrelated project above it.
+# - .ve-task.yaml marks a task directory, which is a different addressing
+#   regime (cross-repo mode routes on it explicitly).
+BOUNDARY_MARKERS: tuple[str, ...] = (".ve-workspace.yaml", ".ve-task.yaml")
+
+
+# Chunk: docs/chunks/federation_tree_discovery - VE tree detection
+def is_ve_tree(path: pathlib.Path) -> bool:
+    """Return True if path is the root of a VE documentation tree."""
+    return all((path / marker).is_dir() for marker in TREE_MARKERS)
+
+
+def _is_boundary(path: pathlib.Path) -> bool:
+    """Return True if path is an addressing boundary that ends the walk."""
+    return any((path / marker).exists() for marker in BOUNDARY_MARKERS)
+
+
+def _same_directory(a: pathlib.Path, b: pathlib.Path) -> bool:
+    """Return True if two paths name the same directory.
+
+    Compares fully resolved forms so that spellings of one directory — a
+    relative "." against its absolute path, or macOS's /var against
+    /private/var — are recognized as the same place and never reported as a
+    redirect.
+    """
+    return os.path.realpath(a) == os.path.realpath(b)
+
+
+# Chunk: docs/chunks/federation_tree_discovery - Nearest-enclosing-tree discovery
+def find_enclosing_tree(start: pathlib.Path) -> pathlib.Path | None:
+    """Find the nearest VE tree at or above start.
+
+    This is the resolution rule for bare backreferences: a bare
+    `# Chunk:` / `# Narrative:` / `# Subsystem:` comment in a source file
+    resolves against the nearest enclosing tree of *that file* — never the
+    current working directory, never the repository root. In a monorepo of
+    nested trees, the root tree is just another tree with no addressing
+    privilege.
+
+    Args:
+        start: Directory or file to resolve from. A file resolves from its
+               containing directory.
+
+    Returns:
+        The nearest enclosing tree root, or None if the walk reaches the
+        filesystem root or an addressing boundary (see BOUNDARY_MARKERS)
+        without finding one. None means "no tree governs this path" — callers
+        must not substitute a guess.
+    """
+    # Absolute but not symlink-resolved: an answer should come back in the same
+    # terms the caller used, so that "the tree I asked for" compares equal to
+    # "the tree I got" (see _same_directory).
+    current = pathlib.Path(os.path.abspath(start.expanduser()))
+
+    # A file is governed by the tree that encloses its directory.
+    if current.is_file():
+        current = current.parent
+
+    while True:
+        # A tree wins over a boundary at the same level: the workspace root
+        # itself may be a tree, and it is then its own answer.
+        if is_ve_tree(current):
+            return current
+        if _is_boundary(current):
+            return None
+        if current == current.parent:  # filesystem root, already tested above
+            return None
+        current = current.parent
+
+
+# Chunk: docs/chunks/federation_tree_discovery - CLI-facing resolution result
+@dataclass(frozen=True)
+class TreeResolution:
+    """The outcome of resolving a starting directory to a governing tree.
+
+    Attributes:
+        project_dir: The directory a command should act on.
+        start: The directory the caller asked for.
+        tree_root: The discovered tree, or None if no tree governs start.
+    """
+
+    project_dir: pathlib.Path
+    start: pathlib.Path
+    tree_root: pathlib.Path | None
+
+    @property
+    def redirected(self) -> bool:
+        """True if resolution chose a directory other than the one asked for."""
+        return not _same_directory(self.project_dir, self.start)
+
+    def notice(self) -> str | None:
+        """One-line report of a redirect, or None when there is nothing to report.
+
+        Emitted so that selecting a tree other than the literal starting
+        directory is never silent — the case-study failure was an agent
+        landing in a real-but-wrong tree with no indication it had happened.
+        """
+        if not self.redirected:
+            return None
+        return f"Using VE tree {self.project_dir} (nearest enclosing tree of {self.start})"
+
+
+# Chunk: docs/chunks/federation_tree_discovery - Resolution used at the CLI boundary
+def resolve_project_dir(start: pathlib.Path) -> TreeResolution:
+    """Resolve a starting directory to the VE tree that governs it.
+
+    Contract (the backward-compatibility guarantee):
+
+    - start is a tree                       -> start, no redirect
+    - start is not a tree, an ancestor is   -> that ancestor, redirected
+    - no enclosing tree at all              -> start unchanged, no redirect
+
+    The last case is why discovery is safe to apply broadly: it never invents a
+    failure. It only replaces a directory that could not have worked with one
+    that can, and otherwise leaves behavior exactly as it was.
+
+    When start already names the governing tree, start is returned verbatim
+    (a relative "." stays "."), so nothing downstream sees a changed value.
+    """
+    tree_root = find_enclosing_tree(start)
+    if tree_root is None or _same_directory(tree_root, start):
+        project_dir = start
+    else:
+        project_dir = tree_root
+    return TreeResolution(project_dir=project_dir, start=start, tree_root=tree_root)
 
 
 # Chunk: docs/chunks/claudemd_magic_markers - Named tuple for marker parsing results
