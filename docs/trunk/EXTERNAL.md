@@ -137,6 +137,81 @@ flattening by another name: it dislocates documents from the code they govern an
 records nothing about who consumes what. Pointers, by contrast, keep ownership put
 and make the consumer set enumerable.
 
+## Querying Interest in Reverse
+
+Pointers are directed edges, and the cost of keeping ownership put is that a
+document no longer sits somewhere everyone browses. Two commands pay that cost
+with queries instead of with ownership dislocation.
+
+### Who consumes this artifact?
+
+```bash
+ve artifact consumers docs/subsystems/commitment_baseline
+```
+
+Run from the tree that owns the artifact (or anywhere inside it — `--project-dir`
+resolves to the nearest enclosing tree). The command walks every member the
+manifest names and reports each inbound pointer with its member name, the
+pointer's own location, and its `why:` note. `ARTIFACT_PATH` accepts
+`docs/<type>/<name>`, `<type>/<name>`, or a bare `<name>` that exists in this
+tree.
+
+The report keeps two kinds of answer apart, because they carry different
+certainty:
+
+| Section | Match | Meaning |
+|---------|-------|---------|
+| Consumers | Resolved target directory | The pointer resolves to *this* artifact — the same resolution `ve external resolve` performs |
+| Cross-repo pointers | Artifact id | A `repo:` pointer names an artifact with this id in another repository; nothing inside the workspace can verify it is this one |
+
+Failure modes are distinguished rather than collapsed into "none":
+
+- **No manifest** — exit 1. There is no registry of trees to search; run
+  `ve workspace init --scan`.
+- **Owning tree not registered** — exit 1. A peer pointer names a member, so
+  nothing can address an unregistered tree's artifacts; run `ve workspace add`.
+- **No consumers** — exit 0, stating plainly that no tree points here.
+- **Artifact missing** — the query is still answered, with a warning. Pointers at
+  an artifact that was renamed or deleted are exactly what needs finding: their
+  disappearance produced no event an audit could catch.
+
+Pointers that cannot be parsed are listed too. A pointer nobody can read is a
+finding, not a reason to abandon the query.
+
+### What exists across the whole workspace?
+
+```bash
+ve chunk list --workspace
+ve subsystem list --workspace
+```
+
+Both walk every member tree and print one row per artifact, addressed as a
+qualified reference:
+
+```
+pybusiness::docs/chunks/baseline_calc [ACTIVE]
+viz::docs/chunks/baseline_chart [FUTURE]
+viz::docs/subsystems/commitment_baseline [EXTERNAL: tree:pybusiness]
+```
+
+A row is therefore a working address: paste it into a backreference and it
+resolves from anywhere in the workspace, which a bare `docs/...` row would not.
+Status filters compose (`ve chunk list --workspace --future` answers "what is
+queued anywhere?"); `--json` adds a `member` field to each row.
+
+Two properties worth knowing:
+
+- **Aggregation is read-only.** Artifact directories are enumerated rather than
+  ordered through the artifact index, so browsing never writes an ordering file
+  into a member tree. The price is that aggregated rows carry no tip indicator and
+  no causal ordering — both describe one tree's DAG and do not merge across trees.
+- **Cursor flags do not aggregate.** `--current`, `--last-active`, and `--recent`
+  name a position in one tree's history; combined with `--workspace` they are
+  refused rather than silently answered for an arbitrary tree.
+
+A registered tree that has vanished is reported as a warning and the remaining
+members still list, so one stale manifest entry does not hide the workspace.
+
 ## Resolving External Artifacts
 
 Use the `ve external resolve` command to view the actual artifact content:
