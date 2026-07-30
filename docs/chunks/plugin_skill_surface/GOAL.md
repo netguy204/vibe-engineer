@@ -1,5 +1,5 @@
 ---
-status: IMPLEMENTING
+status: ACTIVE
 ticket: null
 parent_chunk: null
 code_paths:
@@ -14,8 +14,8 @@ code_paths:
 - tests/test_wheel_contents.py
 code_references:
 - ref: src/plugin_render.py#output_path
-  implements: The render output contract — skills/ templates land in the per-skill
-    agentskills.io layout (skills/<name>/SKILL.md), agents/ render in place
+  implements: "The render output contract \u2014 skills/ templates land in the per-skill\
+    \ agentskills.io layout (skills/<name>/SKILL.md), agents/ render in place"
 - ref: src/orchestrator/agent.py#AgentRunner::get_skill_path
   implements: Runtime resolution of phase prompts from the skills surface, in both
     an installed wheel (orchestrator/skills package data) and a dev checkout
@@ -29,9 +29,18 @@ investigation: null
 subsystems: []
 friction_entries: []
 depends_on: []
-created_after: ["dualplugin_content_migration", "dualplugin_template_source", "federation_global_validator", "federation_peer_refs", "federation_qualified_refs", "federation_reverse_interest", "federation_template_pointers", "federation_tree_discovery", "federation_validate_fix_skill", "federation_workspace_manifest"]
+created_after:
+- dualplugin_content_migration
+- dualplugin_template_source
+- federation_global_validator
+- federation_peer_refs
+- federation_qualified_refs
+- federation_reverse_interest
+- federation_template_pointers
+- federation_tree_discovery
+- federation_validate_fix_skill
+- federation_workspace_manifest
 ---
-
 <!--
 ╔══════════════════════════════════════════════════════════════════════════════╗
 ║  DO NOT DELETE THIS COMMENT BLOCK until the chunk complete command is run.   ║
