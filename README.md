@@ -267,6 +267,23 @@ Nesting is allowed and meaningful — a library tree inside a platform tree stay
 
 `--scan` proposes only directories containing `docs/trunk/` and always asks before writing (`-y` skips the prompt): a scan cannot tell an intentional tree from an accidental one, such as a scaffolding template that ships its own `docs/` tree, so excluding junk is part of the bootstrap.
 
+#### Scaffolding a New Package
+
+Scaffolding is where namespaces come from. A package template that ships a `docs/trunk` + `docs/chunks` of its own mints a new documentation namespace for every package it generates, so a repository accumulates parallel trees faster than anyone cleans them up. `ve package scaffold` is what a template should call instead:
+
+```bash
+# Default: a pointer-only member — interest edges, no trunk, no empty chunk namespace
+ve package scaffold apps/viz \
+  --interest 'pybusiness::docs/subsystems/commitment_baseline: charts render this baseline'
+
+# Opt in to a full tree, for a package that will own intent of its own
+ve package scaffold packages/libs/newlib --full-tree
+```
+
+The default writes one `external.yaml` interest edge per `--interest`, registers the package in `.ve-workspace.yaml`, and renders an `AGENTS.md` that tells agents which tree governs the package and how to opt into a full tree later. The package is addressable as `viz::docs/...` without becoming an addressing root, so bare references in its source keep resolving to the tree that governs them.
+
+Both flavors skip registration cleanly when there is no manifest, so single-repo use is unchanged. An interest edge is refused if its target artifact does not exist: a pointer that could never resolve leaves no deletion event behind for an audit to find, so creation time is the cheapest place to catch it.
+
 ### Orchestrator
 
 The [orchestrator](https://veng.dev/docs/orchestrator/) (`ve orch`) runs FUTURE chunks in parallel across isolated git worktrees. It handles planning, implementation, and completion autonomously. You create the work; the orchestrator schedules and executes it.

@@ -1,0 +1,93 @@
+{#- Chunk: docs/chunks/federation_template_pointers - Agent instructions for a pointer-only package -#}
+{#- Everything lives inside the VE:MANAGED markers so that opting into a full tree
+    later (`ve init` here) replaces this body with the standard project instructions
+    while keeping whatever the operator wrote around it. -#}
+<!-- VE:MANAGED:START -->
+# {{ package_name }} — a pointer-only VE package
+
+This package is a **workspace member with a pointer-only docs tree**: it carries
+`external.yaml` interest edges naming documentation it consumes, and no
+`docs/trunk/`. That is deliberate. A `docs/trunk/` would make this directory a new
+*addressing root*, and a repository full of addressing roots is how references start
+resolving to real-but-wrong documents.
+
+This package owns no intent of its own. It has local names for the intent it reads.
+
+## Where the governing docs live
+
+{% if governing_tree_rel -%}
+`{{ governing_tree_rel }}` — the nearest enclosing VE tree, the closest directory
+above this one holding a `docs/trunk/`. Read these first:
+
+- `{{ governing_tree_rel }}/docs/trunk/GOAL.md`
+- `{{ governing_tree_rel }}/docs/trunk/SPEC.md`
+- `{{ governing_tree_rel }}/docs/trunk/TESTING_PHILOSOPHY.md`
+
+A bare reference (`docs/chunks/...`, `docs/subsystems/...`) in a file under this
+package resolves against that tree — the nearest enclosing tree of *the file*, never
+your current working directory and never the repository root. `ve` commands run here
+resolve the same way, and say so on stderr when they redirect.
+{% else -%}
+**No VE tree governs this package.** Nothing above it holds a `docs/trunk/`{% if workspace_root_rel %} before
+the workspace root (`{{ workspace_root_rel }}`){% endif %}, so a bare reference
+(`docs/chunks/...`, `docs/subsystems/...`) written in a file here resolves to nothing
+at all.
+
+Every documentation reference from this package must therefore be explicit. Qualify
+it with the tree that owns it:
+
+    # Subsystem: {{ example_ref }}
+
+Or record it as an interest edge below, so this package has a local name for it.
+{% endif %}
+## Intent this package consumes
+
+{% if interests -%}
+| Local pointer | Owned by | Why |
+|---------------|----------|-----|
+{% for interest in interests -%}
+| `{{ interest.local_path }}` | `{{ interest.qualified_ref }}` | {{ interest.why or "_no note recorded_" }} |
+{% endfor %}
+Each row is an `external.yaml` pointing at another tree in this same working copy.
+Nothing is copied and nothing is fetched: resolution is a manifest lookup and a file
+read, so a target is always at the same commit as this package. Read one with
+`ve external show <artifact>`.
+{% else -%}
+Nothing yet.
+{% endif %}
+Record a new dependency from the package whose code depends on it:
+
+```bash
+ve external point <member> docs/<type>/<name> --why "what this package depends on"
+```
+
+Point when readers multiply; promote when writers change. A pointer says "this
+package reads that intent" and leaves ownership with the tree whose code enforces it.
+{% if members %}
+Trees you can point at: {% for member in members %}`{{ member }}`{{ ", " if not loop.last }}{% endfor %}.
+{% endif %}
+## Working in this package
+
+- Artifacts belong to the tree that owns the intent. Do not run `ve chunk create`
+  here expecting a local chunk — there is no local chunk namespace, which is the
+  point. Create the chunk in the tree whose code the work changes.
+- Add code backreferences as usual, but qualify anything that crosses the boundary:
+  `# Subsystem: <member>::docs/subsystems/<name>` for intent owned elsewhere.
+- `ve workspace validate`, run from the workspace root, checks that every reference
+  in this package still resolves.
+
+## Opting into a full tree later
+
+Do this when this package starts *owning* intent — when its own code enforces an
+invariant that needs somewhere to be written down:
+
+```bash
+ve init --project-dir .        # creates docs/trunk/ and the artifact directories
+ve workspace add {{ package_name }} <path-from-workspace-root>    # if not already registered
+```
+
+Know the cost first: a `docs/trunk/` makes this directory an **addressing root**.
+Bare references in files beneath it stop resolving upward{% if governing_tree_rel %} to `{{ governing_tree_rel }}`{% endif %} and
+start resolving here, so every bare reference already written in this package changes
+meaning. Promote intent deliberately; point at it by default.
+<!-- VE:MANAGED:END -->

@@ -11,6 +11,8 @@ chunks:
     relationship: implements
   - chunk_id: federation_peer_refs
     relationship: implements
+  - chunk_id: federation_template_pointers
+    relationship: uses
 code_references:
 - ref: src/external_refs.py#create_peer_yaml
   implements: Peer (intra-workspace) external reference creation
