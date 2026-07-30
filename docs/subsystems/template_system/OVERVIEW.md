@@ -35,6 +35,8 @@ chunks:
     relationship: implements
   - chunk_id: agentskills_migration
     relationship: implements
+  - chunk_id: federation_template_pointers
+    relationship: uses
 code_references:
 - ref: src/template_system.py#VeConfig
   implements: VE project configuration dataclass
@@ -264,6 +266,11 @@ The canonical implementation provides:
 
 - **0017-subsystem_template** - Modified template files (`src/templates/subsystem/OVERVIEW.md`,
   `src/templates/chunk/PLAN.md`) but did not change the rendering mechanism
+
+- **federation_template_pointers** - Added the `src/templates/package/` collection
+  (agent instructions for a pointer-only workspace member), rendered through
+  `render_template("package", "AGENTS.md.jinja2", ...)` with no change to the
+  rendering mechanism
 
 ## Consolidation Chunks
 

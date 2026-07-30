@@ -40,6 +40,8 @@ from cli.entity import entity
 from cli.wiki import wiki
 # Chunk: docs/chunks/federation_workspace_manifest - `ve workspace` manifest commands
 from cli.workspace import workspace
+# Chunk: docs/chunks/federation_template_pointers - `ve package scaffold` pointer-only members
+from cli.package import package
 # Chunk: docs/chunks/entity_config_toml - Operator-level `~/.ve-config.toml` and `ve config show`
 from cli.config import config
 
@@ -63,6 +65,7 @@ cli.add_command(board)
 cli.add_command(entity)
 cli.add_command(wiki)
 cli.add_command(workspace)
+cli.add_command(package)
 cli.add_command(config)
 
 # Chunk: docs/chunks/federation_tree_discovery - Resolve --project-dir to the nearest enclosing VE tree

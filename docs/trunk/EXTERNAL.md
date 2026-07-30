@@ -212,6 +212,41 @@ Two properties worth knowing:
 A registered tree that has vanished is reported as a warning and the remaining
 members still list, so one stale manifest entry does not hide the workspace.
 
+## Pointer-Only Trees
+
+A tree may consist of *nothing but* pointers: interest edges naming what it reads,
+with no `docs/trunk/` of its own. This is the lightweight membership tier, and it is
+what a scaffolded package should get by default.
+
+Such a package is fully addressable — other trees reference it as
+`<member>::docs/...`, and its own pointers resolve normally — while **not** being an
+addressing root. Membership and governance are separate predicates on purpose:
+registration accepts any `docs/` directory holding an artifact directory, whereas a
+bare reference resolves against the nearest enclosing directory holding
+`docs/trunk/`. A pointer-only package therefore has local names for the intent it
+consumes without capturing the bare references written beneath it.
+
+```bash
+ve package scaffold apps/viz \
+  --interest 'pybusiness::docs/subsystems/commitment_baseline: charts render this baseline'
+```
+
+That writes `apps/viz/docs/subsystems/commitment_baseline/external.yaml`, registers
+`viz` in `.ve-workspace.yaml`, and renders an `AGENTS.md` telling agents which tree
+governs the package. It creates no `docs/trunk/` and no artifact directory that holds
+no pointer — an empty `docs/chunks/` would be a new namespace and nothing else.
+
+Scaffolding is where a monorepo's namespace count comes from. A package template that
+ships a literal `docs/trunk` + `docs/chunks` mints a namespace per generated package
+*by construction*, so cleanup regresses with the next `cookiecutter` run; a template
+that calls `ve package scaffold` instead mints none. `--full-tree` is the opt-in for a
+package that will own intent of its own, and `ve init` inside a workspace says out
+loud that it is creating a new addressing root.
+
+Promotion from pointer-only to full tree stays available (`ve init` in the package,
+then `ve workspace add`) and is an ownership decision: a trunk means bare references
+in files beneath that directory stop resolving upward and start resolving there.
+
 ## Resolving External Artifacts
 
 Use the `ve external resolve` command to view the actual artifact content:

@@ -13,6 +13,8 @@ chunks:
     relationship: implements
   - chunk_id: federation_reverse_interest
     relationship: implements
+  - chunk_id: federation_template_pointers
+    relationship: uses
 code_references:
 - ref: src/interest.py#scan_interest_edges
   implements: One-pass enumeration of every external.yaml pointer in a workspace

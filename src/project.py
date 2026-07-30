@@ -22,6 +22,7 @@ from template_system import (
     render_template,
     render_to_directory,
 )
+from workspace import WORKSPACE_MANIFEST_NAME, find_workspace_root, suggest_member_names
 
 
 # Chunk: docs/chunks/claudemd_magic_markers - Magic marker constants for START and END delimiters
@@ -633,9 +634,59 @@ class Project:
 
         return result
 
+    # Chunk: docs/chunks/federation_template_pointers - Minting an addressing root inside a workspace is never silent
+    def _workspace_advisory(self) -> InitResult:
+        """Report that this `ve init` is about to mint a namespace in a workspace.
+
+        `ve init` inside a monorepo of VE trees creates a new addressing root:
+        from then on, bare references in files beneath this directory resolve
+        here instead of in the tree that governed them a moment ago. That is
+        sometimes exactly right — a package that owns intent needs a trunk — and
+        sometimes the mistake that grows a repository to dozens of parallel
+        namespaces, so it is stated rather than performed silently.
+
+        Advisory only: init still creates the tree, and the parent workspace
+        manifest is not modified. Registration is offered, not done, because a
+        command run on one directory should not rewrite a file above it.
+        """
+        result = InitResult()
+
+        # Re-initializing an existing tree mints nothing.
+        if is_ve_tree(self.project_dir):
+            return result
+
+        workspace_root = find_workspace_root(self.project_dir)
+        if workspace_root is None:
+            return result
+        if _same_directory(workspace_root, self.project_dir):
+            return result
+
+        relative = pathlib.Path(
+            os.path.relpath(self.project_dir, start=workspace_root)
+        ).as_posix()
+        suggested_name = suggest_member_names([relative], root=workspace_root)[0][0]
+        governing = find_enclosing_tree(self.project_dir)
+        if governing is not None:
+            result.warnings.append(
+                f"creating docs/trunk/ in {self.project_dir} makes it a new "
+                f"addressing root inside the workspace at {workspace_root}: bare "
+                f"references in files beneath it will resolve here instead of in "
+                f"{governing}. If this package only consumes documented intent, "
+                f"`ve package scaffold {relative} --interest "
+                f"'<member>::docs/<type>/<name>: why'` registers it as a "
+                f"pointer-only member and mints no namespace."
+            )
+
+        result.warnings.append(
+            f"register the new tree so '<member>::' references can address it: "
+            f"`ve workspace add {suggested_name} {relative}` "
+            f"(from {workspace_root}, which holds the {WORKSPACE_MANIFEST_NAME})."
+        )
+        return result
+
     # Chunk: docs/chunks/plugin_init_slimdown - Init scaffolds project-owned artifacts only; commands distributed via the Claude Code plugin
     # Chunk: docs/chunks/plugin_legacy_migration - Re-init migrates legacy rendered layouts
-    def init(self) -> InitResult:
+    def init(self, advise_on_workspace: bool = True) -> InitResult:
         """Initialize the project with vibe engineering structure.
 
         Creates trunk documents, AGENTS.md, artifact directories, and the
@@ -646,10 +697,19 @@ class Project:
         symlinks (preserving user-authored files with a warning).
         Idempotent: skips files that already exist; a second run removes
         nothing.
+
+        Args:
+            advise_on_workspace: Whether to warn that this init mints a new
+                addressing root inside a workspace (see
+                :meth:`_workspace_advisory`). Callers that create a tree
+                deliberately *and* register it — `ve package scaffold
+                --full-tree` — pass False, because for them the advice is
+                already taken.
         """
         result = InitResult()
 
         for sub_result in [
+            self._workspace_advisory() if advise_on_workspace else InitResult(),
             self._migrate_legacy_layout(),
             self._init_trunk(),
             self._init_agents_md(),
