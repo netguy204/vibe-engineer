@@ -19,7 +19,7 @@ import re
 from dataclasses import dataclass, field
 from typing import Literal, Protocol, TYPE_CHECKING
 
-from backreferences import CHUNK_BACKREF_PATTERN, SUBSYSTEM_BACKREF_PATTERN
+from backreferences import parse_backreference
 from external_refs import is_external_artifact
 from friction import Friction
 from investigations import Investigations
@@ -638,6 +638,7 @@ class IntegrityValidator:
     # Chunk: docs/chunks/integrity_code_backrefs - Line-by-line scanning with line number tracking
     # Chunk: docs/chunks/integrity_bidirectional - Extended with code↔chunk bidirectional warnings
     # Chunk: docs/chunks/backref_language_agnostic - Language-agnostic source file enumeration
+    # Chunk: docs/chunks/federation_qualified_refs - Single-tree checks apply to bare refs only
     def _validate_code_backreferences(
         self,
     ) -> tuple[list[IntegrityError], list[IntegrityWarning], int, int, int]:
@@ -673,11 +674,19 @@ class IntegrityValidator:
 
             # Iterate line-by-line to track line numbers (1-indexed)
             for line_num, line in enumerate(content.splitlines(), start=1):
+                # A qualified reference (`member::docs/chunks/x`) names an artifact
+                # in another tree, so checking it against this tree's artifact names
+                # would invent errors for references that are pointing elsewhere on
+                # purpose. Qualified and malformed-qualifier references are reported
+                # by `ve workspace validate`, which can resolve them.
+                parsed = parse_backreference(line, line_number=line_num)
+                if parsed is None or not parsed.is_bare:
+                    continue
+
                 # Check for chunk backreferences
-                match = CHUNK_BACKREF_PATTERN.match(line)
-                if match:
+                if parsed.artifact_type == ArtifactType.CHUNK:
                     chunk_refs_found += 1
-                    chunk_id = match.group(1)
+                    chunk_id = parsed.artifact_id
                     # Check both local and external chunks - external chunks are valid
                     # targets for code backreferences (their directory exists locally)
                     is_local_chunk = chunk_id in self._chunk_names
@@ -708,10 +717,9 @@ class IntegrityValidator:
                     # External chunks: no bidirectional check (validated in home repo)
 
                 # Check for subsystem backreferences
-                match = SUBSYSTEM_BACKREF_PATTERN.match(line)
-                if match:
+                if parsed.artifact_type == ArtifactType.SUBSYSTEM:
                     subsystem_refs_found += 1
-                    subsystem_id = match.group(1)
+                    subsystem_id = parsed.artifact_id
                     if subsystem_id not in self._subsystem_names:
                         errors.append(
                             IntegrityError(

@@ -650,6 +650,31 @@ class TestIntegrityValidatorCodeBackrefs:
         assert "nonexistent" in result.errors[0].message
         assert result.errors[0].link_type == "code→subsystem"
 
+    # Chunk: docs/chunks/federation_qualified_refs - Single-tree integrity defers cross-tree refs
+    def test_qualified_backrefs_are_not_checked_against_this_tree(self, temp_project):
+        """A qualified ref names another tree, so single-tree checks skip it.
+
+        The chunk/subsystem it names does not exist locally, and that is not an
+        error: resolution belongs to `ve workspace validate`. Reporting it here
+        would be the silent misresolution the qualifier grammar prevents.
+        """
+        make_ve_initialized_git_repo(temp_project)
+
+        src_dir = temp_project / "src"
+        src_dir.mkdir(parents=True)
+        (src_dir / "test.py").write_text(
+            '"""Test module."""\n'
+            "# Chunk: pybusiness::docs/chunks/commitment_key - Elsewhere\n"
+            "# Subsystem: acme/platform::docs/subsystems/baseline - Elsewhere\n"
+            "# Chunk: architecture/docs/chunks/legacy_prefix - Legacy prefix\n"
+        )
+
+        result = validate_integrity(temp_project)
+
+        assert result.success, [error.message for error in result.errors]
+        assert result.chunk_backrefs_found == 0
+        assert result.subsystem_backrefs_found == 0
+
     def test_multiple_backrefs_in_file(self, temp_project):
         """Multiple backreferences in one file are all validated."""
         make_ve_initialized_git_repo(temp_project)
