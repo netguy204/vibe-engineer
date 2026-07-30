@@ -1,218 +1,73 @@
 ---
-status: FUTURE
+status: ACTIVE
 ticket: null
 parent_chunk: null
-code_paths: []
-code_references: []
+code_paths:
+- src/backreferences.py
+- src/integrity.py
+- tests/test_backreferences.py
+- tests/test_integrity.py
+code_references:
+- ref: src/backreferences.py#QualifierKind
+  implements: The four ways a reference is addressed, including the distinct malformed-qualifier
+    category for legacy prefix-style refs
+- ref: src/backreferences.py#ParsedBackreference
+  implements: A reference carrying its qualifier, kind, separator, line number, and
+    malformed reason - not just the bare id
+- ref: src/backreferences.py#_build_backref_pattern
+  implements: 'The qualified grammar: one generated pattern per artifact type matching
+    bare, member-qualified, org/repo-qualified, and legacy prefix forms'
+- ref: src/backreferences.py#_classify_qualifier
+  implements: Qualifier syntax rules - no slash means member, exactly one means org/repo,
+    anything else is malformed with a reason - shared with frontmatter's org/repo
+    validator
+- ref: src/backreferences.py#parse_backreference
+  implements: The single importable parsing entry point, so no other module needs
+    a backreference regex
+- ref: src/backreferences.py#scan_backreferences
+  implements: Whole-content scan yielding classified references with 1-indexed line
+    numbers for file:line reporting
+- ref: src/backreferences.py#BackreferenceInfo
+  implements: Per-file results carrying qualifier-bearing references alongside the
+    artifact id lists
+- ref: src/backreferences.py#_artifact_ids
+  implements: Exclusion of malformed-qualifier refs from artifact id lists, so they
+    are never silently treated as local
+- ref: src/backreferences.py#count_backreferences
+  implements: Scanner that counts qualified references instead of skipping them
+- ref: src/backreferences.py#update_backreferences
+  implements: Consolidation rewrite that round-trips qualifiers into narrative refs
+    and leaves malformed refs untouched
+- ref: src/integrity.py#IntegrityValidator::_validate_code_backreferences
+  implements: Single-tree integrity checks act on bare refs only, deferring cross-tree
+    refs to workspace validation instead of misresolving them locally
+- ref: tests/test_backreferences.py#TestQualifiedBackreferenceGrammar
+  implements: Coverage of bare, member-qualified, and org/repo-qualified forms across
+    all three artifact types
+- ref: tests/test_backreferences.py#TestLegacyPrefixQualifiers
+  implements: Legacy prefix-style refs are visible, flagged, and neither treated as
+    bare nor accepted as qualified
+- ref: tests/test_backreferences.py#TestRepoQualifierParityWithFrontmatter
+  implements: 'The org/repo rule is one rule: comment classification matches SymbolicReference
+    acceptance'
+- ref: tests/test_backreferences.py#TestScanBackreferences
+  implements: Line numbers and mixed-file classification
+- ref: tests/test_backreferences.py#TestCountBackreferencesQualified
+  implements: Qualified refs are counted; malformed refs are visible without polluting
+    the id lists
+- ref: tests/test_backreferences.py#TestUpdateBackreferencesQualifiers
+  implements: Qualifier round-trip through consolidation, one narrative line per distinct
+    qualifier
+- ref: tests/test_integrity.py#TestIntegrityValidatorCodeBackrefs::test_qualified_backrefs_are_not_checked_against_this_tree
+  implements: Making qualified refs visible does not make them false integrity errors
 narrative: monorepo_federation
 investigation: null
 subsystems: []
 friction_entries: []
 depends_on: []
-created_after: ["backend_live_validation"]
+created_after:
+- backend_live_validation
 ---
-
-<!--
-╔══════════════════════════════════════════════════════════════════════════════╗
-║  DO NOT DELETE THIS COMMENT BLOCK until the chunk complete command is run.   ║
-║                                                                              ║
-║  AGENT INSTRUCTIONS: When editing this file, preserve this entire comment    ║
-║  block. Only modify the frontmatter YAML and the content sections below      ║
-║  (Minor Goal, Success Criteria, Relationship to Parent). Use targeted edits  ║
-║  that replace specific sections rather than rewriting the entire file.       ║
-╚══════════════════════════════════════════════════════════════════════════════╝
-
-This comment describes schema information that needs to be adhered
-to throughout the process.
-
-STATUS VALUES (status answers: how much of the intent does this chunk own?):
-- FUTURE: Not yet owned. Queued for later.
-- IMPLEMENTING: Being taken into ownership. At most one per worktree.
-- ACTIVE: Fully owns the intent that governs the code.
-- COMPOSITE: Shares ownership with other chunks. Must be read alongside its co-owners.
-- HISTORICAL: No longer owns intent. Kept for archaeological context.
-
-See docs/trunk/CHUNKS.md for the full principle.
-
-FUTURE CHUNK APPROVAL REQUIREMENT:
-ALL FUTURE chunks require operator approval before committing or injecting.
-After refining this GOAL.md, you MUST present it to the operator and wait for
-explicit approval. Do NOT commit or inject until the operator approves.
-This applies whether triggered by "in the background", "create a future chunk",
-or any other mechanism that creates a FUTURE chunk.
-
-COMMIT BOTH FILES: When committing a FUTURE chunk after approval, add the entire
-chunk directory (both GOAL.md and PLAN.md) to the commit, not just GOAL.md. The
-`ve chunk create` command creates both files, and leaving PLAN.md untracked will
-cause merge conflicts when the orchestrator creates a worktree for the PLAN phase.
-
-PARENT_CHUNK:
-- null for new work
-- chunk directory name (e.g., "006-segment-compaction") for corrections or modifications
-
-CODE_PATHS:
-- Populated at planning time
-- List files you expect to create or modify
-- Example: ["src/segment/writer.rs", "src/segment/format.rs"]
-
-CODE_REFERENCES:
-- Populated after implementation, before PR
-- Uses symbolic references to identify code locations
-
-- Format: {file_path}#{symbol_path} where symbol_path uses :: as nesting separator
-- Example:
-  code_references:
-    - ref: src/segment/writer.rs#SegmentWriter
-      implements: "Core write loop and buffer management"
-    - ref: src/segment/writer.rs#SegmentWriter::fsync
-      implements: "Durability guarantees"
-    - ref: src/utils.py#validate_input
-      implements: "Input validation logic"
-
-
-NARRATIVE:
-- If this chunk was derived from a narrative document, reference the narrative directory name.
-- When setting this field during /chunk-create, also update the narrative's OVERVIEW.md
-  frontmatter to add this chunk to its `chunks` array with the prompt and chunk_directory.
-- If this is the final chunk of a narrative, the narrative status should be set to COMPLETED
-  when this chunk is completed.
-
-INVESTIGATION:
-- If this chunk was derived from an investigation's proposed_chunks, reference the investigation
-  directory name (e.g., "memory_leak" for docs/investigations/memory_leak/).
-- This provides traceability from implementation work back to exploratory findings.
-- When implementing, read the referenced investigation's OVERVIEW.md for context on findings,
-  hypotheses tested, and decisions made during exploration.
-- Validated by `ve chunk validate` to ensure referenced investigations exist.
-
-
-SUBSYSTEMS:
-- Optional list of subsystem references that this chunk relates to
-- Format: subsystem_id is the subsystem directory name, relationship is "implements" or "uses"
-- "implements": This chunk directly implements part of the subsystem's functionality
-- "uses": This chunk depends on or uses the subsystem's functionality
-- Example:
-  subsystems:
-    - subsystem_id: "validation"
-      relationship: implements
-    - subsystem_id: "frontmatter"
-      relationship: uses
-- Validated by `ve chunk validate` to ensure referenced subsystems exist
-- When a chunk that implements a subsystem is completed, a reference should be added to
-  that chunk in the subsystems OVERVIEW.md file front matter and relevant section.
-
-FRICTION_ENTRIES:
-- Optional list of friction entries that this chunk addresses
-- Provides "why did we do this work?" traceability from implementation back to accumulated pain points
-- Format: entry_id is the friction entry ID (e.g., "F001"), scope is "full" or "partial"
-  - "full": This chunk fully resolves the friction entry
-  - "partial": This chunk partially addresses the friction entry
-- When to populate: During /chunk-create if this chunk addresses known friction from FRICTION.md
-- Example:
-  friction_entries:
-    - entry_id: F001
-      scope: full
-    - entry_id: F003
-      scope: partial
-- Validated by `ve chunk validate` to ensure referenced friction entries exist in FRICTION.md
-- When a chunk addresses friction entries and is completed, those entries are considered RESOLVED
-
-CHUNK ARTIFACTS:
-- Single-use scripts, migration tools, or one-time utilities created for this chunk
-  should be stored in the chunk directory (e.g., docs/chunks/foo/migrate.py)
-- These artifacts help future archaeologists understand what the chunk did
-- Unlike code in src/, chunk artifacts are not expected to be maintained long-term
-- Examples: data migration scripts, one-time fixups, analysis tools used during implementation
-
-CREATED_AFTER:
-- Auto-populated by `ve chunk create` - DO NOT MODIFY manually
-- Lists the "tips" of the chunk DAG at creation time (chunks with no dependents yet)
-- Tips must be ACTIVE chunks (shipped work that has been merged)
-- Example: created_after: ["auth_refactor", "api_cleanup"]
-
-IMPORTANT - created_after is NOT implementation dependencies:
-- created_after tracks CAUSAL ORDERING (what work existed when this chunk was created)
-- It does NOT mean "chunks that must be implemented before this one can work"
-- FUTURE chunks can NEVER be tips (they haven't shipped yet)
-
-COMMON MISTAKE: Setting created_after to reference FUTURE chunks because they
-represent design dependencies. This is WRONG. If chunk B conceptually depends on
-chunk A's implementation, but A is still FUTURE, B's created_after should still
-reference the current ACTIVE tips, not A.
-
-WHERE TO TRACK IMPLEMENTATION DEPENDENCIES:
-- Investigation proposed_chunks ordering (earlier = implement first)
-- Narrative chunk sequencing in OVERVIEW.md
-- Design documents describing the intended build order
-- The `created_after` field will naturally reflect this once chunks ship
-
-DEPENDS_ON:
-- Declares explicit implementation dependencies that affect orchestrator scheduling
-- Format: list of chunk directory name strings, or null
-- Default: [] (empty list - explicitly no dependencies)
-
-VALUE SEMANTICS (how the orchestrator interprets this field):
-
-| Value             | Meaning                              | Oracle behavior   |
-|-------------------|--------------------------------------|-------------------|
-| `null` or omitted | "I don't know my dependencies"       | Consult oracle    |
-| `[]` (empty list) | "I explicitly have no dependencies"  | Bypass oracle     |
-| `["chunk_a"]`     | "I depend on these specific chunks"  | Bypass oracle     |
-
-CRITICAL: The default `[]` means "I have analyzed this chunk and it has no dependencies."
-This is an explicit assertion, not a placeholder. If you haven't analyzed dependencies yet,
-change the value to `null` (or remove the field entirely) to trigger oracle consultation.
-
-WHEN TO USE EACH VALUE:
-- Use `[]` when you have analyzed the chunk and determined it has no implementation dependencies
-  on other chunks in the same batch. This tells the orchestrator to skip conflict detection.
-- Use `null` when you haven't analyzed dependencies yet and want the orchestrator's conflict
-  oracle to determine if this chunk conflicts with others.
-- Use `["chunk_a", "chunk_b"]` when you know specific chunks must complete before this one.
-
-WHY THIS MATTERS:
-The orchestrator's conflict oracle adds latency and cost to detect potential conflicts.
-When you declare `[]`, you're asserting independence and enabling the orchestrator to
-schedule immediately. When you declare `null`, you're requesting conflict analysis.
-
-PURPOSE AND BEHAVIOR:
-- When a list is provided (empty or not), the orchestrator uses it directly for scheduling
-- When null, the orchestrator consults its conflict oracle to detect dependencies heuristically
-- Dependencies express order within a single injection batch (intra-batch scheduling)
-- The chunks listed in depends_on will be scheduled to complete before this chunk starts
-
-CONTRAST WITH created_after:
-- `created_after` tracks CAUSAL ORDERING (what work existed when this chunk was created)
-- `depends_on` tracks IMPLEMENTATION DEPENDENCIES (what must complete before this chunk runs)
-- `created_after` is auto-populated at creation time and should NOT be modified manually
-- `depends_on` is agent-populated based on design requirements and may be edited
-
-WHEN TO DECLARE EXPLICIT DEPENDENCIES:
-- When you know chunk B requires chunk A's implementation to exist before B can work
-- When the conflict oracle would otherwise miss a subtle dependency
-- When you want to enforce a specific execution order within a batch injection
-- When a narrative or investigation explicitly defines chunk sequencing
-
-EXAMPLE:
-  # Chunk has no dependencies (explicit assertion - bypasses oracle)
-  depends_on: []
-
-  # Chunk dependencies unknown (triggers oracle consultation)
-  depends_on: null
-
-  # Chunk B depends on chunk A completing first
-  depends_on: ["auth_api"]
-
-  # Chunk C depends on both A and B completing first
-  depends_on: ["auth_api", "auth_client"]
-
-VALIDATION:
-- `null` is valid and triggers oracle consultation
-- `[]` is valid and means "explicitly no dependencies" (bypasses oracle)
-- Referenced chunks should exist in docs/chunks/ (warning if not found)
-- Circular dependencies will be detected at injection time
-- Dependencies on ACTIVE chunks are allowed (they've already completed)
--->
 
 # Chunk Goal
 
@@ -231,17 +86,29 @@ validates (`src/models/references.py#SymbolicReference`, which accepts
 already can. A member qualifier contains no `/`; an org/repo qualifier
 contains exactly one — the two are syntactically disjoint.
 
-Today the scanner regexes (`src/backreferences.py:40-42`) anchor `docs/`
-immediately after the type keyword, so qualified comments observed in the
-wild (`# Chunk: architecture/docs/chunks/smsp_commitment_key`,
-platform repo `commitment.py:326`) are invisible to every `ve` command: not
-counted, not validated, and skipped by consolidation rewrites. This chunk owns
-making the qualifier a first-class, preserved part of the reference.
+The qualifier is a first-class, preserved part of a reference: qualified
+comments are visible to the commands that read backreferences, counted like any
+other reference, and carried through consolidation rewrites instead of dropped.
+Legacy prefix-style comments of the form observed in the wild
+(`# Chunk: architecture/docs/chunks/smsp_commitment_key`, platform repo
+`commitment.py:326`) parse as a *malformed qualifier* rather than disappearing —
+the grammar cannot know whether `architecture` names a workspace member, a
+directory that happens to exist, or an org missing its repo, so it reports them
+for normalization instead of guessing.
+
+Parsing, classification, and preservation are the whole of the grammar's job:
+`src/backreferences.py#parse_backreference` is the single entry point every
+consumer reads references through, and *resolution* — which tree or repository a
+qualifier actually names — belongs to workspace validation, never to the
+grammar. Single-tree checks therefore act on bare references only; a qualified
+reference names an artifact in another tree, so validating it against the local
+tree's artifact names would invent errors for references that point elsewhere on
+purpose.
 
 `BackreferenceInfo` carries the qualifier per reference (not just the bare
 id), and `update_backreferences` (the consolidation rewrite in
 `src/backreferences.py`) preserves qualifiers when rewriting chunk refs into
-narrative refs.
+narrative refs, emitting one narrative comment per distinct qualifier.
 
 ### Case-study grounding (Cloud Capital monorepo, diagnosed 2026-07-29)
 
