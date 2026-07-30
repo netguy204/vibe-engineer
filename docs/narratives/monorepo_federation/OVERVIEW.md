@@ -1,5 +1,5 @@
 ---
-status: ACTIVE
+status: COMPLETED
 advances_trunk_goal: "Required Properties: 'Maintaining the referential integrity of documents is an agent problem' and 'Following the workflow must maintain the health of documents over time and should not grow more difficult over time' — and 'It must be possible to retrofit a legacy project into the workflow' for the compliance workflow."
 proposed_chunks:
   - prompt: >-

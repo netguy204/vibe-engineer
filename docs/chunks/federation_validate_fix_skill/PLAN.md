@@ -1,5 +1,3 @@
-
-
 <!--
 This document captures HOW you'll achieve the chunk's GOAL.
 It should be specific enough that each step is a reasonable unit of work
@@ -10,170 +8,270 @@ to hand to an agent.
 
 ## Approach
 
-<!--
-How will you build this? Describe the strategy at a high level.
-What patterns or techniques will you use?
-What existing code will you build on?
+The deliverable is one document plus the tests that keep it honest: a
+`/workspace-validate-fix` command shipping in the plugin's `commands/`
+directory, whose body is a dispatch table from `FixClass` values to concrete
+fix surfaces, wrapped in a re-run loop.
 
-Reference docs/trunk/DECISIONS.md entries where relevant.
-If this approach represents a new significant decision, ask the user
-if we should add it to DECISIONS.md and reference it here.
+**Where it ships (deviation from the GOAL's stated location).** The GOAL says
+the skill is authored as a Jinja2 source in `src/templates/commands/` and
+rendered by `ve init`. That directory no longer exists: `plugin_init_slimdown`
+(commit 402e280) deleted all 36 command templates, removed `_init_skills()`
+from `Project.init()`, and shrank the managed `CLAUDE.md` block to a pointer at
+the Claude Code plugin. Commands are now static markdown at the plugin root
+(`commands/*.md`), and `tests/test_plugin_commands.py` enforces that they carry
+no Jinja2 syntax and no auto-generated header — the exact opposite of the
+GOAL's instruction. So the "extend the existing `/validate-fix` pattern" part
+of the intent is honored (`commands/validate-fix.md` is the model for the loop
+structure, the classification table, the iteration cap, and the runtime-context
+preamble), while the "render via `ve init`" part is obsolete and is recorded as
+a deviation below. Shipping in `commands/` is what makes the skill reach
+operators at all: nothing renders into a project any more.
 
-Always include tests in your implementation plan and adhere to
-docs/trunk/TESTING_PHILOSOPHY.md in your planning.
+**Why the body is a dispatch table.** `FixClass` declares itself part of a
+contract with this chunk ("The `federation_validate_fix_skill` loop dispatches
+on these values"), and `report.to_dict()` hands the agent everything the
+dispatch needs: `fix_class`, `location`, `reference`, `member`, and
+`candidates[]`. The skill therefore never parses prose and never re-derives
+resolution rules — it reads JSON, counts candidates, and acts. The one
+resolution rule it applies itself is nearest-enclosing-`docs/trunk/`, because
+choosing between "qualify the ref" and "create a peer pointer" requires knowing
+which tree would hold the pointer, and a pointer in a non-governing tree does
+not make a bare reference resolve (`workspace_validation` module docstring:
+"pointer-only trees are addressable but not governing").
 
-Remember to update code_paths in the chunk's GOAL.md (e.g., docs/chunks/federation_validate_fix_skill/GOAL.md)
-with references to the files that you expect to touch.
--->
+**The candidate count is the whole triage.** Every mechanical fix is a case
+where the validator has already computed a unique answer; every escalation is a
+case where it has not:
+
+| `fix_class` | Condition | Action |
+|-------------|-----------|--------|
+| `misrouted-bare` | 1 candidate with a `member`, and it is the only defect in this tree naming that artifact | insert the qualifier: `<member>::docs/...` |
+| `misrouted-bare` | 1 candidate with a `member`, and ≥2 defects in this tree name that artifact | `ve external point <member> <artifact> --why ...` in the governing tree; leave the refs bare |
+| `misrouted-bare` | 1 candidate whose `member` is `null` | `ve workspace add <name> <path>`, then re-run (next pass qualifies) |
+| `misrouted-bare` | ≥2 candidates | **escalate** |
+| `malformed-qualifier` | the qualifier names a registered member | rewrite to the `<member>::` form the message spells out |
+| `malformed-qualifier` | qualifier names an unregistered tree that exists / no such tree | `ve workspace add`, else **escalate** |
+| `unknown-qualifier` | the named tree exists on disk but is unregistered | `ve workspace add <name> <path>` |
+| `unknown-qualifier` | 1 candidate names a different member | retarget the qualifier (ref) or the `tree:` (pointer) |
+| `unknown-qualifier` | no evidence, or ≥2 candidates | **escalate** |
+| `missing-target` | 1 candidate | requalify the ref, or retarget the pointer's `tree:`/`artifact_id`, preserving `why:` |
+| `missing-target` | pointer cannot be read | **escalate** |
+| `missing-target` | 0 or ≥2 candidates | **escalate** |
+| `unresolvable-bare` | always (no tree in the workspace holds the artifact under any name) | **escalate**, naming any external repo the workspace already points at as a hypothesis for the operator to confirm |
+| `unresolvable-frontmatter` | the named file exists at exactly one other path in the tree | update the `code_references` path |
+| `unresolvable-frontmatter` | symbol absent, or the file is ambiguous/gone | **escalate** |
+| `manifest_errors` | member path gone, tree findable at exactly one path | correct the manifest entry |
+| `manifest_errors` | otherwise | **escalate** (the loop cannot report clean while one stands) |
+
+`unverified[]` is reported, never "fixed": a cross-repository target the
+validator declines to resolve offline is not a defect. `unregistered_trees[]`
+is a note — trees are registered when a defect's candidate needs it, and merely
+listed otherwise, because `ve workspace init --scan`'s own caveat applies (a
+scan cannot tell an intentional tree from a scaffolding template's).
+
+**Three invariants, stated as invariants.** Never delete a reference (every
+edit is a prefix insertion or a qualifier rewrite; if the only way to satisfy
+the validator would be removing a ref, escalate). Never fabricate a target (no
+`ve chunk create`, no authored GOAL.md/OVERVIEW.md prose, no `ve external point
+--force`, no invented repo name — every target written must appear in
+`candidates[]` or in an existing pointer). Never choose between candidates.
+
+**Batching under DEC-005.** DEC-005 forbids commands from prescribing git
+operations, and the GOAL asks for fix-class-grouped commits. Both survive if
+the prescription is about *grouping*, not about committing: the skill applies
+and reports one fix class at a time so each batch is separately reviewable, and
+says that *if* the operator commits, one commit per fix class (never mixed) is
+what makes "all qualifications" auditable apart from "all new pointers".
+
+### Testing strategy
+
+Two layers, per TESTING_PHILOSOPHY's goal-driven test design:
+
+1. **Contract, not prose.** `FixClass` is imported and every value asserted
+   present in the document, so adding a seventh fix class fails until the skill
+   handles it. The fix surfaces (`ve workspace validate --format json`,
+   `ve external point`, `ve workspace add`) and the three invariant headings are
+   asserted the way `tests/test_plugin_commands.py` already asserts on
+   `chunk-create`'s behavior-bearing phrases. Generic invariants (frontmatter,
+   no Jinja2, no auto-generated header) come free: `test_plugin_commands.py`
+   parametrizes over `commands/*.md`.
+
+2. **One skill pass over a case-study-shaped workspace** — the GOAL's second
+   success criterion. A fixture carrying one defect per mechanical class plus
+   exactly one deliberately ambiguous defect; a test helper that encodes the
+   dispatch table above (the document is the source of truth, the helper proves
+   the rules converge); the fixes applied through the real surfaces (`ve
+   external point` and `ve workspace add` via `CliRunner`, qualification as a
+   prefix insertion); then `ve workspace validate --format json` again. The
+   assertions are the criterion: exactly one defect remains, it is the ambiguous
+   one, it carries two candidates naming different members — and, guarding the
+   invariants, the file still holds the same number of backreference comments
+   and no artifact directory was authored beyond the one pointer.
 
 ## Subsystem Considerations
 
-<!--
-Before designing your implementation, check docs/subsystems/ for relevant
-cross-cutting patterns.
-
-QUESTIONS TO CONSIDER:
-- Does this chunk touch any existing subsystem's scope?
-- Will this chunk implement part of a subsystem (contribute code) or use it
-  (depend on it)?
-- Did you discover code during exploration that should be part of a subsystem
-  but doesn't follow its patterns?
-
-If no subsystems are relevant, delete this section.
-
-WHEN SUBSYSTEMS ARE RELEVANT:
-List each relevant subsystem with its status and your relationship:
-- **docs/subsystems/validation** (DOCUMENTED): This chunk USES the validation
-  subsystem to check input
-- **docs/subsystems/error_handling** (REFACTORING): This chunk IMPLEMENTS a
-  new error type following the subsystem's patterns
-
-HOW SUBSYSTEM STATUS AFFECTS YOUR WORK:
-
-DOCUMENTED subsystems: The subsystem's patterns are captured but deviations are not
-being actively fixed. If you discover code that deviates from the subsystem's
-patterns, add it to the subsystem's Known Deviations section. Do NOT prioritize
-fixing those deviations—your chunk has its own goals.
-
-REFACTORING subsystems: The subsystem is being actively consolidated. If your chunk
-work touches code that deviates from the subsystem's patterns, attempt to bring it
-into compliance as part of your work. This is "opportunistic improvement"—improve
-what you touch, but don't expand scope to fix unrelated deviations.
-
-WHEN YOU DISCOVER DEVIATING CODE:
-- Add it to the subsystem's Known Deviations section
-- Note whether you will address it (REFACTORING status + relevant to your work)
-  or leave it for future work (DOCUMENTED status or outside your chunk's scope)
-
-Example:
-- **Discovered deviation**: src/legacy/parser.py#validate_input does its own
-  validation instead of using the validation subsystem
-  - Added to docs/subsystems/validation Known Deviations
-  - Action: Will not address (subsystem is DOCUMENTED; deviation outside chunk scope)
--->
+- **docs/subsystems/cross_repo_operations** (DOCUMENTED): this chunk *uses*
+  the peer-pointer surface (`ve external point` / `create_peer_yaml`) as one of
+  its fix actions but contributes no code to it. Considered registering the
+  chunk in the subsystem's frontmatter and declined: the deliverable is a plugin
+  document with no `code_references` into `src/`, so a `uses` edge would add a
+  name to the subsystem without adding an implementation to read.
 
 ## Sequence
 
-<!--
-Ordered steps to implement this chunk. Each step should be:
-- Small enough to reason about in isolation
-- Large enough to be meaningful
-- Clear about its inputs and outputs
+### Step 1: The fixture and the failing tests
 
-This sequence is your contract with yourself (and with agents).
-Work through it in order. Don't skip ahead.
+Create `tests/test_workspace_validate_fix_skill.py`.
 
-Example:
+Fixture `compliance_case` — a workspace shaped like the Cloud Capital
+diagnosis, with one defect per mechanical class:
 
-### Step 1: Define the SegmentHeader struct
+- members `pybusiness` (`packages/libs/pybusiness`) and `architecture`;
+  `platform` (`packages/libs/platform`) exists as a VE tree but is
+  **unregistered**.
+- `architecture` owns `docs/subsystems/commitment_baseline`,
+  `docs/chunks/rsv2_pybusiness_model`, `docs/subsystems/pricing_rules`.
+- `platform` owns `docs/subsystems/tenancy`.
+- both `architecture` and `pybusiness` own `docs/subsystems/rounding` — the
+  deliberate ambiguity.
+- `pybusiness/savings/realized.py` carries: two bare refs at
+  `docs/subsystems/commitment_baseline` (→ point, not qualify), one bare ref at
+  `docs/subsystems/pricing_rules` (→ qualify), one legacy
+  `architecture/docs/chunks/rsv2_pybusiness_model` (→ normalize), one bare ref
+  at `docs/subsystems/tenancy` whose only candidate is unregistered (→
+  `ve workspace add`, then qualify).
+- the ambiguous defect needs a file whose governing tree holds neither copy of
+  `rounding`, so it lives in `backend-api-lib/client.py` — a package with no
+  docs tree at all, exactly the case study's direct consumer — giving two
+  candidates: `architecture` and `pybusiness`.
+- `pybusiness/docs/subsystems/baseline/external.yaml` — a peer pointer whose
+  `artifact_id` moved to `architecture` under another name (→ retarget).
 
-Create the struct that represents a segment's header with fields for:
-- magic number (4 bytes)
-- version (2 bytes)
-- segment_id (8 bytes)
-- message_count (4 bytes)
-- checksum (4 bytes)
+Tests, written to fail first:
 
-Location: src/segment/format.rs
+- `test_document_dispatches_on_every_fix_class`
+- `test_document_gives_every_report_section_a_disposition`
+- `test_document_names_the_json_contract_and_the_fix_surfaces`
+- `test_document_states_the_three_invariants`
+- `test_document_prescribes_fix_class_grouped_batches`
+- `test_document_terminates_the_loop`
+- `test_case_study_reports_one_defect_per_mechanical_class_plus_one_ambiguity`
+- `test_one_skill_pass_leaves_only_the_ambiguous_defect`
+- `test_the_surviving_defect_is_escalated_with_both_candidates`
+- `test_the_pass_qualifies_points_normalizes_and_retargets`
+- `test_the_pass_deletes_no_reference_and_authors_no_prose`
 
-### Step 2: Implement header serialization
+The GOAL enumerates five mechanical actions, but the document claims three more
+(`unknown-qualifier` registration or requalification, a moved
+`code_references` path, and a member whose tree moved) because a loop that
+cannot fix those cannot reach a clean report at all — `manifest_errors` gate
+`ok`. Each gets its own focused fixture and test, so no promise the document
+makes is untested:
 
-Add `to_bytes()` and `from_bytes()` methods to SegmentHeader.
-Use little-endian encoding per SPEC.md Section 3.1.
+- `test_unknown_qualifier_registers_the_tree_the_reference_already_names`
+- `test_unresolvable_frontmatter_follows_a_file_that_moved`
+- `test_manifest_error_repoints_a_member_whose_tree_moved`
 
-### Step 3: ...
+### Step 2: The command document
 
----
+Write `commands/workspace-validate-fix.md`:
 
-**BACKREFERENCE COMMENTS**
+- frontmatter: `name`, a description that says when to use it (monorepo
+  retrofit, `ve workspace validate` failures, CI gate red), and `allowed-tools`
+  limited to read-only probes, following `commands/validate-fix.md` — the
+  write surfaces (`Edit`, `ve external point`, `ve workspace add`) stay
+  unlisted so they go through the normal permission path.
+- `<!-- Chunk: docs/chunks/federation_validate_fix_skill - ... -->` backreference.
+- `## Context` preamble probing the `ve` CLI, `.ve-workspace.yaml`, and
+  `.ve-config.yaml`, plus the `## Runtime context` block interpreting them
+  (no CLI → install instructions and stop; no manifest → `ve workspace init
+  --scan` and stop; single tree → use `/validate-fix` instead).
+- `## Overview`: the five-step loop, iteration cap 10, stop-on-no-progress.
+- `## Invariants`: the three nevers.
+- `## Reading the report`: the JSON fields the dispatch uses, `jq` recipes for
+  slicing a 29-tree report by fix class, and the note that the report is
+  deterministic so two passes are diffable.
+- `## Fix classes`: the dispatch table, then one subsection per class with the
+  exact edit or command, including the qualify-vs-point rule, the
+  governing-tree shell probe, and the "leave the pointer's local name at the
+  artifact id or bare refs still will not resolve" caveat.
+- `## Escalations`: the report shape — location, ref as written, why it is not
+  mechanical, every candidate as a paste-ready qualified reference, and the
+  question the operator must answer.
+- `## Batching`: one fix class per batch, message shapes, DEC-005 framing.
+- `## Termination`: the final report and its counts against the first pass.
 
-When implementing code, add backreference comments to help future agents trace
-code back to its governing documentation.
+### Step 3: Trunk and README documentation
 
-**Valid backreference types:**
-- `# Subsystem: docs/subsystems/<name>` - For architectural patterns
-- `# Chunk: docs/chunks/<name>` - For implementation work
+- `docs/trunk/EXTERNAL.md` and `src/templates/trunk/EXTERNAL.md.jinja2`: a
+  "Bringing a Workspace Into Compliance" section — what the validator reports,
+  which classes are mechanical, which are judgment calls, and the pointer to
+  `/workspace-validate-fix`. Both files, because the template is the source and
+  the rendered copy cannot be regenerated here (`ve init` in this repo triggers
+  an unrelated legacy-layout migration).
+- Sync the `## Pointer-Only Trees` section that `federation_template_pointers`
+  added to `docs/trunk/EXTERNAL.md` but not to its template — pre-existing
+  mechanical drift that would silently drop that section at the next render.
+- `README.md`: a short compliance subsection under "Monorepos With Multiple
+  Trees", since the validator shipped without one.
 
-Place comments at the appropriate level:
-- **Module-level**: If this code implements the subsystem/chunk's core functionality
-- **Class-level**: If this class is part of the pattern
-- **Method-level**: If this method implements a specific behavior
+### Step 4: Verify
 
-Format (place immediately before the symbol):
-```
-# Subsystem: docs/subsystems/workflow_artifacts - Workflow artifact manager pattern
-# Chunk: docs/chunks/auth_refactor - Authentication system redesign
-```
-
-Do NOT add narrative backreferences. Narratives decompose into chunks; reference
-the implementing chunk instead.
-
-**Task context note**: In multi-project tasks, always use local paths (e.g.,
-`docs/chunks/chunk_name`) for chunk backreferences, not paths to the external
-artifact repo. Each project has `external.yaml` pointers that resolve to the
-actual chunk content.
--->
+`uv run pytest tests/` against the 4468-passed baseline; `uv run ve workspace
+validate` is not runnable on this repo (it has no manifest), so the skill's
+behavior is verified through the fixture rather than on the repo itself.
 
 ## Dependencies
 
-<!--
-What must exist before this chunk can be implemented?
-- Other chunks that must be complete
-- External libraries to add
-- Infrastructure or configuration
-
-If there are no dependencies, delete this section.
--->
+`federation_global_validator` (the JSON contract), `federation_peer_refs`
+(`ve external point`), `federation_workspace_manifest` (`ve workspace add`),
+`federation_qualified_refs` (the `::` grammar) — all ACTIVE and merged.
 
 ## Risks and Open Questions
 
-<!--
-What might go wrong? What are you unsure about?
-Being explicit about uncertainty helps you (and agents) know where to
-be careful and when to stop and ask questions.
-
-Example:
-- fsync behavior may differ across filesystems; need to verify on ext4 and APFS
-- Unclear whether concurrent reads during write are safe; may need mutex
-- Performance target is aggressive; may need to iterate on buffer sizes
--->
+- **Prose assertions are brittle.** Mitigated by asserting on machine-derived
+  values (`FixClass` members, command names) and on invariant headings the
+  document itself owns, not on sentences.
+- **The dispatch table is duplicated in the test helper.** Deliberate: it is
+  the only way to demonstrate convergence without building an auto-fixer in
+  `src/`, which is not this chunk's intent. The helper is small, commented, and
+  names the document as the authority.
+- **A pointer fixes bare refs only in a governing tree.** If the skill applied
+  the point-instead-of-qualify rule to a file in a pointer-only or tree-less
+  package, the defect would survive the fix. The governing-tree probe in the
+  document exists for this reason, and the fixture's `backend-api-lib` file
+  exercises the tree-less case.
 
 ## Deviations
 
-<!--
-POPULATE DURING IMPLEMENTATION, not at planning time.
+- **Step 2, location**: the GOAL specified `src/templates/commands/` rendered by
+  `ve init`. That directory and that rendering path were removed by
+  `plugin_init_slimdown`; the skill ships as static markdown in the plugin's
+  `commands/` directory instead, which is where every other workflow command now
+  lives. `tests/test_plugin_commands.py` supplies the render-equivalent
+  guarantees (valid frontmatter, no unresolved render syntax). The GOAL's Minor
+  Goal and first success criterion were updated to describe the shipped channel
+  rather than the removed one — an ACTIVE chunk's goal has to be true of the
+  code it governs.
 
-When reality diverges from the plan, document it here:
-- What changed?
-- Why?
-- What was the impact?
+- **The born-dangling disposition needs operator confirmation.** The GOAL says
+  "missing-target where the artifact exists in another tree *or a configured
+  external repo* → create the missing external.yaml pointer". The
+  another-tree half is mechanical and shipped. The external-repo half cannot
+  be: the validator deliberately does not resolve `org/repo` targets offline
+  (`unverified[]` exists for exactly that reason), so creating a pointer at a
+  repo artifact nobody verified would be fabricating a target — the invariant
+  this skill exists to hold. `unresolvable-bare` therefore escalates with the
+  hub repository named as a hypothesis, and the pointer is created once the
+  operator confirms the artifact is there.
 
-Minor deviations (renamed a function, used a different helper) don't need
-documentation. Significant deviations (changed the approach, skipped a step,
-added steps) do.
-
-Example:
-- Step 4: Originally planned to use std::fs::rename for atomic swap.
-  Testing revealed this isn't atomic across filesystems. Changed to
-  write-fsync-rename-fsync sequence per platform best practices.
--->
+- **Pointer-at-a-pointer hazard, found while writing the fix rules.** A
+  candidate tree counts as holding an artifact even when what it holds is an
+  `external.yaml` pointer (`TreeIndex` counts pointer stubs as present). So the
+  point-instead-of-qualify action can create a pointer whose target has no main
+  document, which the next validation reports as a fresh `missing-target`
+  (`test_peer_pointer_target_without_a_main_document_is_missing_target`). The
+  document tells the agent to check what the candidate actually holds and to
+  point at the owner or qualify instead. Worth noting for future work: nothing in
+  `ve external point` refuses this today.

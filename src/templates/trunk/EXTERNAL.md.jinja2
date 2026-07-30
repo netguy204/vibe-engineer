@@ -209,6 +209,46 @@ Two properties worth knowing:
 A registered tree that has vanished is reported as a warning and the remaining
 members still list, so one stale manifest entry does not hide the workspace.
 
+## Bringing a Workspace Into Compliance
+
+Compliance is a loop, not a cleanup. `ve workspace validate` walks every source
+file in the repository and every registered member's artifacts and reports each
+reference that does not resolve, with a **fix class** naming the kind of repair it
+needs. It exits nonzero on any defect, so CI can gate on it, and
+`--format json` is the machine-readable form the fix loop consumes.
+
+| Fix class | What it means |
+|-----------|---------------|
+| `misrouted-bare` | A bare reference that resolves in *some other* tree — the silent failure, correct-looking from one working directory and wrong from another |
+| `unresolvable-bare` | A bare reference no tree in the workspace can resolve; it may never have resolved anywhere, and nothing recorded its disappearance |
+| `unknown-qualifier` | `<name>::docs/...` or a pointer's `tree:` naming no registered member |
+| `missing-target` | The tree resolves but holds no such artifact — a renamed or moved target |
+| `malformed-qualifier` | Legacy prefix style (`architecture/docs/chunks/x`), which reads like an address but is a path |
+| `unresolvable-frontmatter` | A `code_references` entry pointing at a file or symbol that is gone |
+
+Each defect carries `path:line`, the reference as written, and the **candidate
+trees that do hold the named artifact**. The candidate count is what separates a
+mechanical repair from a judgment call: exactly one candidate is an answer the
+tooling already computed, two are two plausible meanings, and none means the
+target is gone from the whole repository.
+
+The `/workspace-validate-fix` command drives the report to zero. It groups
+defects by fix class, applies the mechanical repairs (qualify a one-off
+cross-tree reference; record a peer pointer when several references in one tree
+read the same foreign artifact; normalize a legacy qualifier; retarget a pointer
+whose artifact moved; `ve workspace add` a tree a candidate names), escalates the
+rest to the operator with the candidates listed, and re-runs until clean. It
+never deletes a reference and never fabricates a target: a reference is the
+record that this code is governed by that intent, so an ambiguous one is a
+question, not a cleanup opportunity. Fixes land in fix-class-grouped batches, so
+"all qualifications" can be reviewed apart from "all new pointers".
+
+Two limits are stated on every run rather than hidden. Only backreference
+comments starting at column 0 are scanned, so a clean run means every column-0
+reference resolves, not every reference. And `org/repo` targets are reported as
+*unverified* rather than checked, because resolving them needs network or cache
+state, and a gate whose verdict depends on a warm cache is not a gate.
+
 ## Resolving External Artifacts
 
 Use the `ve external resolve` command to view the actual artifact content:

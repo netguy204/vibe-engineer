@@ -284,6 +284,22 @@ The default writes one `external.yaml` interest edge per `--interest`, registers
 
 Both flavors skip registration cleanly when there is no manifest, so single-repo use is unchanged. An interest edge is refused if its target artifact does not exist: a pointer that could never resolve leaves no deletion event behind for an audit to find, so creation time is the cheapest place to catch it.
 
+#### Checking That Every Reference Resolves
+
+In a repository of many trees, a bare `# Subsystem: docs/subsystems/baseline` comment resolves differently depending on where you stand — and can land in a real-but-wrong directory without anything failing. `ve workspace validate` reports every such defect in one run:
+
+```bash
+# Every unresolvable, misrouted, or unaddressed reference, with a fix class
+ve workspace validate
+
+# The machine-readable form the fix loop consumes; exits nonzero, so CI can gate
+ve workspace validate --format json
+```
+
+Each defect carries `path:line`, the reference as written, a fix class (`misrouted-bare`, `unresolvable-bare`, `unknown-qualifier`, `missing-target`, `malformed-qualifier`, `unresolvable-frontmatter`), and the candidate trees that *do* hold the named artifact. The candidate count is the triage: one candidate is a mechanical fix, two are two plausible meanings, none means the target is gone from the repository.
+
+The `/workspace-validate-fix` slash command drives that report to zero — it qualifies one-off cross-tree references, records a peer pointer when several references in one tree read the same foreign artifact, normalizes legacy prefix-style qualifiers, retargets pointers whose artifacts moved, registers trees a candidate names, and escalates the genuine ambiguities with their candidates rather than guessing. It never deletes a reference and never invents a target, and it works one fix class per batch so each kind of repair can be reviewed — and committed — on its own. This is the retrofit path for a monorepo whose trees grew independently.
+
 ### Orchestrator
 
 The [orchestrator](https://veng.dev/docs/orchestrator/) (`ve orch`) runs FUTURE chunks in parallel across isolated git worktrees. It handles planning, implementation, and completion autonomously. You create the work; the orchestrator schedules and executes it.
