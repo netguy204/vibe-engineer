@@ -32,8 +32,8 @@ def plugin():
 def render(flavor: str) -> None:
     """Render src/templates/plugin/ into the committed plugin files.
 
-    Renders every template in the plugin collection (currently into
-    commands/). Run from the root of the plugin source repository after
+    Renders every template in the plugin collection (skills/ and agents/).
+    Run from the root of the plugin source repository after
     editing a template; commit the regenerated files. The drift test
     (tests/test_plugin_render.py) fails until committed renders match the
     templates.

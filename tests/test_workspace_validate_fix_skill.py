@@ -14,7 +14,7 @@ machine-checkable surfaces:
    surfaces; the assertions are the GOAL's criterion — after one pass only the
    deliberately ambiguous defect remains, presented with its candidates.
 
-`commands/workspace-validate-fix.md` is the authority for the rules;
+`skills/workspace-validate-fix/SKILL.md` is the authority for the rules;
 `skill_pass` is a mechanical transcription of them, present to prove they
 converge and that they never delete a reference or author a target.
 """
@@ -33,7 +33,7 @@ from test_plugin_manifest import REPO_ROOT
 from ve import cli
 from workspace_validation import FixClass, ValidationReport
 
-SKILL = REPO_ROOT / "commands" / "workspace-validate-fix.md"
+SKILL = REPO_ROOT / "skills" / "workspace-validate-fix" / "SKILL.md"
 
 # Report sections that need a stated disposition. Defects get fixed or
 # escalated; unverified references and unregistered trees get reported without

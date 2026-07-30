@@ -28,6 +28,9 @@ PLUGIN_COLLECTION = "plugin"
 # dualplugin_cursor_scaffold adds "cursor".
 FLAVORS = ("claude",)
 
+# Template subdirectory whose renders take the agentskills.io per-skill layout.
+SKILLS_KIND = "skills"
+
 # Marker carried by every rendered file, pointing back at its template. The
 # marker text the templates emit (via the generated_marker idiom macro) must
 # start with this prefix so the drift test can require it. Deliberately
@@ -49,9 +52,9 @@ def plugin_collection_dir() -> pathlib.Path:
 def list_plugin_templates() -> list[str]:
     """List collection-relative template names, partials excluded.
 
-    Returns names like "commands/ve-status.md.jinja2", sorted. Subdirectories
-    map output kinds (commands/ today; agents/ arrives with
-    dualplugin_content_migration).
+    Returns names like "skills/ve-status.md.jinja2", sorted. The first path
+    component is the output kind: skills/ renders into the per-skill
+    agentskills.io layout, agents/ renders in place.
     """
     root = plugin_collection_dir()
     if not root.exists():
@@ -68,12 +71,20 @@ def list_plugin_templates() -> list[str]:
 def output_path(template_name: str, repo_root: pathlib.Path) -> pathlib.Path:
     """Map a collection-relative template name to its committed render path.
 
-    "commands/ve-status.md.jinja2" -> <repo_root>/commands/ve-status.md
+    Skills land in the agentskills.io layout — one directory per skill, content
+    in SKILL.md — which is the portable shape a non-Claude harness can consume:
+
+    "skills/ve-status.md.jinja2"       -> <repo_root>/skills/ve-status/SKILL.md
+    "agents/chunk-executor.md.jinja2"  -> <repo_root>/agents/chunk-executor.md
     """
     rel = template_name
     if rel.endswith(".jinja2"):
         rel = rel[: -len(".jinja2")]
-    return repo_root.joinpath(*pathlib.PurePosixPath(rel).parts)
+    parts = pathlib.PurePosixPath(rel).parts
+    if parts[0] == SKILLS_KIND:
+        name = pathlib.PurePosixPath(parts[-1]).stem
+        return repo_root / SKILLS_KIND / name / "SKILL.md"
+    return repo_root.joinpath(*parts)
 
 
 def render_plugin_template(template_name: str, flavor: str = "claude") -> str:
@@ -97,7 +108,7 @@ def render_plugin_template(template_name: str, flavor: str = "claude") -> str:
 def is_plugin_source_repo(repo_root: pathlib.Path) -> bool:
     """True if repo_root is the plugin source repository (render target guard).
 
-    `ve plugin render` must never scaffold a commands/ tree in a consuming
+    `ve plugin render` must never scaffold a skills/ tree in a consuming
     project; only the repo carrying .claude-plugin/plugin.json is a valid
     render target.
     """

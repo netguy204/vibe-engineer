@@ -8,7 +8,7 @@ dependency for every user. These tests fail on that class of mistake before a
 release can carry it, without paying for a wheel build.
 
 The companion guard is on the other side: the wheel deliberately force-includes
-the repo-root commands/ directory as orchestrator/skills package data, which
+the repo-root skills/ directory as orchestrator/skills package data, which
 src/orchestrator/agent.py resolves at runtime. That is legitimate non-src
 content and must not be dropped while tightening the src side.
 """
@@ -72,9 +72,9 @@ class TestWheelTargets:
         assert wheel["only-include"] == ["src"]
         assert wheel["sources"] == ["src"]
 
-    def test_commands_are_force_included_as_orchestrator_package_data(self):
+    def test_skills_are_force_included_as_orchestrator_package_data(self):
         """src/orchestrator/agent.py loads skills from installed package data at
-        orchestrator/skills/<name>.md; without this force-include the packaged
+        orchestrator/skills/<name>/SKILL.md; without this force-include the packaged
         lookup breaks for every installed copy."""
         wheel = _pyproject()["tool"]["hatch"]["build"]["targets"]["wheel"]
-        assert wheel["force-include"]["commands"] == "orchestrator/skills"
+        assert wheel["force-include"]["skills"] == "orchestrator/skills"

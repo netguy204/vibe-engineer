@@ -11,7 +11,7 @@ committed renders in lockstep with the templates:
    marker pointing at its own template, and the marker wording must never
    collide with the legacy "AUTO-GENERATED" header that
    src/project.py#_is_ve_generated_file keys on for legacy cleanup.
-3. The `ve plugin render` CLI: renders the Claude flavor into commands/ and
+3. The `ve plugin render` CLI: renders the Claude flavor into skills/ and
    refuses to run outside the plugin source repo.
 
 # Chunk: docs/chunks/dualplugin_template_source - Build-time plugin template collection
@@ -28,8 +28,8 @@ from test_plugin_manifest import REPO_ROOT
 from ve import cli
 
 PILOT_TEMPLATES = [
-    "commands/chunk-create.md.jinja2",
-    "commands/ve-status.md.jinja2",
+    "skills/chunk-create.md.jinja2",
+    "skills/ve-status.md.jinja2",
 ]
 
 
@@ -47,7 +47,7 @@ class TestCollectionLayout:
 
     def test_collection_covers_every_committed_render(self):
         """1:1 mapping between collection templates and committed renders,
-        in both directions. A committed commands/*.md or agents/*.md without
+        in both directions. A committed skills/*/SKILL.md or agents/*.md without
         a template would silently escape drift coverage (hand edits to it
         would survive); a template without a committed render is caught by
         the drift test itself, but is asserted here too for symmetry.
@@ -56,9 +56,11 @@ class TestCollectionLayout:
         """
         templates = set(_template_names())
         committed = {
-            f"{kind}/{path.name}.jinja2"
-            for kind in ("commands", "agents")
-            for path in (REPO_ROOT / kind).glob("*.md")
+            f"skills/{path.parent.name}.md.jinja2"
+            for path in (REPO_ROOT / "skills").glob("*/SKILL.md")
+        } | {
+            f"agents/{path.name}.jinja2"
+            for path in (REPO_ROOT / "agents").glob("*.md")
         }
         missing_templates = committed - templates
         assert not missing_templates, (
@@ -72,19 +74,17 @@ class TestCollectionLayout:
         )
 
     def test_collection_spans_full_plugin_surface(self):
-        """dualplugin_content_migration success criterion: every command and
-        both agents render from templates.
+        """dualplugin_content_migration success criterion: every skill and both
+        agents render from templates.
 
-        The count is a snapshot of the current command surface, not a cap —
-        raise it when a command is added, so long as the addition arrives as a
-        template. `workspace-validate-fix` (39th) came from the
-        monorepo_federation work and was migrated into the collection on merge.
+        The count is a snapshot of the current skill surface, not a cap — raise
+        it when a skill is added, so long as the addition arrives as a template.
         """
         names = _template_names()
-        commands = [n for n in names if n.startswith("commands/")]
+        skills = [n for n in names if n.startswith("skills/")]
         agents = [n for n in names if n.startswith("agents/")]
-        assert len(commands) == 39, (
-            f"expected all 39 commands in the collection, found {len(commands)}"
+        assert len(skills) == 39, (
+            f"expected all 39 skills in the collection, found {len(skills)}"
         )
         assert "agents/chunk-executor.md.jinja2" in agents
         assert "agents/intent-auditor.md.jinja2" in agents
@@ -167,7 +167,7 @@ class TestRenderCli:
             assert result.exit_code != 0
             assert ".claude-plugin/plugin.json" in result.output
 
-    def test_renders_collection_into_commands(self):
+    def test_renders_collection_into_skills(self):
         runner = CliRunner()
         with runner.isolated_filesystem() as tmp:
             self._scratch_plugin_repo(pathlib.Path(tmp))
