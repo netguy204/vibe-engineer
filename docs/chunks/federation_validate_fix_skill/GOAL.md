@@ -58,19 +58,14 @@ errors, or reports the irreducible escalation set. Progress is committed in
 reviewable batches grouped by fix class (an operator can audit "all
 qualifications" separately from "all new pointers").
 
-The skill follows the existing `/validate-fix` pattern — `commands/validate-fix.md`
-supplies the loop structure, the classification table, the iteration cap, and
-the runtime-context preamble; this extends that pattern to the workspace
-validator rather than inventing a new one. The plugin's `commands/` directory is
-the only channel that reaches operators, and the command arrives there as a
-committed render generated from
-`src/templates/plugin/commands/workspace-validate-fix.md.jinja2` by
-`ve plugin render`. `plugin_init_slimdown` removed the older
-`src/templates/commands/` and `ve init` rendering path, and
-`dualplugin_content_migration` then made a build-time template collection the
-single source of truth for command content — superseding this chunk's original
-"static markdown, not a rendered template" framing. Edit the template; direct
-edits to the render are overwritten.
+The skill follows the existing `/validate-fix` pattern — that skill supplies the
+loop structure, the classification table, the iteration cap, and the
+runtime-context preamble; this extends the pattern to the workspace validator
+rather than inventing a new one. The plugin is the only channel that reaches
+operators, and the skill's content is authored once as a template:
+`src/templates/plugin/commands/workspace-validate-fix.md.jinja2` is the source of
+truth, and the committed copy the plugin ships is rendered from it by
+`ve plugin render`. Direct edits to the render are overwritten.
 
 ### Case-study grounding (Cloud Capital monorepo, diagnosed 2026-07-29)
 
@@ -88,9 +83,8 @@ single-tree. See `docs/narratives/monorepo_federation/OVERVIEW.md`.
 
 ## Success Criteria
 
-- The skill ships to operators through the plugin's `commands/` directory
-  (`/workspace-validate-fix`) as a render of its source template in
-  `src/templates/plugin/`, the channel every workflow command now uses; it
+- The skill ships to operators through the plugin (`/workspace-validate-fix`) as
+  a render of its source template in `src/templates/plugin/`; it
   instructs the agent to consume `--format json`, map fix classes to the
   actions above, apply, re-run, and loop.
 - The mechanical-fix actions are each demonstrated on a case-study-shaped
