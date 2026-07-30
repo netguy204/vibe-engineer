@@ -1,179 +1,246 @@
-
-
-<!--
-This document captures HOW you'll achieve the chunk's GOAL.
-It should be specific enough that each step is a reasonable unit of work
-to hand to an agent.
--->
-
 # Implementation Plan
 
 ## Approach
 
-<!--
-How will you build this? Describe the strategy at a high level.
-What patterns or techniques will you use?
-What existing code will you build on?
+Mirror the existing `.ve-task.yaml` pattern exactly: a pydantic model in
+`src/models/` (where `TaskConfig` already lives, per DEC-008), a CLI-free
+loader module in `src/` (as `src/task/config.py` is to `TaskConfig`), and a
+thin click command group in `src/cli/`. This keeps the criterion "loader is
+importable by other subsystems without CLI coupling" structurally true rather
+than merely intended: `src/workspace.py` imports nothing from `cli/`.
 
-Reference docs/trunk/DECISIONS.md entries where relevant.
-If this approach represents a new significant decision, ask the user
-if we should add it to DECISIONS.md and reference it here.
+Three files of new code plus one two-line registration edit:
 
-Always include tests in your implementation plan and adhere to
-docs/trunk/TESTING_PHILOSOPHY.md in your planning.
+- `src/models/workspace.py` — `WorkspaceMember`, `WorkspaceManifest`, member
+  name grammar. Shape validation only (grammar, path shape, duplicates) —
+  nothing that needs the filesystem.
+- `src/workspace.py` — manifest discovery (walk up for `.ve-workspace.yaml`),
+  load/save, filesystem validation (paths exist and hold a VE tree), scan
+  discovery, and member resolution (including longest-prefix lookup for nested
+  members).
+- `src/cli/workspace.py` — `ve workspace list | add | init`.
+- `src/cli/__init__.py` — one import line, one `add_command` line.
 
-Remember to update code_paths in the chunk's GOAL.md (e.g., docs/chunks/federation_workspace_manifest/GOAL.md)
-with references to the files that you expect to touch.
--->
+### On-disk format
+
+The manifest is a name→path mapping, as the GOAL specifies:
+
+```yaml
+members:
+  pybusiness: packages/libs/pybusiness
+  visualization: apps/viz
+```
+
+Paths are workspace-root-relative POSIX strings, consistent with DEC-004's
+spirit (references are root-relative, not file-relative) — here the root is the
+workspace root, which is exactly the anchor `<member>::` qualifiers need.
+
+A mapping is the right shape for a lookup table, but `yaml.safe_load` silently
+keeps the last of two duplicate keys, which would defeat the "duplicate name
+rejection" criterion at the only layer where duplicates can actually appear (a
+hand-edited file). So loading uses a `SafeLoader` subclass that raises on
+duplicate keys within a mapping. The model additionally rejects duplicates for
+programmatic construction, so `ve workspace add` cannot mint one either.
+
+### Two predicates, deliberately different strictness
+
+- **Membership validation** accepts a directory as a VE tree if `docs/` exists
+  and contains `trunk/` or any artifact directory (`chunks/`, `narratives/`,
+  `investigations/`, `subsystems/`). Permissive on purpose: the narrative's
+  later `federation_template_pointers` chunk mints pointer-only trees that have
+  `docs/chunks/<name>/external.yaml` and no `docs/trunk/`, and those must be
+  registrable.
+- **Scan discovery** only proposes directories containing `docs/trunk/`. Strict
+  on purpose: `docs/trunk/` is the strongest available signal of an
+  *intentional* tree, and a bootstrap scan that proposes every pointer stub
+  would bury the operator. Scan is an aid, not the authority (see the GOAL's
+  rejected ideas).
+
+Scan does **not** prune below a discovered tree — nesting is the point, and the
+case-study monorepo has trees inside trees.
+
+### Nesting
+
+Nested member paths are legal. The disambiguating rule is **longest prefix
+wins**: `find_member_for_path` returns the innermost member containing a given
+path. This is the primitive the later validator and peer-ref chunks need to
+answer "which tree governs this file?", so it belongs here rather than being
+re-derived per consumer. Round-tripping nested members through save/load is a
+test, per the success criteria.
+
+### Testing
+
+TDD per docs/trunk/TESTING_PHILOSOPHY.md: tests first in
+`tests/test_workspace_manifest.py`, covering the four criterion areas
+(load/validate, scan with an excluded template tree, duplicate rejection,
+bad-name rejection) as unit tests against the loader plus `CliRunner`
+integration tests for the three commands. Model construction that only checks
+storage is not tested (trivial); validation *rejections*, filesystem side
+effects, scan output, and exit codes are.
+
+A helper that builds a multi-tree workspace on disk is needed by most tests in
+the file; it goes in `tests/conftest.py` only if a second file needs it —
+for now it stays local to the test module, since `make_ve_initialized_git_repo`
+is git-flavored and heavier than these tests need.
+
+Update `code_paths` in docs/chunks/federation_workspace_manifest/GOAL.md with
+the files above.
 
 ## Subsystem Considerations
 
-<!--
-Before designing your implementation, check docs/subsystems/ for relevant
-cross-cutting patterns.
-
-QUESTIONS TO CONSIDER:
-- Does this chunk touch any existing subsystem's scope?
-- Will this chunk implement part of a subsystem (contribute code) or use it
-  (depend on it)?
-- Did you discover code during exploration that should be part of a subsystem
-  but doesn't follow its patterns?
-
-If no subsystems are relevant, delete this section.
-
-WHEN SUBSYSTEMS ARE RELEVANT:
-List each relevant subsystem with its status and your relationship:
-- **docs/subsystems/validation** (DOCUMENTED): This chunk USES the validation
-  subsystem to check input
-- **docs/subsystems/error_handling** (REFACTORING): This chunk IMPLEMENTS a
-  new error type following the subsystem's patterns
-
-HOW SUBSYSTEM STATUS AFFECTS YOUR WORK:
-
-DOCUMENTED subsystems: The subsystem's patterns are captured but deviations are not
-being actively fixed. If you discover code that deviates from the subsystem's
-patterns, add it to the subsystem's Known Deviations section. Do NOT prioritize
-fixing those deviations—your chunk has its own goals.
-
-REFACTORING subsystems: The subsystem is being actively consolidated. If your chunk
-work touches code that deviates from the subsystem's patterns, attempt to bring it
-into compliance as part of your work. This is "opportunistic improvement"—improve
-what you touch, but don't expand scope to fix unrelated deviations.
-
-WHEN YOU DISCOVER DEVIATING CODE:
-- Add it to the subsystem's Known Deviations section
-- Note whether you will address it (REFACTORING status + relevant to your work)
-  or leave it for future work (DOCUMENTED status or outside your chunk's scope)
-
-Example:
-- **Discovered deviation**: src/legacy/parser.py#validate_input does its own
-  validation instead of using the validation subsystem
-  - Added to docs/subsystems/validation Known Deviations
-  - Action: Will not address (subsystem is DOCUMENTED; deviation outside chunk scope)
--->
+- **docs/subsystems/cross_repo_operations** (DOCUMENTED): adjacent but not
+  touched. That subsystem governs `org/repo` references resolved through a repo
+  cache across *repositories*; a workspace member is a path within one working
+  copy, resolved directly. No code is shared, so this chunk neither implements
+  nor uses it. Once `federation_peer_refs` adds `tree:` targets to
+  external.yaml — which *is* cross_repo_operations territory — the two meet;
+  that chunk, not this one, owns recording the relationship.
+- No other subsystem's scope is touched. No deviations discovered.
 
 ## Sequence
 
-<!--
-Ordered steps to implement this chunk. Each step should be:
-- Small enough to reason about in isolation
-- Large enough to be meaningful
-- Clear about its inputs and outputs
+### Step 1: Failing tests for the model and loader
 
-This sequence is your contract with yourself (and with agents).
-Work through it in order. Don't skip ahead.
+Create `tests/test_workspace_manifest.py` with a local helper that materializes
+a workspace on disk (root manifest plus N member trees), then tests that fail
+against the not-yet-existing modules:
 
-Example:
+- valid manifest loads and yields members in declared order with resolvable
+  absolute paths
+- bad member names are rejected: `Pybusiness` (uppercase), `pkg/lib` (slash),
+  `a::b` (double colon), `""` (empty)
+- duplicate member names in the YAML file are rejected with the name in the
+  message
+- a member path that does not exist, and one that exists but holds no VE tree,
+  are reported by filesystem validation
+- a pointer-only tree (`docs/chunks/x/external.yaml`, no `docs/trunk/`)
+  validates as a member
+- nested members round-trip through save/load, and `find_member_for_path`
+  returns the innermost one
+- absolute and `..`-escaping member paths are rejected
+- `find_workspace_root` finds the manifest from a nested subdirectory and
+  returns None when there is none
+- scan finds trees with `docs/trunk/` (including nested ones), skips `.git` and
+  `.venv`, and honors an `--exclude` glob that drops a cookiecutter template
+  tree
+- scan name suggestions collide-and-disambiguate when two trees share a
+  directory name
 
-### Step 1: Define the SegmentHeader struct
+### Step 2: `src/models/workspace.py`
 
-Create the struct that represents a segment's header with fields for:
-- magic number (4 bytes)
-- version (2 bytes)
-- segment_id (8 bytes)
-- message_count (4 bytes)
-- checksum (4 bytes)
+`MEMBER_NAME_PATTERN = re.compile(r"^[a-z0-9_-]+$")` and a
+`_validate_member_name` helper whose message names the grammar and calls out
+`/` and `::` explicitly (those are what make a member name ambiguous against an
+`org/repo` qualifier in the shared `::` syntax).
 
-Location: src/segment/format.rs
+`WorkspaceMember(name, path)`: validates the name grammar; normalizes the path
+to a relative POSIX string, rejecting absolute paths and any path that escapes
+the workspace root via `..`.
 
-### Step 2: Implement header serialization
+`WorkspaceManifest(members: list[WorkspaceMember])`: a `mode="before"`
+validator accepts the on-disk mapping form (`{name: path}`) and converts it to
+the list form, preserving declaration order; a field validator rejects
+duplicate names. Helpers: `get(name)`, `names()`, `to_mapping()`.
 
-Add `to_bytes()` and `from_bytes()` methods to SegmentHeader.
-Use little-endian encoding per SPEC.md Section 3.1.
+Re-export both plus `MEMBER_NAME_PATTERN` from `src/models/__init__.py`.
 
-### Step 3: ...
+### Step 3: `src/workspace.py`
 
----
+- `WORKSPACE_MANIFEST_NAME = ".ve-workspace.yaml"`
+- `WorkspaceError`, `WorkspaceNotFoundError`, `WorkspaceManifestError`
+- `_UniqueKeyLoader(yaml.SafeLoader)` raising on duplicate mapping keys
+- `find_workspace_root(start)` — walk up from `start` (inclusive) for the
+  manifest; return None if none found
+- `Workspace` dataclass (`root`, `manifest`) with `resolve(name) -> Path`,
+  `member_paths()`, `find_member_for_path(path)` (longest-prefix)
+- `load_workspace(start)` — discover root, parse, validate shape; raises
+  `WorkspaceNotFoundError` with a message naming the file and suggesting
+  `ve workspace init`
+- `save_workspace(workspace)` / `write_manifest(root, manifest)`
+- `is_ve_tree(path)` (permissive) and `has_trunk(path)` (scan predicate)
+- `validate_member_paths(workspace) -> list[str]` — one message per defect
+- `scan_for_trees(root, exclude=())` — walk skipping `.git`, `.venv`,
+  `node_modules`, `__pycache__`, `.claude/worktrees`; return root-relative
+  sorted paths of directories with `docs/trunk/`, honoring `fnmatch` excludes
+- `suggest_member_names(rel_paths)` — directory name lowercased with
+  out-of-grammar characters replaced by `_`, disambiguated against collisions
+  by prefixing the parent component, then a numeric suffix
 
-**BACKREFERENCE COMMENTS**
+Module-level and function-level `# Chunk:
+docs/chunks/federation_workspace_manifest` backreferences throughout.
 
-When implementing code, add backreference comments to help future agents trace
-code back to its governing documentation.
+### Step 4: `src/cli/workspace.py`
 
-**Valid backreference types:**
-- `# Subsystem: docs/subsystems/<name>` - For architectural patterns
-- `# Chunk: docs/chunks/<name>` - For implementation work
+`@click.group() workspace`, all commands taking
+`--workspace-dir` (default `.`) — deliberately *not* `--project-dir`, which is
+being reworked concurrently by `federation_tree_discovery` and means something
+different (a single tree, not the workspace).
 
-Place comments at the appropriate level:
-- **Module-level**: If this code implements the subsystem/chunk's core functionality
-- **Class-level**: If this class is part of the pattern
-- **Method-level**: If this method implements a specific behavior
+- `list` — prints `name  path` aligned, marking any member whose path is not a
+  VE tree with ` [missing]`; exits 1 with a clear message when no manifest
+  exists anywhere above the directory
+- `add NAME PATH` — validates grammar, rejects duplicates, requires the path to
+  exist and hold a VE tree, appends, writes, confirms
+- `init [--scan] [--exclude GLOB]... [-y]` — refuses to overwrite an existing
+  manifest; without `--scan` writes an empty manifest; with `--scan` prints
+  numbered candidates with suggested names, tells the operator how to drop junk
+  with `--exclude`, then asks for one confirmation before writing (`-y` skips
+  the prompt)
 
-Format (place immediately before the symbol):
-```
-# Subsystem: docs/subsystems/workflow_artifacts - Workflow artifact manager pattern
-# Chunk: docs/chunks/auth_refactor - Authentication system redesign
-```
+### Step 5: CLI tests
 
-Do NOT add narrative backreferences. Narratives decompose into chunks; reference
-the implementing chunk instead.
+Extend the test module with `CliRunner` tests: `list` on a good workspace and
+its nonzero exit with no manifest; `add` happy path plus duplicate, bad-name,
+missing-path, and not-a-tree rejections (each nonzero, manifest unchanged);
+`init --scan` with a declined prompt (nothing written), with `-y`, and with
+`--exclude` dropping the cookiecutter template tree.
 
-**Task context note**: In multi-project tasks, always use local paths (e.g.,
-`docs/chunks/chunk_name`) for chunk backreferences, not paths to the external
-artifact repo. Each project has `external.yaml` pointers that resolve to the
-actual chunk content.
--->
+### Step 6: Register and verify
 
-## Dependencies
-
-<!--
-What must exist before this chunk can be implemented?
-- Other chunks that must be complete
-- External libraries to add
-- Infrastructure or configuration
-
-If there are no dependencies, delete this section.
--->
+Add the import and `add_command` lines to `src/cli/__init__.py`, run
+`uv run pytest tests/`, and confirm `uv run ve workspace --help` lists the
+three commands.
 
 ## Risks and Open Questions
 
-<!--
-What might go wrong? What are you unsure about?
-Being explicit about uncertainty helps you (and agents) know where to
-be careful and when to stop and ask questions.
-
-Example:
-- fsync behavior may differ across filesystems; need to verify on ext4 and APFS
-- Unclear whether concurrent reads during write are safe; may need mutex
-- Performance target is aggressive; may need to iterate on buffer sizes
--->
+- **Predicate divergence.** `federation_tree_discovery` (same wave) defines
+  nearest-enclosing-tree discovery in `src/project.py` around `docs/trunk/`.
+  This chunk deliberately keeps a more permissive membership predicate, so two
+  notions of "is a VE tree" will briefly coexist. Consolidating them belongs to
+  `federation_global_validator`, which is the first consumer of both; flag it as
+  a handoff rather than reaching into `src/project.py` here.
+- **Member name grammar allows leading `-`.** The GOAL states the grammar as
+  `[a-z0-9_-]+`, which admits `-foo`. Implemented as specified; a leading-dash
+  member name would be awkward as a future CLI argument. Noted, not
+  pre-emptively narrowed.
+- **Scan on a large monorepo.** A full walk of a 29-tree repository must not
+  descend into `.git`, `node_modules`, or `.venv`, or the scan becomes slow
+  enough to look broken. Pruning is part of Step 3, not an optimization.
 
 ## Deviations
 
-<!--
-POPULATE DURING IMPLEMENTATION, not at planning time.
+- **Step 3 gained `add_member` and `relativize_to_workspace`.** The plan put
+  duplicate/existence/tree checks in the CLI. They moved into `src/workspace.py`
+  so the same guarantees hold for any future non-CLI caller (the validator and
+  the fix-loop skill both need to register a member), leaving
+  `src/cli/workspace.py` as pure argument handling and output.
 
-When reality diverges from the plan, document it here:
-- What changed?
-- Why?
-- What was the impact?
+- **README.md added to the files touched.** Not listed at planning time; DEC-003
+  requires operator-facing commands to be documented in the README, and
+  `ve workspace` is operator-facing. Added a "Monorepos With Multiple Trees"
+  section beside the existing cross-repository section.
 
-Minor deviations (renamed a function, used a different helper) don't need
-documentation. Significant deviations (changed the approach, skipped a step,
-added steps) do.
+- **Scan pruning changed from an allowlist of junk names to "skip all hidden
+  directories".** Discovered during review by scanning the vibe-engineer repo
+  itself: the original skip list proposed nine phantom trees, because VE keeps
+  worktree checkouts under `.claude/worktrees/` and `.ve/chunks/*/worktree`,
+  each a full copy of the repo's own tree. The same tree offered under five
+  paths is exactly the confusion this chunk exists to remove, so the rule became
+  categorical (a VE tree inside a hidden directory is never an intentional
+  member) plus a short list of non-hidden build/vendor directories. Covered by
+  `test_scan_skips_worktree_checkouts_of_the_same_repo`.
 
-Example:
-- Step 4: Originally planned to use std::fs::rename for atomic swap.
-  Testing revealed this isn't atomic across filesystems. Changed to
-  write-fsync-rename-fsync sequence per platform best practices.
--->
+- **`ve workspace list` distinguishes two defect markers** (`path does not
+  exist` vs `no VE tree at this path`) rather than the single marker planned.
+  The two have different fixes — re-point the member versus initialize the tree
+  — so collapsing them would have made the output less actionable.

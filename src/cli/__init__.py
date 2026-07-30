@@ -38,6 +38,8 @@ from cli.reviewer import reviewer
 from cli.board import board
 from cli.entity import entity
 from cli.wiki import wiki
+# Chunk: docs/chunks/federation_workspace_manifest - `ve workspace` manifest commands
+from cli.workspace import workspace
 # Chunk: docs/chunks/entity_config_toml - Operator-level `~/.ve-config.toml` and `ve config show`
 from cli.config import config
 
@@ -60,4 +62,5 @@ cli.add_command(reviewer)
 cli.add_command(board)
 cli.add_command(entity)
 cli.add_command(wiki)
+cli.add_command(workspace)
 cli.add_command(config)

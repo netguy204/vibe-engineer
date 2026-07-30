@@ -240,6 +240,33 @@ This creates a `.ve-task.yaml` configuration file that enables task-aware chunk 
 - All directories must be git repositories
 - All directories must be Vibe Engineer initialized (`ve init` run, so `docs/chunks/` exists)
 
+### Monorepos With Multiple Trees
+
+When one repository contains several VE project trees (a monorepo of packages, each with its own `docs/`), register them in a **workspace manifest** at the repository root. The manifest names each tree, which is what makes a tree-qualified reference (`pybusiness::docs/subsystems/commitment_baseline`) resolvable and gives workspace-wide commands something to iterate over.
+
+```bash
+# Bootstrap a manifest by discovering trees, skipping scaffolding templates
+ve workspace init --scan --exclude '*_template'
+
+# Register a tree by hand
+ve workspace add pybusiness packages/libs/pybusiness
+
+# See what is registered
+ve workspace list
+```
+
+This creates a `.ve-workspace.yaml` mapping short names to tree paths:
+
+```yaml
+members:
+  pybusiness: packages/libs/pybusiness
+  visualization: apps/viz
+```
+
+Nesting is allowed and meaningful — a library tree inside a platform tree stays separately addressable, and the innermost tree containing a file is the one that governs it.
+
+`--scan` proposes only directories containing `docs/trunk/` and always asks before writing (`-y` skips the prompt): a scan cannot tell an intentional tree from an accidental one, such as a scaffolding template that ships its own `docs/` tree, so excluding junk is part of the bootstrap.
+
 ### Orchestrator
 
 The [orchestrator](https://veng.dev/docs/orchestrator/) (`ve orch`) runs FUTURE chunks in parallel across isolated git worktrees. It handles planning, implementation, and completion autonomously. You create the work; the orchestrator schedules and executes it.
