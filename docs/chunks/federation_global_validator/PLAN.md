@@ -269,3 +269,54 @@ and is recorded as a follow-up rather than a dependency.
   every reference resolving, which reads as a false alarm.
 
 ## Deviations
+
+- **`repo:` pointers and `org/repo::` refs are reported as unverified, not as
+  `missing-target`.** The GOAL's class 4 names "an external.yaml pointer (tree
+  or repo flavor) whose target artifact does not exist", but nothing about a
+  cross-repository target is checkable offline: resolution needs network access
+  or a warm repo cache. Checking opportunistically (only when the cache happens
+  to hold the repo) would make the CI verdict depend on cache state, which
+  defeats the point of a gate. They are therefore collected in
+  `ValidationReport.unverified` — counted, listed, never fatal — and both the
+  module docs and the command output say so, so a clean run is not misread as
+  total coverage. Verifying them is a separate capability (a `--fetch` mode, or
+  running the validator inside a task directory where the repos are already
+  checked out).
+
+- **Manifest errors gate, and unregistered governing trees do not.** Neither is
+  one of the GOAL's six reference classes. `validate_member_paths` failures are
+  reported in their own section and *do* set a nonzero exit, because a member
+  whose tree is missing makes every qualified reference to it unresolvable — the
+  report then shows cause and effect together. A governing tree that no member
+  registers is a note only: references inside it still resolve, so failing on it
+  would report a defect where none exists. Its practical consequence — nothing
+  can be qualified against it yet — is carried instead on the affected
+  `CandidateTarget`, whose `member` is `None`.
+
+- **Step 2's lazy indexing of non-member trees became an up-front scan.** As
+  planned, non-member governing trees were to be indexed on demand as files were
+  walked. That silently under-reports: a tree containing the *only* possible
+  target for a misrouted reference but holding no source files of its own would
+  never be discovered, and the defect would be misclassified as
+  `unresolvable-bare` — hiding a real fix behind a "may never have existed"
+  message. `_Validator.__init__` now seeds the indexes with `scan_for_trees`
+  (the same bootstrap scan `ve workspace init --scan` uses) before any file is
+  read.
+
+- **Candidate search gained multi-tree exclusion.** Found while testing: for an
+  `external.yaml` pointer, the *pointing* tree trivially contains a directory
+  named after the artifact — the pointer itself — so it was reported as a
+  candidate for its own stale pointer, telling the fix loop to retarget a
+  pointer at itself. `candidates_for` now takes a tuple of trees to exclude, and
+  pointer checks exclude both the tree named and the tree pointing.
+
+- **Long messages are wrapped with `textwrap.fill`, not `click.wrap_text`.**
+  Click's wrapper breaks long words, which split absolute paths and qualifiers
+  mid-token and made them un-copy-pasteable — the opposite of the point of
+  printing them.
+
+- **No documentation was added to `docs/trunk/EXTERNAL.md`.** The rendered file
+  and its Jinja2 source have diverged in length, so hand-mirroring an edit
+  (running `ve init` was out of scope for this wave) risked introducing drift.
+  Documenting the compliance loop is `federation_validate_fix_skill`'s work and
+  is better done there in one pass.

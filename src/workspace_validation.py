@@ -437,33 +437,58 @@ class _Validator:
         return self.extra_indexes[resolved]
 
     def candidates_for(
-        self, reference: ParsedBackreference, exclude: Path | None = None
+        self,
+        artifact_type: ArtifactType,
+        artifact_id: str,
+        exclude: tuple[Path, ...] = (),
     ) -> tuple[CandidateTarget, ...]:
-        """Trees that do hold the artifact this reference names.
+        """Trees that do hold the artifact a failing reference names.
 
-        Members come first in manifest order, then any non-member governing
-        trees discovered during the walk, sorted by path — so a report is stable
-        across runs and diffable between them.
+        Keyed on (type, id) rather than on a parsed comment so pointers get
+        candidates too: knowing that a stale `tree:` pointer's target moved to
+        another member is the difference between a mechanical retarget and an
+        escalation.
+
+        `exclude` takes several trees because more than one can be a *trivial*
+        answer. For a pointer, both the tree it names and the tree it lives in
+        must go: the pointing tree holds a directory with the artifact's name —
+        the pointer itself — and offering that back as a candidate would tell
+        the fix loop to retarget a pointer at itself.
+
+        Members come first in manifest order, then trees no member registers,
+        sorted by path — so a report is stable across runs and diffable between
+        them.
         """
-        excluded = exclude.resolve() if exclude is not None else None
+        excluded = {path.resolve() for path in exclude}
         found: list[CandidateTarget] = []
 
         for name, index in self.member_indexes.items():
-            if excluded is not None and index.root.resolve() == excluded:
+            if index.root.resolve() in excluded:
                 continue
-            if index.has(reference.artifact_type, reference.artifact_id):
+            if index.has(artifact_type, artifact_id):
                 found.append(CandidateTarget(member=name, path=self.relative(index.root)))
 
         for tree_root in sorted(self.extra_indexes):
-            if excluded is not None and tree_root == excluded:
+            if tree_root in excluded or tree_root in self.member_by_root:
                 continue
-            if tree_root in self.member_by_root:
-                continue
-            index = self.extra_indexes[tree_root]
-            if index.has(reference.artifact_type, reference.artifact_id):
+            if self.extra_indexes[tree_root].has(artifact_type, artifact_id):
                 found.append(CandidateTarget(member=None, path=self.relative(tree_root)))
 
         return tuple(found)
+
+    def candidates_for_reference(
+        self, reference: ParsedBackreference, exclude: Path | None = None
+    ) -> tuple[CandidateTarget, ...]:
+        """Candidate targets for one parsed backreference.
+
+        A backreference has at most one trivial answer — the tree it already
+        failed in — so this takes a single optional path.
+        """
+        return self.candidates_for(
+            reference.artifact_type,
+            reference.artifact_id,
+            exclude=() if exclude is None else (exclude,),
+        )
 
     def report_defect(self, **kwargs) -> None:
         """Record one defect."""
@@ -512,7 +537,7 @@ class _Validator:
                     f"{reference.malformed_reason}. Normalize it to "
                     f"'<member>::{reference.artifact_path}'"
                 ),
-                candidates=self.candidates_for(reference),
+                candidates=self.candidates_for_reference(reference),
                 member=owner,
             )
             return
@@ -555,7 +580,7 @@ class _Validator:
                     f"{known}. Register the tree with `ve workspace add {name} "
                     f"<path>`, or correct the qualifier"
                 ),
-                candidates=self.candidates_for(reference),
+                candidates=self.candidates_for_reference(reference),
                 member=owner,
             )
             return
@@ -572,7 +597,7 @@ class _Validator:
                     f"'{self.relative(self.member_roots[name])}' but no VE tree "
                     f"exists there, so the qualifier resolves to nothing"
                 ),
-                candidates=self.candidates_for(reference),
+                candidates=self.candidates_for_reference(reference),
                 member=owner,
             )
             return
@@ -588,7 +613,7 @@ class _Validator:
                     f"'{reference.artifact_id}' (looked for "
                     f"{self.relative(index.root)}/{reference.artifact_path})"
                 ),
-                candidates=self.candidates_for(reference, exclude=index.root),
+                candidates=self.candidates_for_reference(reference, exclude=index.root),
                 member=owner,
             )
 
@@ -616,7 +641,7 @@ class _Validator:
                 "no tree"
             )
 
-        candidates = self.candidates_for(reference, exclude=governing)
+        candidates = self.candidates_for_reference(reference, exclude=governing)
         if candidates:
             options = ", ".join(
                 candidate.qualifier + reference.artifact_path
@@ -692,6 +717,7 @@ class _Validator:
         pointer_file = artifact_dir / "external.yaml"
         rel_path = self.relative(pointer_file)
         content = pointer_file.read_text() if pointer_file.is_file() else ""
+        pointing_root = self.member_indexes[member].root
 
         try:
             ref = load_external_ref(artifact_dir)
@@ -735,6 +761,9 @@ class _Validator:
                     f"member. Registered members: {known}. Register it with "
                     f"`ve workspace add {ref.tree} <path>`"
                 ),
+                candidates=self.candidates_for(
+                    artifact_type, ref.artifact_id, exclude=(pointing_root,)
+                ),
                 member=member,
             )
             return
@@ -748,7 +777,13 @@ class _Validator:
                 line=_find_line(content, "artifact_id:"),
                 reference=reference,
                 message=str(exc),
-                candidates=(),
+                # A stale pointer whose target simply moved is a mechanical
+                # retarget; without candidates the skill could only escalate.
+                candidates=self.candidates_for(
+                    artifact_type,
+                    ref.artifact_id,
+                    exclude=(self.member_roots[ref.tree], pointing_root),
+                ),
                 member=member,
             )
 

@@ -403,6 +403,29 @@ def test_peer_pointer_to_an_unregistered_tree_is_unknown_qualifier(tmp_path):
     assert "lib" in defect.message
 
 
+def test_stale_pointer_whose_target_moved_names_the_new_tree(tmp_path):
+    """A retargetable pointer is a mechanical fix, so the candidate is reported."""
+    make_workspace(tmp_path, {"app": "app", "lib": "packages/lib", "arch": "architecture"})
+    artifact(tmp_path / "architecture", "chunks", "baseline")
+    pointer(tmp_path / "app", "baseline", target_tree="lib")
+
+    report = validate(tmp_path)
+
+    (defect,) = of_class(report, FixClass.MISSING_TARGET)
+    assert [candidate.member for candidate in defect.candidates] == ["arch"]
+
+
+def test_pointer_to_an_unregistered_tree_names_where_the_target_lives(tmp_path):
+    make_workspace(tmp_path, {"app": "app", "arch": "architecture"})
+    artifact(tmp_path / "architecture", "chunks", "baseline")
+    pointer(tmp_path / "app", "baseline", target_tree="platform")
+
+    report = validate(tmp_path)
+
+    (defect,) = of_class(report, FixClass.UNKNOWN_QUALIFIER)
+    assert [candidate.member for candidate in defect.candidates] == ["arch"]
+
+
 def test_unreadable_pointer_is_missing_target(tmp_path):
     make_workspace(tmp_path, {"app": "app"})
     pointer(tmp_path / "app", "broken", body="artifact_type: chunk\nartifact_id: x\n")
