@@ -214,9 +214,10 @@ def format_chunk_list_entry(
     """
     tip_indicator = " *" if is_tip else ""
 
+    # Chunk: docs/chunks/federation_peer_refs - Show whichever target flavor the pointer carries
     # Format status based on type
     if external_ref is not None:
-        status_display = f"EXTERNAL: {external_ref.repo}"
+        status_display = f"EXTERNAL: {external_ref.target_display}"
     elif error is not None:
         status_display = f"PARSE ERROR: {error}"
     else:

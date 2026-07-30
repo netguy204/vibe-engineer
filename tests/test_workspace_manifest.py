@@ -12,6 +12,11 @@ import yaml
 from click.testing import CliRunner
 from pydantic import ValidationError
 
+from conftest import (
+    make_ve_tree as make_tree,
+    make_workspace,
+    write_workspace_manifest as write_workspace,
+)
 from models.workspace import WorkspaceManifest, WorkspaceMember
 from ve import cli
 from workspace import (
@@ -35,23 +40,6 @@ from workspace import (
 # ---------------------------------------------------------------------------
 
 
-def make_tree(path: pathlib.Path, trunk: bool = True, artifacts=("chunks",)) -> pathlib.Path:
-    """Create a VE tree at path.
-
-    Args:
-        path: Directory that becomes the tree root.
-        trunk: Whether to create docs/trunk/ (with a GOAL.md).
-        artifacts: Artifact directory names to create under docs/.
-    """
-    docs = path / "docs"
-    if trunk:
-        (docs / "trunk").mkdir(parents=True, exist_ok=True)
-        (docs / "trunk" / "GOAL.md").write_text("# Goal\n")
-    for name in artifacts:
-        (docs / name).mkdir(parents=True, exist_ok=True)
-    return path
-
-
 def make_pointer_tree(path: pathlib.Path, artifact: str = "borrowed") -> pathlib.Path:
     """Create a pointer-only tree: an external.yaml chunk stub and no trunk."""
     chunk_dir = path / "docs" / "chunks" / artifact
@@ -60,22 +48,6 @@ def make_pointer_tree(path: pathlib.Path, artifact: str = "borrowed") -> pathlib
         "artifact_type: chunk\nartifact_id: borrowed\nrepo: acme/hub\n"
     )
     return path
-
-
-def write_workspace(root: pathlib.Path, members: dict[str, str]) -> pathlib.Path:
-    """Write a .ve-workspace.yaml with the given name -> path mapping."""
-    root.mkdir(parents=True, exist_ok=True)
-    manifest = root / WORKSPACE_MANIFEST_NAME
-    manifest.write_text(yaml.safe_dump({"members": dict(members)}, sort_keys=False))
-    return manifest
-
-
-def make_workspace(root: pathlib.Path, members: dict[str, str]) -> pathlib.Path:
-    """Create member trees on disk and a manifest registering them."""
-    for rel in members.values():
-        make_tree(root / rel)
-    write_workspace(root, members)
-    return root
 
 
 def read_members(root: pathlib.Path) -> dict[str, str]:

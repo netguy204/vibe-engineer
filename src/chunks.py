@@ -90,6 +90,8 @@ class ChunkLocation:
     project_dir: pathlib.Path  # The project directory containing the chunk
     is_external: bool = False
     external_repo: str | None = None  # org/repo format for external chunks
+    # Chunk: docs/chunks/federation_peer_refs - Workspace member owning a peer-referenced chunk
+    external_tree: str | None = None  # Member name for peer (intra-workspace) refs
     # For cache-based resolution (no task context)
     cached_content: str | None = None  # GOAL.md content from repo cache
     cached_sha: str | None = None  # SHA used for cache resolution
@@ -577,6 +579,37 @@ class Chunks(ArtifactManager[ChunkFrontmatter, ChunkStatus]):
                 external_ref = load_external_ref(chunk_path)
             except FileNotFoundError:
                 return None
+
+            # Chunk: docs/chunks/federation_peer_refs - Peer chunk pointers resolve via the manifest
+            # A peer pointer names a tree in this same working copy, so neither
+            # task context nor the repo cache applies: the content is on disk.
+            if external_ref.is_peer:
+                from external_resolve import resolve_peer_pointer
+                from task import TaskChunkError
+
+                try:
+                    resolved = resolve_peer_pointer(
+                        chunk_path, external_ref, ArtifactType.CHUNK
+                    )
+                except TaskChunkError:
+                    # Unresolvable peer pointer: report the location without
+                    # content, matching how an uncachable repo ref degrades.
+                    # `ve workspace validate` is what turns this into an error.
+                    return ChunkLocation(
+                        chunk_name=external_ref.artifact_id,
+                        chunk_path=chunk_path,
+                        project_dir=self.project_dir,
+                        is_external=True,
+                        external_tree=external_ref.tree,
+                    )
+
+                return ChunkLocation(
+                    chunk_name=external_ref.artifact_id,
+                    chunk_path=resolved.local_path,
+                    project_dir=resolved.local_path.parent.parent.parent,
+                    is_external=True,
+                    external_tree=external_ref.tree,
+                )
 
             # With task context, resolve to the live working copy
             if task_dir is not None:

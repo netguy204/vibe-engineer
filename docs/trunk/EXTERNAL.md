@@ -1,18 +1,43 @@
 <!-- Chunk: docs/chunks/claudemd_external_prompt - Full External Artifacts documentation -->
 <!-- Chunk: docs/chunks/progressive_disclosure_external - Comprehensive external artifacts documentation -->
+<!-- Chunk: docs/chunks/federation_peer_refs - Peer (tree) references, why: notes, and the point-vs-promote rule -->
 # External Artifacts Reference
 
-External artifacts enable multi-repository workflows by providing pointers to artifacts that live in other repositories. This is useful when work spans multiple codebases but needs coordinated documentation.
+External artifacts are pointers: an artifact directory that records where the real
+document lives instead of holding it. They come in two flavors, and the difference
+is how far away the target is:
+
+- **Cross-repository** (`repo: org/other-repo`) — the target lives in another
+  repository with its own history, so the pointer names a branch to track and VE
+  fetches the content for you.
+- **Peer** (`tree: <member>`) — the target lives in another VE tree of the *same*
+  working copy, registered in the workspace manifest (`.ve-workspace.yaml`). There
+  is nothing to fetch and no branch to track: same working copy means same commit,
+  so resolution is a manifest lookup and a file read.
+
+Both flavors express the same thing — *this tree depends on an artifact it does not
+own* — and both may carry a `why:` note saying what the dependency is.
 
 ## What External Artifacts Are
 
-When work spans multiple repositories, artifact directories may contain an `external.yaml` file instead of the usual GOAL.md or OVERVIEW.md. These files are pointers to artifacts in other repositories—they tell VE where to find the actual artifact content.
+An artifact directory may contain an `external.yaml` file instead of the usual
+GOAL.md or OVERVIEW.md. That file tells VE where to find the actual artifact
+content. Every VE command treats such a directory uniformly regardless of flavor:
+it is "an artifact whose content lives elsewhere".
 
-**Example scenario:** A task directory spans three repositories. Each repo has `docs/chunks/shared_feature/external.yaml` pointing to a single canonical chunk GOAL.md in one repository.
+**Cross-repo scenario:** A task directory spans three repositories. Each repo has
+`docs/chunks/shared_feature/external.yaml` pointing to a single canonical chunk
+GOAL.md in one repository.
+
+**Peer scenario:** A monorepo holds a library tree and a visualization tree. The
+library owns `docs/subsystems/commitment_baseline` because its code enforces that
+invariant; the visualization tree has
+`docs/subsystems/commitment_baseline/external.yaml` pointing at the library tree,
+recording that it reads those definitions.
 
 ## File Structure
 
-External artifact files follow this schema:
+A cross-repository reference:
 
 ```yaml
 artifact_id: some_feature
@@ -21,14 +46,96 @@ repo: org/other-repo          # Repository containing the actual artifact
 track: main                   # Branch to follow
 ```
 
+A peer reference:
+
+```yaml
+artifact_id: commitment_baseline
+artifact_type: subsystem
+tree: pybusiness              # Workspace member owning the artifact
+why: Charts render realized savings from this baseline
+```
+
 **Fields:**
 
 | Field | Required | Description |
 |-------|----------|-------------|
-| `artifact_id` | Yes | The artifact's directory name in the external repo |
+| `artifact_id` | Yes | The artifact's directory name in the owning tree or repo |
 | `artifact_type` | Yes | One of: `chunk`, `narrative`, `investigation`, `subsystem` |
-| `repo` | Yes | GitHub repository path (e.g., `org/repo-name`) |
-| `track` | Yes | Branch name to follow (usually `main`) |
+| `repo` | Cross-repo only | GitHub repository path (e.g., `org/repo-name`) |
+| `tree` | Peer only | Workspace member name from `.ve-workspace.yaml` |
+| `track` | Cross-repo only | Branch name to follow (usually `main`) |
+| `why` | No | One line: what this tree depends on in the target |
+
+Exactly one of `repo` and `tree` must be present — a pointer with neither has no
+target, and a pointer with both has two. `track` (and the legacy `pinned`) are
+rejected alongside `tree`: a peer target is already at the same commit as the tree
+pointing at it, so there is nothing to pin.
+
+## Peer References (Same Repository)
+
+Peer references require a workspace manifest at the root of the repository holding
+your VE trees, because a member name is what the pointer resolves against:
+
+```yaml
+# .ve-workspace.yaml
+members:
+  pybusiness: packages/libs/pybusiness
+  viz: apps/viz
+```
+
+Create a pointer with `ve external point`, run from the tree that has the
+dependency:
+
+```bash
+cd apps/viz
+ve external point pybusiness docs/subsystems/commitment_baseline \
+  --why "Charts render realized savings from this baseline"
+```
+
+This writes `apps/viz/docs/subsystems/commitment_baseline/external.yaml`. The
+artifact may be named as `docs/<type>/<name>`, `<type>/<name>`, or — when it
+already exists in the member's tree — just `<name>`. Useful options:
+
+| Option | Effect |
+|--------|--------|
+| `--why` | Record what this tree depends on (one line) |
+| `--name` | Use a different local directory name than the target's |
+| `--force` | Create the pointer even though the target does not exist yet |
+
+The command **refuses** to point at an artifact that does not exist in the member's
+tree unless you pass `--force`. A pointer that was never resolvable produces no
+deletion event for an audit to find, so the cheapest place to catch it is at
+creation.
+
+**Resolution is trackless and cache-free.** A peer reference resolves through the
+manifest to `<member_path>/docs/<type>/<artifact_id>` and reads the working copy —
+uncommitted changes included, because the whole point is that both trees move
+together. Resolution starts from the pointer's own directory, never the working
+directory of the command, so a reference means the same thing no matter where it is
+followed from.
+
+**Interest edges may form cycles.** Two trees may point at each other's artifacts;
+that is a normal consequence of mutual dependency. Only `created_after` causal
+ordering must stay acyclic.
+
+## Point When Readers Multiply; Promote When Writers Change
+
+When an artifact acquires readers outside the tree that owns it, the tempting move
+is to *promote* it — move the document up to the repository-root tree where
+everyone can see it. Resist that.
+
+- **Point when readers multiply.** A new consumer adds a pointer at its own level,
+  peer-to-peer. Ownership does not move: the subsystem doc stays beside the code
+  that enforces its invariants, where a change to that code will be made by someone
+  reading it.
+- **Promote when writers change.** Promotion is an *ownership* operation. Move an
+  artifact to the root tree when the intent genuinely has no single owner — several
+  trees write to it and none governs it.
+
+Promoting on every new reader converges on everything living at the root, which is
+flattening by another name: it dislocates documents from the code they govern and
+records nothing about who consumes what. Pointers, by contrast, keep ownership put
+and make the consumer set enumerable.
 
 ## Resolving External Artifacts
 
@@ -38,7 +145,16 @@ Use the `ve external resolve` command to view the actual artifact content:
 ve external resolve <artifact_id>
 ```
 
-This fetches the current HEAD of the specified branch from the external repository and displays the artifact content. You don't need to clone the external repo—VE handles the fetch for you.
+For a cross-repository reference this fetches the current HEAD of the tracked
+branch — you don't need to clone the external repo, VE handles the fetch. For a
+peer reference it resolves through the workspace manifest and reads the file
+directly; the output reports the target (`tree:pybusiness`) and the `why:` note so
+the reason for the dependency travels with the content.
+
+When a peer reference cannot be resolved, the error distinguishes the cases: no
+workspace manifest above the pointer, a member name the manifest does not
+register, a registered member whose tree has no such artifact, and an artifact
+directory with no main document.
 
 ## Common Scenarios
 

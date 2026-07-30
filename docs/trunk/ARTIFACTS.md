@@ -147,8 +147,11 @@ Always use the local path within the current repository (e.g., `docs/chunks/chun
 
 <!-- Chunk: docs/chunks/claudemd_external_prompt - External Artifacts section with redirect to EXTERNAL.md -->
 <!-- Chunk: docs/chunks/progressive_disclosure_external - Simplified external artifacts section -->
+<!-- Chunk: docs/chunks/federation_peer_refs - Peer pointers and the point-vs-promote rule -->
 ## External Artifacts {#external-artifacts}
 
-External artifacts enable multi-repository workflows by providing pointers to artifacts in other repositories. When an artifact directory contains `external.yaml` instead of GOAL.md or OVERVIEW.md, it's pointing to content in another repo.
+External artifacts are pointers: an artifact directory containing `external.yaml` instead of GOAL.md or OVERVIEW.md, recording where the real document lives. A pointer either names another repository (`repo: org/repo`, resolved by fetching a tracked branch) or another VE tree in the same working copy (`tree: <member>`, resolved through the workspace manifest — no fetch, no branch). Either kind may carry a `why:` line saying what this tree depends on in the target, which turns the pointer into a legible interest edge.
+
+Ownership stays with the tree whose code enforces an intent; other trees express interest with pointers at their own level. **Point when readers multiply; promote when writers change** — moving an artifact to the root tree is an ownership transfer, not a way to make it visible.
 
 For comprehensive documentation on external artifacts, see [EXTERNAL.md](EXTERNAL.md).

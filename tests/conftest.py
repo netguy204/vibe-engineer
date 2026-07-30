@@ -6,11 +6,13 @@ import subprocess
 import tempfile
 
 import pytest
+import yaml
 from click.testing import CliRunner
 
 from ve import cli
 from chunks import Chunks
 from project import Project, InitResult
+from workspace import WORKSPACE_MANIFEST_NAME
 
 
 @pytest.fixture(autouse=True)
@@ -127,6 +129,69 @@ projects:
     (task_dir / ".ve-task.yaml").write_text(config_content)
 
     return task_dir, external_path, project_paths
+
+
+# =============================================================================
+# Workspace Helpers
+# =============================================================================
+# Chunk: docs/chunks/federation_peer_refs - Shared workspace fixtures for peer refs
+# Shared by test_workspace_manifest.py and test_external_peer_refs.py: a
+# workspace is a directory holding a `.ve-workspace.yaml` plus the member trees
+# it names, and both the manifest tests and the peer-reference tests need that
+# shape built on a real filesystem.
+
+
+def make_ve_tree(path, trunk=True, artifacts=("chunks",)):
+    """Create a VE tree at path.
+
+    Args:
+        path: Directory that becomes the tree root.
+        trunk: Whether to create docs/trunk/ (with a GOAL.md).
+        artifacts: Artifact directory names to create under docs/.
+
+    Returns:
+        The tree root path.
+    """
+    docs = pathlib.Path(path) / "docs"
+    if trunk:
+        (docs / "trunk").mkdir(parents=True, exist_ok=True)
+        (docs / "trunk" / "GOAL.md").write_text("# Goal\n")
+    for name in artifacts:
+        (docs / name).mkdir(parents=True, exist_ok=True)
+    return path
+
+
+def write_workspace_manifest(root, members):
+    """Write a .ve-workspace.yaml with the given name -> path mapping.
+
+    Args:
+        root: The workspace root directory.
+        members: Mapping of member name to workspace-root-relative path.
+
+    Returns:
+        Path to the written manifest.
+    """
+    root = pathlib.Path(root)
+    root.mkdir(parents=True, exist_ok=True)
+    manifest = root / WORKSPACE_MANIFEST_NAME
+    manifest.write_text(yaml.safe_dump({"members": dict(members)}, sort_keys=False))
+    return manifest
+
+
+def make_workspace(root, members):
+    """Create member trees on disk and a manifest registering them.
+
+    Args:
+        root: The workspace root directory.
+        members: Mapping of member name to workspace-root-relative path.
+
+    Returns:
+        The workspace root path.
+    """
+    for rel in members.values():
+        make_ve_tree(pathlib.Path(root) / rel)
+    write_workspace_manifest(root, members)
+    return root
 
 
 # =============================================================================

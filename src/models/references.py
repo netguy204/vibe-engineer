@@ -7,9 +7,15 @@ import re
 from enum import StrEnum
 from typing import Literal
 
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, field_validator, model_validator
 
 from models.shared import _require_valid_dir_name, _require_valid_repo_ref
+
+# Chunk: docs/chunks/federation_peer_refs - Member names in external.yaml obey the manifest grammar
+# `models.workspace` depends on nothing in `models`, so importing it here keeps
+# the package's internal imports acyclic while ensuring a `tree:` target in an
+# external.yaml is held to exactly the grammar `.ve-workspace.yaml` enforces.
+from models.workspace import validate_member_name
 
 
 # Chunk: docs/chunks/artifact_ordering_index - Enum defining workflow artifact types
@@ -324,32 +330,124 @@ class CodeReference(BaseModel):
 
 
 # Chunk: docs/chunks/consolidate_ext_refs - Generic external artifact reference model with artifact_type and artifact_id fields
+# Chunk: docs/chunks/federation_peer_refs - Peer (tree) targets and interest notes
 class ExternalArtifactRef(BaseModel):
-    """Reference to a workflow artifact in another repository.
+    """Reference to a workflow artifact that lives outside this artifact directory.
 
     Used for external.yaml files that reference artifacts (chunks, narratives,
-    investigations, subsystems) in an external repository. This is a type-agnostic
-    replacement for ExternalChunkRef that supports all workflow artifact types.
+    investigations, subsystems) owned elsewhere. Two flavors of target exist, and
+    exactly one must be given:
+
+    - `repo: <org>/<repo>` — a *cross-repository* reference. Resolution goes
+      through the repo cache and a `track`, because the target is a different
+      history that moves independently.
+    - `tree: <member>` — a *peer* reference to another VE tree in the same
+      workspace (see `.ve-workspace.yaml`). Resolution is a manifest lookup plus
+      a filesystem read: the target is in the same working copy, hence the same
+      commit, so `track`/`pinned` are meaningless and rejected.
+
+    Both flavors may carry `why`: one line recording what this tree depends on in
+    the target. That turns a pointer into a legible *interest edge*, which is
+    what makes the reverse query ("who consumes this artifact?") worth asking.
     """
 
     artifact_type: ArtifactType
     artifact_id: str  # Short name of the referenced artifact
-    repo: str  # GitHub-style org/repo format
-    track: str | None = None  # Branch to follow (optional)
+    repo: str | None = None  # GitHub-style org/repo format (cross-repo flavor)
+    tree: str | None = None  # Workspace member name (peer flavor)
+    why: str | None = None  # One line: what this tree depends on in the target
+    track: str | None = None  # Branch to follow (cross-repo only)
     pinned: str | None = None  # 40-char SHA (optional)
     created_after: list[str] = []  # Local causal ordering
 
     @field_validator("repo")
     @classmethod
-    def validate_repo(cls, v: str) -> str:
-        """Validate repo is in org/repo format."""
+    def validate_repo(cls, v: str | None) -> str | None:
+        """Validate repo is in org/repo format when present."""
+        if v is None:
+            return None
         return _require_valid_repo_ref(v, "repo")
+
+    # Chunk: docs/chunks/federation_peer_refs - Member name validation for tree targets
+    @field_validator("tree")
+    @classmethod
+    def validate_tree(cls, v: str | None) -> str | None:
+        """Validate tree names a workspace member."""
+        if v is None:
+            return None
+        return validate_member_name(v, "tree")
+
+    # Chunk: docs/chunks/federation_peer_refs - Interest note is a single non-empty line
+    @field_validator("why")
+    @classmethod
+    def validate_why(cls, v: str | None) -> str | None:
+        """Validate why is one non-empty line.
+
+        A blank note records nothing, and a multi-line note cannot be tabulated
+        by the reverse-interest report that consumes it, so both are rejected
+        rather than silently reshaped.
+        """
+        if v is None:
+            return None
+        stripped = v.strip()
+        if not stripped:
+            raise ValueError(
+                "why cannot be empty: it records what this tree depends on in the "
+                "target artifact. Omit the field entirely if there is nothing to say"
+            )
+        if "\n" in stripped or "\r" in stripped:
+            raise ValueError(
+                "why must be a single line so consumer reports can tabulate it; "
+                "put longer rationale in the pointing tree's own artifact"
+            )
+        return stripped
 
     @field_validator("artifact_id")
     @classmethod
     def validate_artifact_id(cls, v: str) -> str:
         """Validate artifact_id is a valid directory name."""
         return _require_valid_dir_name(v, "artifact_id")
+
+    # Chunk: docs/chunks/federation_peer_refs - tree xor repo, and tracklessness of peer refs
+    @model_validator(mode="after")
+    def validate_target(self) -> "ExternalArtifactRef":
+        """Enforce exactly one target, and that peer targets are trackless."""
+        if self.repo is not None and self.tree is not None:
+            raise ValueError(
+                f"exactly one of 'repo' and 'tree' may be set, got both "
+                f"(repo: {self.repo}, tree: {self.tree}). 'repo' addresses another "
+                f"repository; 'tree' addresses another VE tree in this workspace"
+            )
+        if self.repo is None and self.tree is None:
+            raise ValueError(
+                "exactly one of 'repo' (another repository, as org/repo) and "
+                "'tree' (a workspace member name) must be set; a pointer with no "
+                "target cannot resolve"
+            )
+
+        if self.tree is not None:
+            for field in ("track", "pinned"):
+                if getattr(self, field) is not None:
+                    raise ValueError(
+                        f"'{field}' is invalid with 'tree': a peer reference resolves "
+                        f"inside the same working copy, so it is already at the same "
+                        f"commit as the tree pointing at it. Remove '{field}'"
+                    )
+        return self
+
+    # Chunk: docs/chunks/federation_peer_refs - Flavor predicate for callers
+    @property
+    def is_peer(self) -> bool:
+        """True when this pointer targets a workspace member rather than a repo."""
+        return self.tree is not None
+
+    # Chunk: docs/chunks/federation_peer_refs - Uniform target rendering for display
+    @property
+    def target_display(self) -> str:
+        """The pointer's target, formatted for human output."""
+        if self.tree is not None:
+            return f"tree:{self.tree}"
+        return self.repo or "(no target)"
 
     # Note: The `pinned` field is optional and ignored. It remains in the model
     # for backward compatibility with existing external.yaml files that may still

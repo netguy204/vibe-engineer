@@ -430,7 +430,10 @@ def list_chunks(current, last_active, recent, status_filter, future_flag, active
                     results.append({
                         "name": chunk_name,
                         "status": "EXTERNAL",
+                        # Chunk: docs/chunks/federation_peer_refs - Both target flavors are reported
                         "repo": external_ref.repo,
+                        "tree": external_ref.tree,
+                        "why": external_ref.why,
                         "artifact_id": external_ref.artifact_id,
                         "track": external_ref.track,
                         "is_tip": is_tip,
