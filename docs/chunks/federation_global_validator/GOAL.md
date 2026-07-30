@@ -1,17 +1,24 @@
 ---
-status: FUTURE
+status: IMPLEMENTING
 ticket: null
 parent_chunk: null
-code_paths: []
+code_paths:
+  - src/workspace_validation.py
+  - src/cli/workspace.py
+  - tests/test_workspace_validation.py
 code_references: []
 narrative: monorepo_federation
 investigation: null
 subsystems: []
 friction_entries: []
-depends_on: ["federation_workspace_manifest", "federation_tree_discovery", "federation_qualified_refs", "federation_peer_refs"]
-created_after: ["backend_live_validation"]
+depends_on:
+- federation_workspace_manifest
+- federation_tree_discovery
+- federation_qualified_refs
+- federation_peer_refs
+created_after:
+- backend_live_validation
 ---
-
 <!--
 ╔══════════════════════════════════════════════════════════════════════════════╗
 ║  DO NOT DELETE THIS COMMENT BLOCK until the chunk complete command is run.   ║
