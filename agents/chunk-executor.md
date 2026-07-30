@@ -61,10 +61,10 @@ Run these steps in order:
 4. Run `/chunk-complete` to finalize the chunk.
 
 If slash commands are unavailable in your session, fall back to reading the
-corresponding command documentation (`commands/chunk-plan.md`,
-`commands/chunk-implement.md`, `commands/chunk-review.md`,
-`commands/chunk-complete.md` in the vibe-engineer plugin) and following its
-instructions directly.
+corresponding skill documentation (`skills/chunk-plan/SKILL.md`,
+`skills/chunk-implement/SKILL.md`, `skills/chunk-review/SKILL.md`,
+`skills/chunk-complete/SKILL.md` in the vibe-engineer plugin) and following
+its instructions directly.
 
 ## Report format
 
