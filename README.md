@@ -240,6 +240,66 @@ This creates a `.ve-task.yaml` configuration file that enables task-aware chunk 
 - All directories must be git repositories
 - All directories must be Vibe Engineer initialized (`ve init` run, so `docs/chunks/` exists)
 
+### Monorepos With Multiple Trees
+
+When one repository contains several VE project trees (a monorepo of packages, each with its own `docs/`), register them in a **workspace manifest** at the repository root. The manifest names each tree, which is what makes a tree-qualified reference (`pybusiness::docs/subsystems/commitment_baseline`) resolvable and gives workspace-wide commands something to iterate over.
+
+```bash
+# Bootstrap a manifest by discovering trees, skipping scaffolding templates
+ve workspace init --scan --exclude '*_template'
+
+# Register a tree by hand
+ve workspace add pybusiness packages/libs/pybusiness
+
+# See what is registered
+ve workspace list
+```
+
+This creates a `.ve-workspace.yaml` mapping short names to tree paths:
+
+```yaml
+members:
+  pybusiness: packages/libs/pybusiness
+  visualization: apps/viz
+```
+
+Nesting is allowed and meaningful — a library tree inside a platform tree stays separately addressable, and the innermost tree containing a file is the one that governs it.
+
+`--scan` proposes only directories containing `docs/trunk/` and always asks before writing (`-y` skips the prompt): a scan cannot tell an intentional tree from an accidental one, such as a scaffolding template that ships its own `docs/` tree, so excluding junk is part of the bootstrap.
+
+#### Scaffolding a New Package
+
+Scaffolding is where namespaces come from. A package template that ships a `docs/trunk` + `docs/chunks` of its own mints a new documentation namespace for every package it generates, so a repository accumulates parallel trees faster than anyone cleans them up. `ve package scaffold` is what a template should call instead:
+
+```bash
+# Default: a pointer-only member — interest edges, no trunk, no empty chunk namespace
+ve package scaffold apps/viz \
+  --interest 'pybusiness::docs/subsystems/commitment_baseline: charts render this baseline'
+
+# Opt in to a full tree, for a package that will own intent of its own
+ve package scaffold packages/libs/newlib --full-tree
+```
+
+The default writes one `external.yaml` interest edge per `--interest`, registers the package in `.ve-workspace.yaml`, and renders an `AGENTS.md` that tells agents which tree governs the package and how to opt into a full tree later. The package is addressable as `viz::docs/...` without becoming an addressing root, so bare references in its source keep resolving to the tree that governs them.
+
+Both flavors skip registration cleanly when there is no manifest, so single-repo use is unchanged. An interest edge is refused if its target artifact does not exist: a pointer that could never resolve leaves no deletion event behind for an audit to find, so creation time is the cheapest place to catch it.
+
+#### Checking That Every Reference Resolves
+
+In a repository of many trees, a bare `# Subsystem: docs/subsystems/baseline` comment resolves differently depending on where you stand — and can land in a real-but-wrong directory without anything failing. `ve workspace validate` reports every such defect in one run:
+
+```bash
+# Every unresolvable, misrouted, or unaddressed reference, with a fix class
+ve workspace validate
+
+# The machine-readable form the fix loop consumes; exits nonzero, so CI can gate
+ve workspace validate --format json
+```
+
+Each defect carries `path:line`, the reference as written, a fix class (`misrouted-bare`, `unresolvable-bare`, `unknown-qualifier`, `missing-target`, `malformed-qualifier`, `unresolvable-frontmatter`), and the candidate trees that *do* hold the named artifact. The candidate count is the triage: one candidate is a mechanical fix, two are two plausible meanings, none means the target is gone from the repository.
+
+The `/workspace-validate-fix` slash command drives that report to zero — it qualifies one-off cross-tree references, records a peer pointer when several references in one tree read the same foreign artifact, normalizes legacy prefix-style qualifiers, retargets pointers whose artifacts moved, registers trees a candidate names, and escalates the genuine ambiguities with their candidates rather than guessing. It never deletes a reference and never invents a target, and it works one fix class per batch so each kind of repair can be reviewed — and committed — on its own. This is the retrofit path for a monorepo whose trees grew independently.
+
 ### Orchestrator
 
 The [orchestrator](https://veng.dev/docs/orchestrator/) (`ve orch`) runs FUTURE chunks in parallel across isolated git worktrees. It handles planning, implementation, and completion autonomously. You create the work; the orchestrator schedules and executes it.

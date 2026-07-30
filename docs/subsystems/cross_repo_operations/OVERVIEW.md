@@ -9,7 +9,31 @@ chunks:
     relationship: uses
   - chunk_id: task_operations_decompose
     relationship: implements
+  - chunk_id: federation_peer_refs
+    relationship: implements
+  - chunk_id: federation_reverse_interest
+    relationship: implements
+  - chunk_id: federation_template_pointers
+    relationship: uses
 code_references:
+- ref: src/interest.py#scan_interest_edges
+  implements: One-pass enumeration of every external.yaml pointer in a workspace
+  compliance: COMPLIANT
+- ref: src/interest.py#find_consumers
+  implements: Reverse lookup of the trees recording interest in one artifact
+  compliance: COMPLIANT
+- ref: src/interest.py#iter_member_trees
+  implements: Member-tree iteration surface for workspace-wide aggregation
+  compliance: COMPLIANT
+- ref: src/external_refs.py#create_peer_yaml
+  implements: Peer (intra-workspace) external reference creation
+  compliance: COMPLIANT
+- ref: src/external_resolve.py#resolve_peer_pointer
+  implements: Peer reference resolution via the workspace manifest
+  compliance: COMPLIANT
+- ref: src/external_resolve.py#resolve_artifact_peer
+  implements: Artifact resolution in workspace peer mode
+  compliance: COMPLIANT
 - ref: src/task_init.py#TaskInit
   implements: Task directory initialization class
   compliance: COMPLIANT
@@ -124,10 +148,18 @@ This subsystem formalizes cross-repo work:
 
 - **Task directory initialization**: `ve task init` to set up cross-repo coordination
 - **Task context detection**: Automatic detection of task vs single-repo mode
-- **External artifact references**: `external.yaml` pattern for cross-repo artifacts
+- **External artifact references**: `external.yaml` pattern for artifacts owned
+  elsewhere, in two flavors — `repo: org/repo` (another repository, resolved
+  through the repo cache and a tracked branch) and `tree: <member>` (another VE
+  tree in the same working copy, resolved through `.ve-workspace.yaml`). Either
+  may carry a `why:` note recording what the pointing tree depends on
 - **Bidirectional references**: Dependents list in artifacts, external.yaml in projects
 - **Sync operations**: Update pinned SHAs to capture point-in-time state
 - **External resolution**: View content, local path, and directory listing from external repos
+- **Reverse interest queries**: Reading pointers backwards — which trees point at a
+  given artifact and why (`ve artifact consumers`), and workspace-wide aggregated
+  listings (`--workspace`) so a federated repository stays browsable without
+  promoting artifacts to its root tree
 - **Task-aware commands**: All artifact commands (create, list) in task context
 - **Git utilities**: Local worktree operations (SHA, validation)
 - **Repo cache**: Clone/fetch cache for external repos in single-repo mode
@@ -148,6 +180,10 @@ This subsystem formalizes cross-repo work:
 
 2. **External references always resolve to HEAD** - No point-in-time pinning;
    external content is always read from current HEAD of tracked branch (DEC-002).
+   A peer (`tree:`) reference is this rule at its limit: the target is in the same
+   working copy, so there is no separate history to pin and `track`/`pinned` are
+   rejected outright; resolution reads the working tree, as task directory mode
+   already does.
 
 3. **All specified directories must be VE-initialized git repos** - Validation during
    task init prevents configuration errors.
@@ -159,7 +195,18 @@ This subsystem formalizes cross-repo work:
    in external.yaml enables proper ordering.
 
 6. **External resolution works in both task and single-repo mode** - Dual context support
-   for flexibility.
+   for flexibility. A pointer's flavor is recorded in the pointer itself, so both
+   entry points dispatch on it: a `tree:` reference resolves through the workspace
+   manifest in either context, and callers never need to know which mode they are in.
+
+7. **Reverse lookup agrees with forward resolution** - A pointer counts as a
+   consumer of an artifact when it *resolves* to that artifact's directory, using
+   the same manifest lookup `resolve_peer_pointer` performs. Matching member-name
+   strings instead would disagree with resolution whenever a tree is registered
+   under more than one name, which would make the consumer report a new species of
+   the misrouting this addressing model exists to eliminate. `repo:` pointers can
+   only ever be matched by artifact id, so they are reported as a separate,
+   explicitly unverified class.
 
 ### Soft Conventions
 
@@ -182,13 +229,20 @@ This subsystem formalizes cross-repo work:
 - `src/task_utils.py` - Re-export shim for backward compatibility
 - `src/external_refs.py` - External reference utilities (consolidated from multiple chunks)
 - `src/external_resolve.py` - External artifact resolution
+- `src/interest.py` - Inbound edge enumeration and reverse interest lookup
+  (CLI-free, so validation can reuse one workspace scan)
 - `src/git_utils.py` - Git helper functions
 - `src/repo_cache.py` - External repo clone/fetch cache
 
 **Models**: `src/models.py#TaskConfig`, `src/models.py#ExternalArtifactRef`
 
-CLI commands: `ve task init`, `ve external resolve`, plus task-aware versions
-of all artifact commands.
+CLI commands: `ve task init`, `ve external resolve`, `ve external point` (create a
+peer interest edge), `ve artifact consumers` (read interest edges backwards), the
+`--workspace` variants of `ve chunk list` and `ve subsystem list`, plus task-aware
+versions of all artifact commands.
+
+Peer resolution depends on the workspace manifest owned by `src/workspace.py`
+(`.ve-workspace.yaml`), which is where member names come from.
 
 ## Known Deviations
 

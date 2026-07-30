@@ -72,13 +72,19 @@ class TestCollectionLayout:
         )
 
     def test_collection_spans_full_plugin_surface(self):
-        """dualplugin_content_migration success criterion: all 38 commands
-        and both agents render from templates."""
+        """dualplugin_content_migration success criterion: every command and
+        both agents render from templates.
+
+        The count is a snapshot of the current command surface, not a cap —
+        raise it when a command is added, so long as the addition arrives as a
+        template. `workspace-validate-fix` (39th) came from the
+        monorepo_federation work and was migrated into the collection on merge.
+        """
         names = _template_names()
         commands = [n for n in names if n.startswith("commands/")]
         agents = [n for n in names if n.startswith("agents/")]
-        assert len(commands) == 38, (
-            f"expected all 38 commands in the collection, found {len(commands)}"
+        assert len(commands) == 39, (
+            f"expected all 39 commands in the collection, found {len(commands)}"
         )
         assert "agents/chunk-executor.md.jinja2" in agents
         assert "agents/intent-auditor.md.jinja2" in agents

@@ -214,12 +214,63 @@ def format_chunk_list_entry(
     """
     tip_indicator = " *" if is_tip else ""
 
+    # Chunk: docs/chunks/federation_peer_refs - Show whichever target flavor the pointer carries
     # Format status based on type
     if external_ref is not None:
-        status_display = f"EXTERNAL: {external_ref.repo}"
+        status_display = f"EXTERNAL: {external_ref.target_display}"
     elif error is not None:
         status_display = f"PARSE ERROR: {error}"
     else:
         status_display = status
 
     return f"docs/chunks/{chunk_name} [{status_display}]{tip_indicator}"
+
+
+# Chunk: docs/chunks/federation_reverse_interest - Aggregated rows are qualified references
+def format_workspace_artifact_row(
+    member: str,
+    artifact_dir_name: str,
+    artifact_name: str,
+    status_display: str,
+) -> str:
+    """Format one row of a workspace-aggregated artifact listing.
+
+    The row is written in the qualified-reference grammar
+    (`<member>::docs/<type>/<name>`), so an aggregated listing hands back working
+    addresses: a row pastes into a backreference and resolves from anywhere in the
+    workspace, whereas a bare `docs/...` row would mean different things depending
+    on which tree the reader is standing in.
+
+    Args:
+        member: Workspace member name owning the artifact.
+        artifact_dir_name: Artifact directory under docs/ (e.g. "chunks").
+        artifact_name: The artifact directory name.
+        status_display: Status text to show in brackets.
+
+    Returns:
+        Formatted row string.
+    """
+    return f"{member}::docs/{artifact_dir_name}/{artifact_name} [{status_display}]"
+
+
+# Chunk: docs/chunks/federation_reverse_interest - Aggregated JSON claims nothing it did not compute
+def workspace_artifact_json_row(member: str, name: str, frontmatter) -> dict:
+    """Build one JSON row of a workspace-aggregated listing.
+
+    Identical to :func:`artifact_to_json_dict` except that `is_tip` is dropped
+    rather than reported as False. Aggregated listings do not compute tips (that
+    would mean building an ordering index inside every member tree, which a browse
+    query must not do), and a field that always says False would be read as "this
+    is not a tip" rather than "this was not asked".
+
+    Args:
+        member: Workspace member name owning the artifact.
+        name: The artifact directory name.
+        frontmatter: Parsed frontmatter object.
+
+    Returns:
+        Dictionary with the owning member first, then the artifact's fields.
+    """
+    row = artifact_to_json_dict(name, frontmatter)
+    row.pop("is_tip", None)
+    return {"member": member, **row}

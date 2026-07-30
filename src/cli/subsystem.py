@@ -12,7 +12,11 @@ import pathlib
 import click
 
 from chunks import Chunks
-from external_refs import strip_artifact_path_prefix
+from external_refs import (
+    is_external_artifact,
+    load_external_ref,
+    strip_artifact_path_prefix,
+)
 from subsystems import Subsystems
 from models import SubsystemStatus, ArtifactType
 from task import (
@@ -32,7 +36,11 @@ from cli.formatters import (
     artifact_to_json_dict,
     format_grouped_artifact_list,
     format_grouped_artifact_list_json,
+    format_workspace_artifact_row,
+    workspace_artifact_json_row,
 )
+from cli.workspace_listing import load_workspace_or_exit, walk_listable_members
+from interest import summarize_pointer_error
 
 
 # Chunk: docs/chunks/subsystem_cli_scaffolding - CLI command group for subsystem commands
@@ -50,12 +58,31 @@ def subsystem():
 # Chunk: docs/chunks/subsystem_cli_scaffolding - ve subsystem list command - displays subsystems with status
 @subsystem.command("list")
 @click.option("--json", "json_output", is_flag=True, help="Output in JSON format")
+@click.option(
+    "--workspace",
+    "workspace_flag",
+    is_flag=True,
+    help="Aggregate across every VE tree named by the workspace manifest, "
+    "labeling each row with the tree that owns it.",
+)
 @click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=".")
 # Chunk: docs/chunks/cli_exit_codes - Exit code 0 for empty subsystem list results
 # Chunk: docs/chunks/cli_json_output - JSON output for artifact list commands
-def list_subsystems(json_output, project_dir):
-    """List all subsystems."""
+# Chunk: docs/chunks/federation_reverse_interest - --workspace aggregation across member trees
+def list_subsystems(json_output, workspace_flag, project_dir):
+    """List all subsystems.
+
+    Workspace mode: --workspace lists the subsystems of every tree named by the
+    nearest `.ve-workspace.yaml`, addressed as `<member>::docs/subsystems/<name>`.
+    A subsystem stays owned by the tree whose code its invariants govern; this is
+    how the whole workspace's subsystems become visible without moving any of them.
+    """
     from artifact_ordering import ArtifactIndex
+
+    # Chunk: docs/chunks/federation_reverse_interest - Workspace mode owns its own routing
+    if workspace_flag:
+        _list_workspace_subsystems(project_dir, json_output)
+        return
 
     # Chunk: docs/chunks/cli_task_context_dedup - Using handle_task_context for routing
     if handle_task_context(project_dir, lambda: _list_task_subsystems(project_dir, json_output)):
@@ -92,6 +119,94 @@ def list_subsystems(json_output, project_dir):
             status = frontmatter.status.value if frontmatter else "UNKNOWN"
             tip_indicator = " *" if subsystem_name in tips else ""
             click.echo(f"docs/subsystems/{subsystem_name} [{status}]{tip_indicator}")
+
+
+# Chunk: docs/chunks/federation_reverse_interest - Aggregated subsystem listing across member trees
+def _list_workspace_subsystems(project_dir: pathlib.Path, json_output: bool = False):
+    """List the subsystems of every workspace member, labeled with the owning tree.
+
+    Read-only by construction: directories are enumerated rather than ordered
+    through `ArtifactIndex`, so browsing a workspace never writes an ordering
+    index into its member trees. Rows are therefore alphabetical per tree rather
+    than causal - causal order is a per-tree DAG property and does not merge.
+
+    Args:
+        project_dir: Directory to find the workspace manifest from.
+        json_output: If True, output in JSON format.
+    """
+    ws = load_workspace_or_exit(project_dir)
+
+    results: list[dict] = []
+    rows: list[str] = []
+
+    for member, member_root in walk_listable_members(ws):
+        subsystems_mgr = Subsystems(member_root)
+        for subsystem_name in sorted(subsystems_mgr.enumerate_artifacts()):
+            subsystem_path = member_root / "docs" / "subsystems" / subsystem_name
+
+            if is_external_artifact(subsystem_path, ArtifactType.SUBSYSTEM):
+                try:
+                    external_ref = load_external_ref(subsystem_path)
+                except Exception as exc:
+                    detail = summarize_pointer_error(exc)
+                    rows.append(
+                        format_workspace_artifact_row(
+                            member.name, "subsystems", subsystem_name,
+                            f"PARSE ERROR: {detail}",
+                        )
+                    )
+                    results.append({
+                        "name": subsystem_name,
+                        "member": member.name,
+                        "status": "PARSE_ERROR",
+                        "error": detail,
+                    })
+                    continue
+                rows.append(
+                    format_workspace_artifact_row(
+                        member.name,
+                        "subsystems",
+                        subsystem_name,
+                        f"EXTERNAL: {external_ref.target_display}",
+                    )
+                )
+                results.append({
+                    "name": subsystem_name,
+                    "member": member.name,
+                    "status": "EXTERNAL",
+                    "repo": external_ref.repo,
+                    "tree": external_ref.tree,
+                    "why": external_ref.why,
+                    "artifact_id": external_ref.artifact_id,
+                })
+                continue
+
+            frontmatter = subsystems_mgr.parse_subsystem_frontmatter(subsystem_name)
+            status = frontmatter.status.value if frontmatter else "UNKNOWN"
+            rows.append(
+                format_workspace_artifact_row(
+                    member.name, "subsystems", subsystem_name, status
+                )
+            )
+            if frontmatter:
+                results.append(
+                    workspace_artifact_json_row(member.name, subsystem_name, frontmatter)
+                )
+            else:
+                results.append(
+                    {"name": subsystem_name, "member": member.name, "status": "UNKNOWN"}
+                )
+
+    if json_output:
+        click.echo(json.dumps(results, indent=2))
+        return
+
+    if not rows:
+        click.echo(f"No subsystems found in workspace {ws.root}")
+        raise SystemExit(0)
+
+    for row in rows:
+        click.echo(row)
 
 
 # Chunk: docs/chunks/cli_json_output - JSON output for task context subsystem listing

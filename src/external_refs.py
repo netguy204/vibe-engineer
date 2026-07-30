@@ -319,3 +319,67 @@ def create_external_yaml(
         yaml.dump(data, f, default_flow_style=False)
 
     return external_yaml_path
+
+
+# Subsystem: docs/subsystems/cross_repo_operations - Intra-workspace addressing flavor
+# Chunk: docs/chunks/federation_peer_refs - Peer pointer creation
+def create_peer_yaml(
+    project_path: Path,
+    short_name: str,
+    member: str,
+    external_artifact_id: str,
+    artifact_type: ArtifactType,
+    why: str | None = None,
+    created_after: list[str] | None = None,
+) -> Path:
+    """Create a peer (intra-workspace) external.yaml in a project's artifact directory.
+
+    A peer pointer names a workspace member instead of a repository. There is no
+    `track`: the target lives in the same working copy, so it is at the same
+    commit as the tree pointing at it by construction.
+
+    The pointer is validated as an `ExternalArtifactRef` before it is written, so
+    a malformed member name or interest note cannot reach disk.
+
+    Args:
+        project_path: Path to the *pointing* project directory (the tree that
+            expresses interest).
+        short_name: Local artifact directory name for the pointer.
+        member: Workspace member name owning the target artifact.
+        external_artifact_id: Artifact ID inside the member's tree.
+        artifact_type: Type of artifact.
+        why: Optional one-line note recording what this tree depends on.
+        created_after: Local causal ordering, as for repo-based pointers.
+
+    Returns:
+        Path to the created external.yaml file.
+
+    Raises:
+        ValidationError: If the resulting reference would be invalid.
+    """
+    ref = ExternalArtifactRef(
+        artifact_type=artifact_type,
+        artifact_id=external_artifact_id,
+        tree=member,
+        why=why,
+        created_after=created_after or [],
+    )
+
+    artifact_dir = project_path / "docs" / ARTIFACT_DIR_NAME[artifact_type] / short_name
+    artifact_dir.mkdir(parents=True, exist_ok=True)
+
+    external_yaml_path = artifact_dir / "external.yaml"
+    data: dict = {
+        "artifact_type": ref.artifact_type.value,
+        "artifact_id": ref.artifact_id,
+        "tree": ref.tree,
+    }
+    if ref.why:
+        data["why"] = ref.why
+    if ref.created_after:
+        data["created_after"] = ref.created_after
+
+    with open(external_yaml_path, "w") as f:
+        yaml.dump(data, f, default_flow_style=False)
+
+    return external_yaml_path

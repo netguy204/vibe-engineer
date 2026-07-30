@@ -44,7 +44,14 @@ from cli.formatters import (
     format_grouped_artifact_list,
     format_grouped_artifact_list_json,
     format_chunk_list_entry,
+    format_workspace_artifact_row,
+    workspace_artifact_json_row,
 )
+from cli.workspace_listing import (
+    load_workspace_or_exit,
+    walk_listable_members,
+)
+from interest import summarize_pointer_error
 
 
 @click.group()
@@ -278,6 +285,13 @@ def _start_task_chunks(
     help="Show only IMPLEMENTING chunks (shortcut for --status IMPLEMENTING)",
 )
 @click.option("--json", "json_output", is_flag=True, help="Output in JSON format")
+@click.option(
+    "--workspace",
+    "workspace_flag",
+    is_flag=True,
+    help="Aggregate across every VE tree named by the workspace manifest, "
+    "labeling each row with the tree that owns it.",
+)
 @click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=".")
 # Chunk: docs/chunks/artifact_list_ordering - CLI command with tip indicator display using ArtifactIndex
 # Chunk: docs/chunks/chunk_list_command-ve-002 - CLI command ve chunk list with --latest, --last-active, and --project-dir options
@@ -288,10 +302,16 @@ def _start_task_chunks(
 # Chunk: docs/chunks/cli_exit_codes - Exit code 0 for empty chunk list results
 # Chunk: docs/chunks/cli_json_output - JSON output for artifact list commands
 # Chunk: docs/chunks/future_chunk_creation - CLI command showing status, --latest uses get_current_chunk to find IMPLEMENTING chunk
-def list_chunks(current, last_active, recent, status_filter, future_flag, active_flag, implementing_flag, json_output, project_dir):
+# Chunk: docs/chunks/federation_reverse_interest - --workspace aggregation across member trees
+def list_chunks(current, last_active, recent, status_filter, future_flag, active_flag, implementing_flag, json_output, workspace_flag, project_dir):
     """List all chunks.
 
     Lists chunks from docs/chunks/. Task context lists from task-scoped storage.
+
+    Workspace mode: --workspace lists the chunks of every tree named by the
+    nearest `.ve-workspace.yaml`, one row per chunk, addressed as
+    `<member>::docs/chunks/<name>`. Rows carry no tip indicator and no causal
+    ordering: both describe a single tree's DAG and do not aggregate.
 
     Status filtering: Use --status to filter by chunk lifecycle state.
     Multiple statuses can be specified with multiple --status options or
@@ -342,6 +362,24 @@ def list_chunks(current, last_active, recent, status_filter, future_flag, active
             err=True,
         )
         raise SystemExit(1)
+
+    # Chunk: docs/chunks/federation_reverse_interest - Workspace mode owns its own routing
+    # A cursor into one tree's history ("the current chunk") has no aggregate
+    # answer, so refuse rather than silently pick a tree. Status filters do
+    # aggregate - "what is queued anywhere?" is the point of the mode.
+    if workspace_flag:
+        if exclusive_count > 0:
+            click.echo(
+                "Error: --workspace is mutually exclusive with --current, "
+                "--last-active, and --recent: those name a position in one tree's "
+                "history, which does not aggregate across trees.",
+                err=True,
+            )
+            raise SystemExit(1)
+        # Workspace membership is defined by the manifest, not by a task config,
+        # so workspace mode does not consult task context.
+        _list_workspace_chunks(status_set, project_dir, json_output)
+        return
 
     # Chunk: docs/chunks/cli_decompose - Using handle_task_context for routing
     if handle_task_context(
@@ -430,7 +468,10 @@ def list_chunks(current, last_active, recent, status_filter, future_flag, active
                     results.append({
                         "name": chunk_name,
                         "status": "EXTERNAL",
+                        # Chunk: docs/chunks/federation_peer_refs - Both target flavors are reported
                         "repo": external_ref.repo,
+                        "tree": external_ref.tree,
+                        "why": external_ref.why,
                         "artifact_id": external_ref.artifact_id,
                         "track": external_ref.track,
                         "is_tip": is_tip,
@@ -663,6 +704,125 @@ def _auto_demote_if_eligible(context, chunk_name):
         click.echo(
             f"Note: external copy of '{chunk_name}' has no remaining dependents"
         )
+
+
+# Chunk: docs/chunks/federation_reverse_interest - Aggregated chunk listing across member trees
+def _list_workspace_chunks(
+    status_set: set[ChunkStatus] | None,
+    project_dir: pathlib.Path,
+    json_output: bool = False,
+):
+    """List the chunks of every workspace member, labeled with the owning tree.
+
+    Discovery in a federated repository comes from aggregation: the owning tree
+    keeps its chunks, and this walks the manifest to make them all visible at
+    once. Rows are qualified references, so what is printed is also an address.
+
+    Args:
+        status_set: If provided, filter to only chunks with matching status.
+        project_dir: Directory to find the workspace manifest from.
+        json_output: If True, output in JSON format.
+    """
+    ws = load_workspace_or_exit(project_dir)
+
+    results: list[dict] = []
+    rows: list[str] = []
+
+    for member, member_root in walk_listable_members(ws):
+        chunks = Chunks(member_root)
+        for chunk_name in sorted(chunks.enumerate_artifacts()):
+            chunk_path = member_root / "docs" / "chunks" / chunk_name
+
+            if is_external_artifact(chunk_path, ArtifactType.CHUNK):
+                # A pointer has no lifecycle status of its own, so a status
+                # filter excludes it, exactly as in single-tree mode.
+                if status_set is not None:
+                    continue
+                try:
+                    external_ref = load_external_ref(chunk_path)
+                except Exception as exc:
+                    # One unreadable pointer in one of many trees must not end
+                    # the listing; report it in place and keep walking.
+                    detail = summarize_pointer_error(exc)
+                    rows.append(
+                        format_workspace_artifact_row(
+                            member.name, "chunks", chunk_name, f"PARSE ERROR: {detail}"
+                        )
+                    )
+                    results.append({
+                        "name": chunk_name,
+                        "member": member.name,
+                        "status": "PARSE_ERROR",
+                        "error": detail,
+                    })
+                    continue
+                rows.append(
+                    format_workspace_artifact_row(
+                        member.name,
+                        "chunks",
+                        chunk_name,
+                        f"EXTERNAL: {external_ref.target_display}",
+                    )
+                )
+                results.append({
+                    "name": chunk_name,
+                    "member": member.name,
+                    "status": "EXTERNAL",
+                    "repo": external_ref.repo,
+                    "tree": external_ref.tree,
+                    "why": external_ref.why,
+                    "artifact_id": external_ref.artifact_id,
+                    "track": external_ref.track,
+                })
+                continue
+
+            frontmatter, errors = chunks.parse_chunk_frontmatter_with_errors(chunk_name)
+            if frontmatter:
+                if status_set is not None and frontmatter.status not in status_set:
+                    continue
+                rows.append(
+                    format_workspace_artifact_row(
+                        member.name, "chunks", chunk_name, frontmatter.status.value
+                    )
+                )
+                results.append(
+                    workspace_artifact_json_row(member.name, chunk_name, frontmatter)
+                )
+                continue
+
+            if status_set is not None:
+                continue
+            status_display = f"PARSE ERROR: {errors[0]}" if errors else "UNKNOWN"
+            rows.append(
+                format_workspace_artifact_row(
+                    member.name, "chunks", chunk_name, status_display
+                )
+            )
+            entry = {
+                "name": chunk_name,
+                "member": member.name,
+                "status": "PARSE_ERROR" if errors else "UNKNOWN",
+            }
+            if errors:
+                entry["error"] = errors[0]
+            results.append(entry)
+
+    if json_output:
+        click.echo(json.dumps(results, indent=2))
+        return
+
+    if not rows:
+        if status_set is not None:
+            status_names = ", ".join(s.value for s in status_set)
+            click.echo(
+                f"No chunks found in workspace {ws.root} matching status: {status_names}"
+            )
+        else:
+            click.echo(f"No chunks found in workspace {ws.root}")
+        raise SystemExit(0)
+
+    for row in rows:
+        click.echo(row)
 
 
 # Chunk: docs/chunks/chunk_list_repo_source - Format output as {external_repo}::docs/chunks/{chunk_name} in --latest mode
