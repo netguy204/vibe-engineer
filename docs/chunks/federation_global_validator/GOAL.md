@@ -6,7 +6,43 @@ code_paths:
   - src/workspace_validation.py
   - src/cli/workspace.py
   - tests/test_workspace_validation.py
-code_references: []
+code_references:
+  - ref: src/workspace_validation.py
+    implements: "Workspace-wide reference validation; documents the governing-tree vs member-tree predicate reconciliation and the two coverage limits"
+  - ref: src/workspace_validation.py#FixClass
+    implements: "The six machine-readable fix classes, in report order"
+  - ref: src/workspace_validation.py#ValidationDefect
+    implements: "One defect: path:line, the reference as written, a fix class, and candidate targets"
+  - ref: src/workspace_validation.py#CandidateTarget
+    implements: "Candidate target carrying both member name and path, so an unregistered tree is distinguishable from a qualifiable one"
+  - ref: src/workspace_validation.py#UnverifiedReference
+    implements: "References deliberately not resolved offline (org/repo targets), so a clean run is never read as total coverage"
+  - ref: src/workspace_validation.py#ValidationReport
+    implements: "The whole-run report: ok verdict, grouping by fix class, and the JSON form the validate-fix skill consumes"
+  - ref: src/workspace_validation.py#TreeIndex
+    implements: "Per-tree artifact index; pointer stubs count as present targets"
+  - ref: src/workspace_validation.py#index_tree
+    implements: "Indexing one tree's artifact directories"
+  - ref: src/workspace_validation.py#enumerate_workspace_files
+    implements: "Deduplicated union of workspace-root and per-member enumeration: docs-tree-less packages are first-class and every file is read once"
+  - ref: src/workspace_validation.py#_symbol_is_absent
+    implements: "Conservative symbol existence check for frontmatter code_references"
+  - ref: src/workspace_validation.py#_Validator::check_bare_reference
+    implements: "Classes 1 and 2: bare refs against the file's governing tree, including files with no governing tree at all"
+  - ref: src/workspace_validation.py#_Validator::check_member_reference
+    implements: "Classes 3 and 4 for member-qualified references"
+  - ref: src/workspace_validation.py#_Validator::check_pointer
+    implements: "Class 3/4 for external.yaml pointers, reusing resolve_peer_pointer as the resolution authority"
+  - ref: src/workspace_validation.py#_Validator::check_code_references
+    implements: "Class 6: frontmatter code_references whose file or symbol is gone"
+  - ref: src/workspace_validation.py#validate_workspace
+    implements: "Validation entry point returning a deterministic report"
+  - ref: src/cli/workspace.py#validate
+    implements: "`ve workspace validate` with --format text|json and a CI-gateable exit code"
+  - ref: src/cli/workspace.py#_render_report
+    implements: "Report rendering grouped by fix class"
+  - ref: tests/test_workspace_validation.py
+    implements: "Per-class tests, boundary cases, and the case-study-shaped fixture"
 narrative: monorepo_federation
 investigation: null
 subsystems: []

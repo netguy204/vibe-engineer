@@ -9,7 +9,9 @@ workspace. That option is deliberately distinct from `--project-dir`, which
 identifies a single tree rather than the workspace containing many.
 """
 
+import json
 import pathlib
+import textwrap
 
 import click
 
@@ -29,6 +31,7 @@ from workspace import (
     write_manifest,
 )
 from models.workspace import WorkspaceManifest
+from workspace_validation import ValidationReport, validate_workspace
 
 
 workspace_dir_option = click.option(
@@ -182,3 +185,116 @@ def init(scan, exclude, yes, workspace_dir):
     )
     write_manifest(root, manifest)
     click.echo(f"Created {root / WORKSPACE_MANIFEST_NAME} with {len(candidates)} member(s).")
+
+
+# Chunk: docs/chunks/federation_global_validator - Coverage caveats printed with every report
+# Stated on every run, clean or not. The case study's damage was silent
+# misresolution, so a report that implied total coverage would recreate the
+# failure it exists to prevent.
+SCAN_CAVEAT = (
+    "Note: only backreference comments starting at column 0 are scanned, so "
+    "indented\n      comments inside classes and functions are invisible to this "
+    "report. A clean\n      run means every column 0 reference resolves, not every "
+    "reference."
+)
+
+
+# Chunk: docs/chunks/federation_global_validator - Human-readable report rendering
+def _render_report(report: ValidationReport) -> None:
+    """Print a validation report grouped by fix class."""
+    click.echo(f"Workspace: {report.workspace_root}")
+    click.echo(f"Members:   {', '.join(report.members) or '(none)'}")
+    click.echo(
+        f"Scanned {report.files_scanned} file(s), {report.references_checked} "
+        f"reference(s), {report.artifacts_scanned} artifact(s), "
+        f"{report.pointers_checked} pointer(s)."
+    )
+
+    grouped = report.by_fix_class()
+    for fix_class, defects in grouped.items():
+        click.echo(f"\n{fix_class.value} ({len(defects)})")
+        for defect in defects:
+            click.echo(f"  {defect.location}")
+            click.echo(f"    ref: {defect.reference}")
+            # Wrapped: on a monorepo this report is long, and a defect whose
+            # explanation runs off the terminal is a defect nobody reads. Long
+            # words are never broken — a split path or qualifier is not
+            # copy-pasteable, which is the whole point of printing it.
+            click.echo(
+                textwrap.fill(
+                    defect.message,
+                    width=84,
+                    initial_indent="    ",
+                    subsequent_indent="    ",
+                    break_long_words=False,
+                    break_on_hyphens=False,
+                )
+            )
+
+    if report.manifest_errors:
+        click.echo(f"\nmanifest ({len(report.manifest_errors)})")
+        for message in report.manifest_errors:
+            click.echo(f"  {message}")
+
+    click.echo("")
+    if report.defects:
+        click.echo(
+            f"{len(report.defects)} reference defect(s) in {len(grouped)} fix class(es)."
+        )
+    elif not report.manifest_errors:
+        click.echo("No reference defects found.")
+
+    if report.unverified:
+        click.echo(
+            f"{len(report.unverified)} reference(s) not verified: cross-repository "
+            f"targets are not resolved offline."
+        )
+
+    if report.unregistered_trees:
+        click.echo(
+            f"Note: {len(report.unregistered_trees)} VE tree(s) are not workspace "
+            f"members: {', '.join(report.unregistered_trees)}.\n"
+            f"      Their references resolve, but nothing can be qualified against "
+            f"them until\n      you `ve workspace add` them."
+        )
+
+    click.echo(SCAN_CAVEAT)
+
+
+# Chunk: docs/chunks/federation_global_validator - ve workspace validate
+@workspace.command("validate")
+@click.option(
+    "--format",
+    "output_format",
+    type=click.Choice(["text", "json"]),
+    default="text",
+    help="Output format. `json` is the machine-readable form the validate-fix "
+         "skill consumes.",
+)
+@workspace_dir_option
+def validate(output_format, workspace_dir):
+    """Validate every reference in the workspace and report all defects.
+
+    Walks every source file in the workspace and every registered member's
+    artifacts, reporting each defect with its `path:line`, the failing
+    reference, and a fix class: unresolvable-bare, misrouted-bare,
+    unknown-qualifier, missing-target, malformed-qualifier, or
+    unresolvable-frontmatter. Exits nonzero on any defect, so CI can gate on it.
+
+    Two limits are deliberate. Only backreference comments starting at column 0
+    are scanned, so indented comments are not covered — a clean run means every
+    column 0 reference resolves, not every reference. And `org/repo` targets are
+    reported as unverified rather than checked, because resolving them needs
+    network or cache state, and a gate whose verdict depends on a warm cache is
+    not a gate.
+    """
+    ws = _load_or_exit(workspace_dir)
+    report = validate_workspace(ws)
+
+    if output_format == "json":
+        click.echo(json.dumps(report.to_dict(), indent=2))
+    else:
+        _render_report(report)
+
+    if not report.ok:
+        raise SystemExit(1)
