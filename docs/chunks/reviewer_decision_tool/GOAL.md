@@ -16,7 +16,7 @@ code_references:
     implements: "Extended with review_decision field for captured tool call data"
   - ref: src/orchestrator/models.py#WorkUnit
     implements: "Extended with review_nudge_count field tracking nudge attempts"
-  - ref: src/orchestrator/agent.py#create_review_decision_hook
+  - ref: src/orchestrator/backends/claude.py#create_review_decision_hook
     implements: "PreToolUse hook that intercepts ReviewDecision tool calls and captures decision data"
   - ref: src/orchestrator/agent.py#AgentRunner::run_phase
     implements: "Updated to accept review_decision_callback for REVIEW phase tool interception"

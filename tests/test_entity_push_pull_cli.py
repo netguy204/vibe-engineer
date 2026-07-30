@@ -1,8 +1,10 @@
 """CLI integration tests for entity push, pull, and set-origin commands.
 
 # Chunk: docs/chunks/entity_push_pull - Push/pull/set-origin CLI integration tests
+# Chunk: docs/chunks/entity_worktree_attach - Helpers rewritten to use worktree-based attach
 """
 
+import os
 import subprocess
 from pathlib import Path
 
@@ -10,6 +12,7 @@ import pytest
 from click.testing import CliRunner
 
 from cli.entity import entity
+from cli.entity_worktree import do_attach
 from entity_repo import create_entity_repo
 from conftest import make_ve_initialized_git_repo
 
@@ -28,11 +31,27 @@ def _git(path: Path, *args: str) -> subprocess.CompletedProcess:
     )
 
 
-def make_entity_with_project(tmp_path: Path, name: str = "my-entity") -> tuple[Path, Path, Path]:
-    """Create a project with an entity submodule attached, plus a bare origin.
+def _write_config(
+    tmp_path: Path, *, entities_dir: Path, git_base: str,
+) -> Path:
+    """Write a temporary ve-config.toml. Caller passes config_path to attach."""
+    cfg = tmp_path / "ve-config.toml"
+    cfg.write_text(
+        f'entities_dir = "{entities_dir}"\n'
+        f'git_base = "{git_base}"\n'
+    )
+    return cfg
 
-    The entity submodule has its own origin configured, simulating a real
-    deployment where the entity was cloned from a hosted origin.
+
+def make_entity_with_project(
+    tmp_path: Path, name: str = "my-entity",
+) -> tuple[Path, Path, Path]:
+    """Create a project with an entity attached as a worktree, plus a bare origin.
+
+    The canonical clone is attached as a worktree of a bare origin so push
+    and pull both work end-to-end. The CLI is exercised here through ``do_attach``
+    (with a per-test config) rather than ``ve entity attach`` because these
+    tests target push/pull, not attach itself.
 
     Returns:
         (project_dir, entity_path, bare_origin)
@@ -42,36 +61,49 @@ def make_entity_with_project(tmp_path: Path, name: str = "my-entity") -> tuple[P
     _git(entity_src, "config", "user.email", "test@test.com")
     _git(entity_src, "config", "user.name", "Test User")
 
-    bare_origin = tmp_path / f"{name}-origin.git"
+    bare_origin = tmp_path / f"{name}.git"
     result = subprocess.run(
         ["git", "clone", "--bare", str(entity_src), str(bare_origin)],
         capture_output=True, text=True,
     )
     assert result.returncode == 0, f"bare clone failed: {result.stderr}"
 
-    # Create project and attach entity as submodule
+    # Operator config: git_base points at tmp_path so {git_base}/{name}.git
+    # resolves to the bare_origin we just made.
+    entities_dir = tmp_path / "Entities"
+    cfg = _write_config(tmp_path, entities_dir=entities_dir, git_base=str(tmp_path))
+
+    # Project repo
     project = tmp_path / "project"
     make_ve_initialized_git_repo(project)
 
-    subprocess.run(
-        ["git", "-C", str(project), "submodule", "add",
-         str(bare_origin), f".entities/{name}"],
-        capture_output=True, text=True,
-        env={**__import__("os").environ,
-             "GIT_CONFIG_COUNT": "1",
-             "GIT_CONFIG_KEY_0": "protocol.file.allow",
-             "GIT_CONFIG_VALUE_0": "always"},
-    )
+    # Attach via worktree pathway
+    result = do_attach(name, project, config_path=cfg)
+    entity_path = result.entity_path
 
-    entity_path = project / ".entities" / name
+    # Configure the worktree's identity so commits work
     _git(entity_path, "config", "user.email", "test@test.com")
     _git(entity_path, "config", "user.name", "Test User")
+
+    # The worktree-attached entity sits on a project-scoped local branch
+    # (e.g. ve-attach/project) but the bare origin only has 'main'.
+    # Configure tracking so push_entity/pull_entity resolve origin/main as
+    # the upstream — matches the real-world deployment shape where every
+    # project's worktree pushes to the entity's main.
+    _git(entity_path, "branch", "--set-upstream-to=origin/main")
 
     return project, entity_path, bare_origin
 
 
-def make_entity_submodule_no_origin(tmp_path: Path, name: str = "my-entity") -> tuple[Path, Path]:
+def make_entity_submodule_no_origin(
+    tmp_path: Path, name: str = "my-entity",
+) -> tuple[Path, Path]:
     """Create project with a plain entity directory (no git remote).
+
+    Legacy name retained to minimize test diffs — no submodule is involved.
+    The entity is a standalone repo created in-place at .entities/<name>
+    with no remote origin configured, which is the relevant state for
+    "push without origin" / "set-origin then push" tests.
 
     Returns:
         (project_dir, entity_path)
@@ -81,7 +113,7 @@ def make_entity_submodule_no_origin(tmp_path: Path, name: str = "my-entity") -> 
     entities_dir = project / ".entities"
     entities_dir.mkdir()
 
-    # Create entity directly in .entities/ (no submodule, no remote)
+    # Create entity directly in .entities/ (no attach, no remote)
     entity_path = create_entity_repo(entities_dir, name)
     _git(entity_path, "config", "user.email", "test@test.com")
     _git(entity_path, "config", "user.name", "Test User")
@@ -169,7 +201,7 @@ class TestPullCLI:
     """Tests for 'entity pull' command."""
 
     def _setup_with_second_clone(self, tmp_path: Path) -> tuple[Path, Path, Path]:
-        """Set up project, entity submodule, bare origin, and a second clone.
+        """Set up project, attached entity, bare origin, and a second clone.
 
         The second clone can push new commits to origin that can then be pulled.
 
@@ -177,8 +209,10 @@ class TestPullCLI:
         """
         project, entity_path, bare_origin = make_entity_with_project(tmp_path)
 
-        # Push current entity state to origin
-        _git(entity_path, "push", "origin", "main")
+        # Push current entity state to origin's main branch. The worktree's
+        # local branch is project-scoped (ve-attach/<project>), so push HEAD
+        # explicitly to main rather than relying on a matching branch name.
+        _git(entity_path, "push", "origin", "HEAD:main")
 
         # Create second clone for pushing new commits
         second_clone = tmp_path / "second-clone"

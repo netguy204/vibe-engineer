@@ -1,5 +1,6 @@
 # Subsystem: docs/subsystems/orchestrator - Parallel agent orchestration
 # Chunk: docs/chunks/test_file_split - CLI tail command tests
+# Chunk: docs/chunks/backend_logparse - Updated to JSON-line log format
 """Tests for the orchestrator CLI tail command.
 
 Tests the CLI layer using Click's test runner. These tests mock the daemon
@@ -15,6 +16,11 @@ from ve import cli
 from orchestrator.models import OrchestratorState, WorkUnit, WorkUnitPhase, WorkUnitStatus
 from orchestrator.daemon import DaemonError
 from orchestrator.client import OrchestratorClientError, DaemonNotRunningError
+
+
+def _json_line(type: str, timestamp: str = "2026-01-31T14:30:00.000000+00:00", **fields) -> str:
+    """Build a single JSON log line."""
+    return json.dumps({"timestamp": timestamp, "type": type, **fields})
 
 
 @pytest.fixture
@@ -58,14 +64,17 @@ class TestOrchTail:
         chunk_dir.mkdir(parents=True)
         (chunk_dir / "GOAL.md").write_text("# Goal")
 
-        # Create log directory and file
+        # Create log directory and file with JSON lines
         log_dir = tmp_path / ".ve" / "chunks" / "my_chunk" / "log"
         log_dir.mkdir(parents=True)
         log_file = log_dir / "implement.txt"
         log_file.write_text(
-            "[2026-01-31T14:30:00.000000+00:00] SystemMessage(subtype='init', data={})\n"
-            "[2026-01-31T14:30:01.000000+00:00] AssistantMessage(content=[ToolUseBlock(id='t1', name='Bash', input={'command': 'ls', 'description': 'List files'})])\n"
-            "[2026-01-31T14:30:02.000000+00:00] UserMessage(content=[ToolResultBlock(tool_use_id='t1', content='file1.txt', is_error=False)])\n"
+            _json_line("tool_call", "2026-01-31T14:30:01.000000+00:00",
+                       tool_id="t1", name="Bash",
+                       input={"command": "ls", "description": "List files"},
+                       description="List files") + "\n"
+            + _json_line("tool_result", "2026-01-31T14:30:02.000000+00:00",
+                         tool_use_id="t1", content="file1.txt", is_error=False) + "\n"
         )
 
         result = runner.invoke(
@@ -91,7 +100,7 @@ class TestOrchTail:
         log_dir.mkdir(parents=True)
         log_file = log_dir / "plan.txt"
         log_file.write_text(
-            "[2026-01-31T14:30:00.000000+00:00] SystemMessage(subtype='init', data={})\n"
+            _json_line("text", "2026-01-31T14:30:00.000000+00:00", text="Planning...") + "\n"
         )
 
         result = runner.invoke(
@@ -115,8 +124,11 @@ class TestOrchTail:
         log_dir.mkdir(parents=True)
         log_file = log_dir / "implement.txt"
         log_file.write_text(
-            "[2026-01-31T14:30:00.000000+00:00] SystemMessage(subtype='init', data={})\n"
-            "[2026-01-31T14:36:00.000000+00:00] ResultMessage(subtype='success', duration_ms=360000, duration_api_ms=300000, is_error=False, num_turns=20, session_id='abc', total_cost_usd=1.50, usage={}, result='Done')\n"
+            _json_line("result", "2026-01-31T14:36:00.000000+00:00",
+                       subtype="success", duration_ms=360000,
+                       total_cost_usd=1.50, num_turns=20,
+                       is_error=False, session_id="abc",
+                       result_text="Done") + "\n"
         )
 
         result = runner.invoke(
@@ -142,14 +154,20 @@ class TestOrchTail:
 
         # Plan phase
         (log_dir / "plan.txt").write_text(
-            "[2026-01-31T14:00:00.000000+00:00] SystemMessage(subtype='init', data={})\n"
-            "[2026-01-31T14:05:00.000000+00:00] ResultMessage(subtype='success', duration_ms=300000, duration_api_ms=250000, is_error=False, num_turns=10, session_id='abc', total_cost_usd=0.50, usage={}, result='Plan done')\n"
+            _json_line("text", "2026-01-31T14:00:00.000000+00:00", text="Planning") + "\n"
+            + _json_line("result", "2026-01-31T14:05:00.000000+00:00",
+                         subtype="success", duration_ms=300000,
+                         total_cost_usd=0.50, num_turns=10,
+                         is_error=False, result_text="Plan done") + "\n"
         )
 
         # Implement phase
         (log_dir / "implement.txt").write_text(
-            "[2026-01-31T14:10:00.000000+00:00] SystemMessage(subtype='init', data={})\n"
-            "[2026-01-31T14:30:00.000000+00:00] ResultMessage(subtype='success', duration_ms=1200000, duration_api_ms=1000000, is_error=False, num_turns=30, session_id='def', total_cost_usd=2.00, usage={}, result='Implement done')\n"
+            _json_line("text", "2026-01-31T14:10:00.000000+00:00", text="Implementing") + "\n"
+            + _json_line("result", "2026-01-31T14:30:00.000000+00:00",
+                         subtype="success", duration_ms=1200000,
+                         total_cost_usd=2.00, num_turns=30,
+                         is_error=False, result_text="Implement done") + "\n"
         )
 
         result = runner.invoke(
@@ -185,7 +203,7 @@ class TestOrchTail:
         log_dir = tmp_path / ".ve" / "chunks" / "my_chunk" / "log"
         log_dir.mkdir(parents=True)
         (log_dir / "implement.txt").write_text(
-            "[2026-01-31T14:30:00.000000+00:00] SystemMessage(subtype='init', data={})\n"
+            _json_line("text", "2026-01-31T14:30:00.000000+00:00", text="Working") + "\n"
         )
 
         # Use full path prefix

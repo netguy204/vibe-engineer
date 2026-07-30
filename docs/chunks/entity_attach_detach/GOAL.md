@@ -1,31 +1,14 @@
 ---
-status: ACTIVE
+status: HISTORICAL
 ticket: null
 parent_chunk: null
+superseded_by: entity_worktree_attach
 code_paths:
 - src/cli/entity.py
 - src/entity_repo.py
-- tests/test_entity_submodule.py
-- tests/test_entity_attach_detach_cli.py
 code_references:
 - ref: src/entity_repo.py#derive_entity_name_from_url
-  implements: "Derive entity name from repo URL or local path for attach command"
-- ref: src/entity_repo.py#AttachedEntityInfo
-  implements: "Data model for attached entity submodule info (name, remote_url, specialization, status)"
-- ref: src/entity_repo.py#attach_entity
-  implements: "Git submodule add lifecycle for attaching an entity repo to a project"
-- ref: src/entity_repo.py#detach_entity
-  implements: "Full submodule removal sequence (deinit, git rm, shutil.rmtree) for detaching an entity"
-- ref: src/entity_repo.py#list_attached_entities
-  implements: "List all attached entity submodules with status (clean/uncommitted/ahead/unknown)"
-- ref: src/entity_repo.py#_run_git_output
-  implements: "Git subprocess helper that returns stdout string, used by attach/detach/list operations"
-- ref: src/cli/entity.py#attach
-  implements: "CLI attach command wrapping attach_entity with name derivation and confirmation output"
-- ref: src/cli/entity.py#detach
-  implements: "CLI detach command wrapping detach_entity with --force flag support"
-- ref: src/cli/entity.py#list_entities
-  implements: "Enhanced list command showing attached entity submodules with status and remote URL"
+  implements: "Historical: derive entity name from a repo URL. Retained as a utility but no longer used by attach/detach since attach now takes a NAME, not a URL."
 narrative: null
 investigation: entity_wiki_memory
 subsystems: []

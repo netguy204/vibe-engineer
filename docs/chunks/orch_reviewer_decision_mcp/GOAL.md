@@ -9,15 +9,15 @@ code_paths:
 - tests/test_orchestrator_scheduler.py
 - tests/test_orchestrator_agent.py
 code_references:
-  - ref: src/orchestrator/agent.py#review_decision_tool
+  - ref: src/orchestrator/backends/claude.py#review_decision_tool
     implements: "ReviewDecision MCP tool defined via @tool decorator"
-  - ref: src/orchestrator/agent.py#create_orchestrator_mcp_server
+  - ref: src/orchestrator/backends/claude.py#create_orchestrator_mcp_server
     implements: "Creates MCP server with orchestrator tools for REVIEW phase"
   - ref: src/orchestrator/agent.py#AgentRunner::run_phase
     implements: "Main phase execution migrated from query() to ClaudeSDKClient"
   - ref: src/orchestrator/agent.py#AgentRunner::resume_for_active_status
     implements: "Session resume migrated from query() to ClaudeSDKClient"
-  - ref: src/orchestrator/agent.py#create_review_decision_hook
+  - ref: src/orchestrator/backends/claude.py#create_review_decision_hook
     implements: "Hook updated to match MCP tool naming convention (mcp__orchestrator__ReviewDecision)"
   - ref: tests/test_orchestrator_agent_review.py#TestMCPServerConfiguration
     implements: "Tests for MCP server configuration during REVIEW phase"

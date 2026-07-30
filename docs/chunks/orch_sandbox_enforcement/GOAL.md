@@ -7,11 +7,11 @@ code_paths:
 - tests/test_orchestrator_agent_callbacks.py
 - tests/test_orchestrator_agent_sandbox.py
 code_references:
-  - ref: src/orchestrator/agent.py#_is_sandbox_violation
+  - ref: src/orchestrator/backend.py#is_sandbox_violation
     implements: "Sandbox violation detection logic for cd and git commands"
-  - ref: src/orchestrator/agent.py#_merge_hooks
+  - ref: src/orchestrator/backends/claude.py#_merge_hooks
     implements: "Hook configuration merging for multiple PreToolUse handlers"
-  - ref: src/orchestrator/agent.py#create_sandbox_enforcement_hook
+  - ref: src/orchestrator/backends/claude.py#create_sandbox_enforcement_hook
     implements: "PreToolUse hook that blocks commands escaping worktree sandbox"
   - ref: src/orchestrator/agent.py#AgentRunner::__init__
     implements: "Store host_repo_path for sandbox enforcement"
@@ -20,7 +20,7 @@ code_references:
   - ref: src/orchestrator/agent.py#AgentRunner::resume_for_active_status
     implements: "Sandbox hook and git environment for resume operations"
   - ref: tests/test_orchestrator_agent_callbacks.py#TestSandboxViolationDetection
-    implements: "Unit tests for _is_sandbox_violation detection logic"
+    implements: "Unit tests for is_sandbox_violation detection logic"
   - ref: tests/test_orchestrator_agent_callbacks.py#TestMergeHooks
     implements: "Unit tests for hook configuration merging"
   - ref: tests/test_orchestrator_agent_sandbox.py#TestSandboxEnforcementHook

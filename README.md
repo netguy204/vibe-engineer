@@ -56,6 +56,36 @@ To uninstall:
 uv tool uninstall vibe-engineer
 ```
 
+### Upgrading from 0.x entities (pre-worktree)
+
+VE 1.0 attaches entities as **git worktrees** of a shared canonical clone
+in `~/Entities/<name>`. VE 0.x attached them as **git submodules**.
+The 1.0 attach code has no submodule code path: it cannot detect or
+upgrade in-place a 0.x submodule attachment.
+
+If you have any `.entities/<name>` directories created by VE 0.x, do this
+**before** upgrading `ve`:
+
+1. In each project, `ve entity list` to see what is attached, then
+   `ve entity detach <name>` (with your existing 0.x `ve`) for each one.
+   Commit the resulting `.gitmodules` deletion.
+2. Upgrade `ve` (e.g. `uv tool upgrade vibe-engineer`).
+3. Create `~/.ve-config.toml` once for this machine:
+   ```toml
+   entities_dir = "~/Entities"
+   git_base = "git@github.com:my-org"
+   ```
+4. In each project, run `ve entity attach <name>` to re-attach via the
+   worktree pathway. The canonical clone at `~/Entities/<name>` is
+   cloned on first use and shared across every project on this machine.
+
+If you skip step 1, VE 1.0 will refuse to clobber the pre-existing
+`.entities/<name>` directory at attach time — your old submodule sits
+untouched until you remove it by hand.
+
+For the full rationale and a script-friendly version, see
+[`docs/chunks/entity_worktree_attach/MIGRATION.md`](docs/chunks/entity_worktree_attach/MIGRATION.md).
+
 ### Claude Code Plugin
 
 This repository is also a Claude Code plugin marketplace. The plugin is the

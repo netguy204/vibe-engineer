@@ -9,9 +9,11 @@ code_references:
   - ref: src/board/client.py
     implements: "_RETRYABLE_ERRORS tuple extended with asyncio.TimeoutError for Python < 3.11 compatibility — ensures opening-handshake timeouts are caught by the retryable-error tuple on all supported Python versions"
   - ref: src/board/client.py#BoardClient::watch_with_reconnect
-    implements: "Opening-handshake timeout retry loop inside the StaleWatchError handler — handshake timeout increments attempt, backs off, and retries rather than propagating"
+    implements: "StaleWatchError handler — original retry loop introduced here,
+      superseded by docs/chunks/watch_handshake_stale_retry which unified both
+      branches through _connect_with_retry"
   - ref: src/board/client.py#BoardClient::watch_multi_with_reconnect
-    implements: "Same opening-handshake timeout retry loop in watch_multi_with_reconnect's StaleWatchError handler"
+    implements: "Same — superseded by docs/chunks/watch_handshake_stale_retry"
   - ref: tests/test_board_client.py#test_watch_with_reconnect_idle_handshake_timeout_retries
     implements: "Verifies watch_with_reconnect recovers from a handshake timeout on idle reconnect and delivers messages"
   - ref: tests/test_board_client.py#test_watch_multi_with_reconnect_idle_handshake_timeout_retries

@@ -27,7 +27,7 @@ from pathlib import Path
 from typing import Optional
 
 # Chunk: docs/chunks/reviewer_decision_tool - ReviewDecision tool for explicit review decisions
-from orchestrator.agent import AgentRunner, create_log_callback, create_review_decision_hook
+from orchestrator.agent import AgentRunner, create_log_callback
 from orchestrator.models import (
     AgentResult,
     ConflictVerdict,
@@ -1861,7 +1861,10 @@ def create_scheduler(
         base_branch=base_branch,
         task_info=task_info,
     )
-    agent_runner = AgentRunner(project_dir, config=config)
+    from orchestrator.backends import create_backend
+
+    backend = create_backend(config.backend)
+    agent_runner = AgentRunner(project_dir, config=config, backend=backend)
 
     return Scheduler(
         store=store,

@@ -28,8 +28,9 @@ from orchestrator.git_utils import GitError, get_current_branch
 # Chunk: docs/chunks/worktree_merge_extract - Import from merge module and re-export for backward compatibility
 # Chunk: docs/chunks/orch_merge_rebase_retry - Import is_merge_conflict_error for re-export
 from orchestrator.merge import WorktreeError, is_merge_conflict_error, merge_without_checkout
-# Chunk: docs/chunks/entity_worktree_support - Entity submodule lifecycle hooks for worktrees
-from entity_repo import init_entity_submodules_in_worktree, merge_entity_worktree_branches
+# Chunk: docs/chunks/entity_worktree_attach - Submodule-based entity lifecycle in worktrees
+# was deleted with the move to worktree-based attach; orchestrator worktrees no
+# longer auto-initialize entity attachments. See docs/chunks/entity_worktree_attach.
 
 if TYPE_CHECKING:
     from orchestrator.models import TaskContextInfo
@@ -461,9 +462,6 @@ class WorktreeManager:
             if result.returncode != 0:
                 raise WorktreeError(f"Failed to create worktree: {result.stderr}")
 
-        # Chunk: docs/chunks/entity_worktree_support - Initialize entity submodules in worktree
-        init_entity_submodules_in_worktree(worktree_path, chunk)
-
         # Chunk: docs/chunks/orch_merge_safety - Lock worktree to prevent pruning
         self._lock_worktree(worktree_path, self.project_dir)
 
@@ -531,9 +529,6 @@ class WorktreeManager:
                     f"Failed to recreate worktree from branch {branch}: {result.stderr}"
                 )
 
-        # Chunk: docs/chunks/entity_worktree_support - Initialize entity submodules in recreated worktree
-        init_entity_submodules_in_worktree(worktree_path, chunk)
-
         # Lock the worktree to prevent pruning
         self._lock_worktree(worktree_path, self.project_dir)
 
@@ -595,9 +590,6 @@ class WorktreeManager:
 
             # Chunk: docs/chunks/orch_merge_safety - Lock worktree to prevent pruning
             self._lock_worktree(repo_worktree_path, repo_path)
-
-            # Chunk: docs/chunks/entity_worktree_support - Initialize entity submodules per-repo worktree
-            init_entity_submodules_in_worktree(repo_worktree_path, chunk)
 
         # Set up agent environment symlinks
         self._setup_agent_environment_symlinks(work_dir)
@@ -1050,9 +1042,6 @@ class WorktreeManager:
         # Perform checkout-free merge
         self._merge_without_checkout(branch, base_branch, self.project_dir)
 
-        # Chunk: docs/chunks/entity_worktree_support - Merge entity worktree branches after chunk merge
-        merge_entity_worktree_branches(self.project_dir, chunk, self.get_worktree_path(chunk))
-
         # Delete the branch if requested
         if delete_branch:
             subprocess.run(
@@ -1135,10 +1124,6 @@ class WorktreeManager:
                     raise WorktreeError(f"in {repo_name}: {e}")
 
                 merged_repos.append((repo_path, base, old_sha))
-
-                # Chunk: docs/chunks/entity_worktree_support - Merge entity worktree branches per-repo
-                repo_worktree_path = self.get_work_directory(chunk) / repo_name
-                merge_entity_worktree_branches(repo_path, chunk, repo_worktree_path)
 
                 # Delete the branch if requested
                 if delete_branch:

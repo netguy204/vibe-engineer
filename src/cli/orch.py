@@ -506,6 +506,8 @@ def orch_prioritize(chunk, priority, json_output, project_dir):
 # Chunk: docs/chunks/orch_max_turns_config - CLI options for per-phase turn budgets
 @click.option("--max-turns-implement", type=int, help="Turn budget per IMPLEMENT/PLAN/COMPLETE/REVIEW phase (default: 100)")
 @click.option("--max-turns-complete", type=int, help="Turn budget for COMPLETE-phase status fixup resume (default: 20)")
+# Chunk: docs/chunks/backend_config - CLI option for backend selection
+@click.option("--backend", type=str, help="Agent backend name (default: claude)")
 # Chunk: docs/chunks/orch_scheduling - ve orch config CLI command
 @click.option("--json", "json_output", is_flag=True, help="Output in JSON format")
 @click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=None)
@@ -515,6 +517,7 @@ def orch_config(
     worktree_threshold,
     max_turns_implement,
     max_turns_complete,
+    backend,
     json_output,
     project_dir,
 ):
@@ -532,6 +535,7 @@ def orch_config(
             worktree_threshold,
             max_turns_implement,
             max_turns_complete,
+            backend,
         )
         if all(v is None for v in update_flags):
             # Get config
@@ -551,6 +555,9 @@ def orch_config(
                 body["max_turns_implement"] = max_turns_implement
             if max_turns_complete is not None:
                 body["max_turns_complete"] = max_turns_complete
+            # Chunk: docs/chunks/backend_config - Include backend in PATCH body
+            if backend is not None:
+                body["backend"] = backend
 
             result = client._request("PATCH", "/config", json=body)
 
@@ -565,6 +572,8 @@ def orch_config(
             # Chunk: docs/chunks/orch_max_turns_config - Display per-phase turn budgets
             click.echo(f"  max_turns_implement: {result.get('max_turns_implement', 100)}")
             click.echo(f"  max_turns_complete: {result.get('max_turns_complete', 20)}")
+            # Chunk: docs/chunks/backend_config - Display backend setting
+            click.echo(f"  backend: {result.get('backend', 'claude')}")
 
 
 # Chunk: docs/chunks/orch_attention_queue - ve orch attention CLI command showing attention queue

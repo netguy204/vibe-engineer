@@ -124,7 +124,7 @@ Multiple issues found.
         (chunk_dir / "REVIEW_FEEDBACK.md").write_text(feedback_content)
 
         MockClaudeSDKClient.reset()
-        with patch("orchestrator.agent.ClaudeSDKClient", MockClaudeSDKClient):
+        with patch("orchestrator.backends.claude.ClaudeSDKClient", MockClaudeSDKClient):
             await runner.run_phase(
                 chunk="test_chunk",
                 phase=WorkUnitPhase.IMPLEMENT,
@@ -160,7 +160,7 @@ Multiple issues found.
         chunk_dir.mkdir(parents=True)
 
         MockClaudeSDKClient.reset()
-        with patch("orchestrator.agent.ClaudeSDKClient", MockClaudeSDKClient):
+        with patch("orchestrator.backends.claude.ClaudeSDKClient", MockClaudeSDKClient):
             await runner.run_phase(
                 chunk="test_chunk",
                 phase=WorkUnitPhase.IMPLEMENT,
@@ -186,7 +186,7 @@ Multiple issues found.
         (chunk_dir / "REVIEW_FEEDBACK.md").write_text("# Some feedback")
 
         MockClaudeSDKClient.reset()
-        with patch("orchestrator.agent.ClaudeSDKClient", MockClaudeSDKClient):
+        with patch("orchestrator.backends.claude.ClaudeSDKClient", MockClaudeSDKClient):
             await runner.run_phase(
                 chunk="test_chunk",
                 phase=WorkUnitPhase.PLAN,
@@ -210,7 +210,7 @@ Multiple issues found.
         (chunk_dir / "REVIEW_FEEDBACK.md").write_text("# Review feedback here")
 
         MockClaudeSDKClient.reset()
-        with patch("orchestrator.agent.ClaudeSDKClient", MockClaudeSDKClient):
+        with patch("orchestrator.backends.claude.ClaudeSDKClient", MockClaudeSDKClient):
             await runner.run_phase(
                 chunk="test_chunk",
                 phase=WorkUnitPhase.IMPLEMENT,

@@ -12,13 +12,15 @@ from orchestrator.agent import (
     AgentRunnerError,
     PHASE_SKILL_FILES,
     create_log_callback,
+    _load_skill_content,
+)
+from orchestrator.backend import is_sandbox_violation
+from orchestrator.backends.claude import (
     create_question_intercept_hook,
     create_review_decision_hook,
     create_sandbox_enforcement_hook,
     create_orchestrator_mcp_server,
     review_decision_tool,
-    _load_skill_content,
-    _is_sandbox_violation,
     _merge_hooks,
 )
 from orchestrator.models import AgentResult, ReviewToolDecision, WorkUnitPhase
@@ -285,7 +287,7 @@ class TestRunPhaseWithReviewDecisionCallback:
         worktree_path = tmp_path / "worktree"
         worktree_path.mkdir()
 
-        from orchestrator.agent import ResultMessage
+        from orchestrator.backends.claude import ResultMessage
 
         mock_result = MagicMock(spec=ResultMessage)
         mock_result.result = "Success"
@@ -293,7 +295,7 @@ class TestRunPhaseWithReviewDecisionCallback:
         mock_result.session_id = None
 
         MockClient = create_mock_claude_sdk_client(messages=[mock_result])
-        with patch("orchestrator.agent.ClaudeSDKClient", MockClient):
+        with patch("orchestrator.backends.claude.ClaudeSDKClient", MockClient):
             # Provide a review_decision callback
             captured = []
             await runner.run_phase(
@@ -352,7 +354,7 @@ class TestRunPhaseWithReviewDecisionCallback:
                             await hook_handler(hook_input, None, {"signal": None})
 
                 # Simulate completion
-                from orchestrator.agent import ResultMessage
+                from orchestrator.backends.claude import ResultMessage
                 mock_result = MagicMock(spec=ResultMessage)
                 mock_result.result = "Review complete"
                 mock_result.is_error = False
@@ -360,7 +362,7 @@ class TestRunPhaseWithReviewDecisionCallback:
                 yield mock_result
 
         MockClaudeSDKClient.reset()
-        with patch("orchestrator.agent.ClaudeSDKClient", HookSimulatingMock):
+        with patch("orchestrator.backends.claude.ClaudeSDKClient", HookSimulatingMock):
             result = await runner.run_phase(
                 chunk="test_chunk",
                 phase=WorkUnitPhase.REVIEW,
@@ -400,7 +402,7 @@ class TestRunPhaseWithReviewDecisionCallback:
 
                 # Yield AssistantMessage with ReviewDecision ToolUseBlock
                 # This simulates what the real SDK sends when an MCP tool is called
-                from orchestrator.agent import AssistantMessage
+                from orchestrator.backends.claude import AssistantMessage
 
                 tool_use_block = MagicMock()
                 tool_use_block.name = "mcp__orchestrator__ReviewDecision"
@@ -416,7 +418,7 @@ class TestRunPhaseWithReviewDecisionCallback:
                 yield assistant_msg
 
                 # Simulate completion
-                from orchestrator.agent import ResultMessage
+                from orchestrator.backends.claude import ResultMessage
 
                 mock_result = MagicMock(spec=ResultMessage)
                 mock_result.result = "Review complete"
@@ -425,7 +427,7 @@ class TestRunPhaseWithReviewDecisionCallback:
                 yield mock_result
 
         MockClaudeSDKClient.reset()
-        with patch("orchestrator.agent.ClaudeSDKClient", MessageStreamCaptureMock):
+        with patch("orchestrator.backends.claude.ClaudeSDKClient", MessageStreamCaptureMock):
             result = await runner.run_phase(
                 chunk="test_chunk",
                 phase=WorkUnitPhase.REVIEW,
@@ -452,7 +454,7 @@ class TestRunPhaseWithReviewDecisionCallback:
         worktree_path = tmp_path / "worktree"
         worktree_path.mkdir()
 
-        from orchestrator.agent import ResultMessage
+        from orchestrator.backends.claude import ResultMessage
 
         mock_result = MagicMock(spec=ResultMessage)
         mock_result.result = "Success"
@@ -460,7 +462,7 @@ class TestRunPhaseWithReviewDecisionCallback:
         mock_result.session_id = None
 
         MockClient = create_mock_claude_sdk_client(messages=[mock_result])
-        with patch("orchestrator.agent.ClaudeSDKClient", MockClient):
+        with patch("orchestrator.backends.claude.ClaudeSDKClient", MockClient):
             await runner.run_phase(
                 chunk="test_chunk",
                 phase=WorkUnitPhase.REVIEW,
@@ -521,7 +523,7 @@ class TestMCPServerConfiguration:
         worktree_path = tmp_path / "worktree"
         worktree_path.mkdir()
 
-        from orchestrator.agent import ResultMessage
+        from orchestrator.backends.claude import ResultMessage
 
         mock_result = MagicMock(spec=ResultMessage)
         mock_result.result = "Success"
@@ -529,7 +531,7 @@ class TestMCPServerConfiguration:
         mock_result.session_id = None
 
         MockClient = create_mock_claude_sdk_client(messages=[mock_result])
-        with patch("orchestrator.agent.ClaudeSDKClient", MockClient):
+        with patch("orchestrator.backends.claude.ClaudeSDKClient", MockClient):
             await runner.run_phase(
                 chunk="test_chunk",
                 phase=WorkUnitPhase.REVIEW,
@@ -552,7 +554,7 @@ class TestMCPServerConfiguration:
         worktree_path = tmp_path / "worktree"
         worktree_path.mkdir()
 
-        from orchestrator.agent import ResultMessage
+        from orchestrator.backends.claude import ResultMessage
 
         mock_result = MagicMock(spec=ResultMessage)
         mock_result.result = "Success"
@@ -560,7 +562,7 @@ class TestMCPServerConfiguration:
         mock_result.session_id = None
 
         MockClient = create_mock_claude_sdk_client(messages=[mock_result])
-        with patch("orchestrator.agent.ClaudeSDKClient", MockClient):
+        with patch("orchestrator.backends.claude.ClaudeSDKClient", MockClient):
             await runner.run_phase(
                 chunk="test_chunk",
                 phase=WorkUnitPhase.PLAN,  # Not REVIEW

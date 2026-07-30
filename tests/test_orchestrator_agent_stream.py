@@ -12,13 +12,15 @@ from orchestrator.agent import (
     AgentRunnerError,
     PHASE_SKILL_FILES,
     create_log_callback,
+    _load_skill_content,
+)
+from orchestrator.backend import is_sandbox_violation
+from orchestrator.backends.claude import (
     create_question_intercept_hook,
     create_review_decision_hook,
     create_sandbox_enforcement_hook,
     create_orchestrator_mcp_server,
     review_decision_tool,
-    _load_skill_content,
-    _is_sandbox_violation,
     _merge_hooks,
 )
 from orchestrator.models import AgentResult, ReviewToolDecision, WorkUnitPhase
@@ -165,7 +167,7 @@ class TestAskUserQuestionMessageStreamCapture:
 
                 # Yield AssistantMessage with AskUserQuestion ToolUseBlock
                 # This simulates what the real SDK sends when a built-in tool is called
-                from orchestrator.agent import AssistantMessage
+                from orchestrator.backends.claude import AssistantMessage
 
                 tool_use_block = MagicMock()
                 tool_use_block.name = "AskUserQuestion"
@@ -191,7 +193,7 @@ class TestAskUserQuestionMessageStreamCapture:
                 # Don't yield ResultMessage - the agent should suspend on question capture
 
         MockClaudeSDKClient.reset()
-        with patch("orchestrator.agent.ClaudeSDKClient", MessageStreamCaptureMock):
+        with patch("orchestrator.backends.claude.ClaudeSDKClient", MessageStreamCaptureMock):
             result = await runner.run_phase(
                 chunk="test_chunk",
                 phase=WorkUnitPhase.PLAN,
@@ -226,7 +228,7 @@ class TestAskUserQuestionMessageStreamCapture:
             async def receive_response(self):
                 yield {"type": "init", "session_id": "test-session-fallback"}
 
-                from orchestrator.agent import AssistantMessage
+                from orchestrator.backends.claude import AssistantMessage
 
                 tool_use_block = MagicMock()
                 tool_use_block.name = "AskUserQuestion"
@@ -238,7 +240,7 @@ class TestAskUserQuestionMessageStreamCapture:
                 yield assistant_msg
 
         MockClaudeSDKClient.reset()
-        with patch("orchestrator.agent.ClaudeSDKClient", MessageStreamCaptureMock):
+        with patch("orchestrator.backends.claude.ClaudeSDKClient", MessageStreamCaptureMock):
             result = await runner.run_phase(
                 chunk="test_chunk",
                 phase=WorkUnitPhase.PLAN,
@@ -265,7 +267,7 @@ class TestAskUserQuestionMessageStreamCapture:
             async def receive_response(self):
                 yield {"type": "init", "session_id": "test-session-multi"}
 
-                from orchestrator.agent import AssistantMessage
+                from orchestrator.backends.claude import AssistantMessage
 
                 # First tool call
                 tool_use_block1 = MagicMock()
@@ -287,7 +289,7 @@ class TestAskUserQuestionMessageStreamCapture:
                 yield assistant_msg
 
         MockClaudeSDKClient.reset()
-        with patch("orchestrator.agent.ClaudeSDKClient", MessageStreamCaptureMock):
+        with patch("orchestrator.backends.claude.ClaudeSDKClient", MessageStreamCaptureMock):
             result = await runner.run_phase(
                 chunk="test_chunk",
                 phase=WorkUnitPhase.PLAN,
@@ -314,7 +316,7 @@ class TestAskUserQuestionMessageStreamCapture:
             async def receive_response(self):
                 yield {"type": "init", "session_id": "test-session-all-questions"}
 
-                from orchestrator.agent import AssistantMessage
+                from orchestrator.backends.claude import AssistantMessage
 
                 tool_use_block = MagicMock()
                 tool_use_block.name = "AskUserQuestion"
@@ -332,7 +334,7 @@ class TestAskUserQuestionMessageStreamCapture:
                 yield assistant_msg
 
         MockClaudeSDKClient.reset()
-        with patch("orchestrator.agent.ClaudeSDKClient", MessageStreamCaptureMock):
+        with patch("orchestrator.backends.claude.ClaudeSDKClient", MessageStreamCaptureMock):
             result = await runner.run_phase(
                 chunk="test_chunk",
                 phase=WorkUnitPhase.PLAN,
@@ -359,7 +361,7 @@ class TestAskUserQuestionMessageStreamCapture:
             async def receive_response(self):
                 yield {"type": "init", "session_id": "test-session-no-callback"}
 
-                from orchestrator.agent import AssistantMessage
+                from orchestrator.backends.claude import AssistantMessage
 
                 tool_use_block = MagicMock()
                 tool_use_block.name = "AskUserQuestion"
@@ -373,7 +375,7 @@ class TestAskUserQuestionMessageStreamCapture:
                 yield assistant_msg
 
         MockClaudeSDKClient.reset()
-        with patch("orchestrator.agent.ClaudeSDKClient", MessageStreamCaptureMock):
+        with patch("orchestrator.backends.claude.ClaudeSDKClient", MessageStreamCaptureMock):
             # Run WITHOUT question_callback
             result = await runner.run_phase(
                 chunk="test_chunk",
