@@ -61,3 +61,11 @@ cli.add_command(board)
 cli.add_command(entity)
 cli.add_command(wiki)
 cli.add_command(config)
+
+# Chunk: docs/chunks/federation_tree_discovery - Resolve --project-dir to the nearest enclosing VE tree
+# KEEP THIS LAST: the installer walks the command tree as it exists when called,
+# so a group registered after this line would silently miss tree discovery.
+# New cli.add_command(...) calls belong above.
+from cli.tree_discovery import install_tree_discovery
+
+install_tree_discovery(cli)
