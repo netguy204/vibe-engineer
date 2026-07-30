@@ -3,15 +3,20 @@ status: ACTIVE
 ticket: null
 parent_chunk: null
 code_paths:
+- src/templates/plugin/commands/workspace-validate-fix.md.jinja2
 - commands/workspace-validate-fix.md
 - tests/test_workspace_validate_fix_skill.py
 - docs/trunk/EXTERNAL.md
 - src/templates/trunk/EXTERNAL.md.jinja2
 - README.md
 code_references:
+- ref: src/templates/plugin/commands/workspace-validate-fix.md.jinja2
+  implements: 'The workspace compliance loop, as the source of truth: validator run,
+    fix-class dispatch, mechanical repairs, escalation with candidates, re-run until
+    clean. Rendered to commands/workspace-validate-fix.md by `ve plugin render`.'
 - ref: commands/workspace-validate-fix.md
-  implements: 'The workspace compliance loop: validator run, fix-class dispatch,
-    mechanical repairs, escalation with candidates, re-run until clean'
+  implements: The committed render that reaches operators through the plugin; generated
+    output, not the edit surface
 - ref: tests/test_workspace_validate_fix_skill.py
   implements: The document's contract with FixClass, and one skill pass over a case-study-shaped
     workspace converging to the single deliberate ambiguity
@@ -56,10 +61,16 @@ qualifications" separately from "all new pointers").
 The skill follows the existing `/validate-fix` pattern — `commands/validate-fix.md`
 supplies the loop structure, the classification table, the iteration cap, and
 the runtime-context preamble; this extends that pattern to the workspace
-validator rather than inventing a new one. Like every workflow command it is
-static markdown in the plugin's `commands/` directory, not a rendered template:
-`plugin_init_slimdown` removed `src/templates/commands/` and the `ve init`
-rendering path, so the plugin is the only channel that reaches operators.
+validator rather than inventing a new one. The plugin's `commands/` directory is
+the only channel that reaches operators, and the command arrives there as a
+committed render generated from
+`src/templates/plugin/commands/workspace-validate-fix.md.jinja2` by
+`ve plugin render`. `plugin_init_slimdown` removed the older
+`src/templates/commands/` and `ve init` rendering path, and
+`dualplugin_content_migration` then made a build-time template collection the
+single source of truth for command content — superseding this chunk's original
+"static markdown, not a rendered template" framing. Edit the template; direct
+edits to the render are overwritten.
 
 ### Case-study grounding (Cloud Capital monorepo, diagnosed 2026-07-29)
 
@@ -78,7 +89,8 @@ single-tree. See `docs/narratives/monorepo_federation/OVERVIEW.md`.
 ## Success Criteria
 
 - The skill ships to operators through the plugin's `commands/` directory
-  (`/workspace-validate-fix`), the channel every workflow command now uses; it
+  (`/workspace-validate-fix`) as a render of its source template in
+  `src/templates/plugin/`, the channel every workflow command now uses; it
   instructs the agent to consume `--format json`, map fix classes to the
   actions above, apply, re-run, and loop.
 - The mechanical-fix actions are each demonstrated on a case-study-shaped
