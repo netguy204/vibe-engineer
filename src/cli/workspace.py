@@ -1,12 +1,16 @@
 """Workspace command group.
 
 # Chunk: docs/chunks/federation_workspace_manifest - ve workspace CLI commands
+# Chunk: docs/chunks/federation_global_validator - ve workspace validate
 
-Commands for managing the `.ve-workspace.yaml` manifest that names the VE trees
-inside one repository. All commands take `--workspace-dir` (default ".") and
-search upward from it for the manifest, so they work from anywhere inside the
-workspace. That option is deliberately distinct from `--project-dir`, which
-identifies a single tree rather than the workspace containing many.
+Commands that operate on a whole repository of VE trees: `init`/`add`/`list`
+manage the `.ve-workspace.yaml` manifest that names them, and `validate` checks
+that every reference across them resolves.
+
+All commands take `--workspace-dir` (default ".") and search upward from it for
+the manifest, so they work from anywhere inside the workspace. That option is
+deliberately distinct from `--project-dir`, which identifies a single tree rather
+than the workspace containing many.
 """
 
 import json
