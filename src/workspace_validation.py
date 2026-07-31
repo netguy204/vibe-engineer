@@ -269,6 +269,9 @@ class ValidationReport:
     references_checked: int = 0
     artifacts_scanned: int = 0
     pointers_checked: int = 0
+    # Chunk: docs/chunks/crossref_unchecked_anchors - Symbol-anchor coverage counts
+    symbol_anchors_checked: int = 0
+    symbol_anchors_unchecked: int = 0
 
     @property
     def ok(self) -> bool:
@@ -303,6 +306,8 @@ class ValidationReport:
                 "references_checked": self.references_checked,
                 "artifacts_scanned": self.artifacts_scanned,
                 "pointers_checked": self.pointers_checked,
+                "symbol_anchors_checked": self.symbol_anchors_checked,
+                "symbol_anchors_unchecked": self.symbol_anchors_unchecked,
                 "defects": len(self.defects),
                 "unverified": len(self.unverified),
             },
@@ -375,10 +380,16 @@ def _find_field_entry_line(content: str, field_name: str, needle: str) -> int | 
 
 # Chunk: docs/chunks/federation_global_validator - Conservative symbol existence check
 # Chunk: docs/chunks/crossref_reexport_absence - Re-export-only mentions are absent
+# Chunk: docs/chunks/crossref_unchecked_anchors - Non-identifier anchors are UNCHECKED, not passed
 def _symbol_is_absent(
     content: str, symbol_path: str, *, is_python: bool = False
-) -> tuple[str, str] | None:
-    """Return (missing name, reason clause), or None if the symbol may exist.
+) -> tuple[str, str, str] | None:
+    """Return (disposition, name, reason clause), or None if the symbol may exist.
+
+    The disposition is ``"absent"`` (the anchor provably does not resolve — a
+    gating defect) or ``"unchecked"`` (the anchor cannot be checked at all —
+    reported, never gating). ``None`` means the check ran and the symbol may
+    exist.
 
     "Cheaply checkable" read conservatively: only the last `::` component is
     considered, and absence is only claimed when the name appears *nowhere* in
@@ -386,23 +397,38 @@ def _symbol_is_absent(
     import/`__all__` re-export statements, where the name is bound but its
     definition lives in another file (the `# noqa: F401` field case). A name
     mentioned in a call, a string, or a dynamic definition keeps the validator
-    quiet, and unparseable Python falls back to the whole-word scan. These are
-    gating errors, so a false positive costs far more than a missed rename.
+    quiet, and unparseable Python falls back to the whole-word scan. Absences
+    are gating errors, so a false positive costs far more than a missed rename.
 
-    The reason clause distinguishes the two absences so the defect message can
-    point at the right fix: a vanished name was probably renamed or removed; a
-    re-export-only name needs the reference repointed at the defining file.
+    A leaf that is not an identifier (dotted/bracketed anchors such as
+    ``jobs.Checks.steps[Seed workspace .venv]`` for YAML workflows) is the
+    same undecidable signal that makes ``name_is_reexport_only`` return
+    ``None``: whole-word ``\\b`` semantics around dots and brackets are
+    meaningless, so instead of silently passing, the anchor is reported
+    ``"unchecked"`` — zero coverage, stated.
+
+    The reason clause distinguishes the dispositions so the report can point
+    at the right fix: a vanished name was probably renamed or removed; a
+    re-export-only name needs the reference repointed at the defining file;
+    an unchecked anchor is one the operator must verify by other means.
     """
     name = symbol_path.split("::")[-1].strip()
     if not name or not name.isidentifier():
-        return None
+        return (
+            "unchecked",
+            name,
+            "is not a checkable identifier; only plain identifier names "
+            "are symbol-checked",
+        )
     if not re.search(rf"\b{re.escape(name)}\b", content):
         return (
+            "absent",
             name,
             "appears nowhere in it; the symbol was probably renamed or removed",
         )
     if is_python and name_is_reexport_only(content, name):
         return (
+            "absent",
             name,
             "appears only in import/__all__ re-export statements; "
             "the definition lives in another file",
@@ -430,6 +456,9 @@ class _Validator:
         self.references_checked = 0
         self.artifacts_scanned = 0
         self.pointers_checked = 0
+        # Chunk: docs/chunks/crossref_unchecked_anchors - Symbol-anchor coverage counters
+        self.symbol_anchors_checked = 0
+        self.symbol_anchors_unchecked = 0
 
         # Member indexes in manifest order, so candidate lists are deterministic
         # and read the way the operator wrote the manifest.
@@ -1017,16 +1046,29 @@ class _Validator:
         for path in code_paths:
             resolve_path(path, path, "code_paths")
 
+        # Chunk: docs/chunks/crossref_unchecked_anchors - Every uncheckable anchor is stated and counted
         for symbolic in frontmatter.code_references:
             ref = symbolic.ref
             file_part, _, symbol_path = ref.partition("#")
             targets = resolve_path(ref, file_part, "code_references")
-            if not targets or not symbol_path:
+            if not symbol_path:
+                continue
+            if "::" in file_part:
+                # The whole ref is already recorded unverified (cross-repo);
+                # its symbol anchor is part of what was not checked.
+                self.symbol_anchors_unchecked += 1
+                continue
+            if not targets:
+                # The file part is already a gating defect (missing file or
+                # empty glob); the anchor is neither checked nor counted —
+                # the coverage count describes the checker's blind spots,
+                # not its queue.
                 continue
             if is_glob_pattern(file_part):
                 # A symbol cannot be attributed to one file of a pattern's
                 # expansion; report it as unverified rather than silently
                 # passing or spuriously failing.
+                self.symbol_anchors_unchecked += 1
                 self.unverified.append(
                     UnverifiedReference(
                         path=rel_path,
@@ -1041,16 +1083,53 @@ class _Validator:
                 continue
             target = targets[0]
             if not target.is_file():
+                self.symbol_anchors_unchecked += 1
+                self.unverified.append(
+                    UnverifiedReference(
+                        path=rel_path,
+                        line=_find_field_entry_line(content, "code_references", ref),
+                        reference=ref,
+                        reason=(
+                            "symbol anchor on a directory; a symbol cannot "
+                            "be looked up in a directory"
+                        ),
+                    )
+                )
                 continue
             try:
                 target_content = target.read_text()
             except (OSError, UnicodeDecodeError):
+                self.symbol_anchors_unchecked += 1
+                self.unverified.append(
+                    UnverifiedReference(
+                        path=rel_path,
+                        line=_find_field_entry_line(content, "code_references", ref),
+                        reference=ref,
+                        reason=(
+                            f"'{file_part}' could not be read; the symbol "
+                            "anchor is not checked"
+                        ),
+                    )
+                )
                 continue
-            absent = _symbol_is_absent(
+            result = _symbol_is_absent(
                 target_content, symbol_path, is_python=target.suffix == ".py"
             )
-            if absent is not None:
-                missing, reason = absent
+            if result is not None and result[0] == "unchecked":
+                _, _, reason = result
+                self.symbol_anchors_unchecked += 1
+                self.unverified.append(
+                    UnverifiedReference(
+                        path=rel_path,
+                        line=_find_field_entry_line(content, "code_references", ref),
+                        reference=ref,
+                        reason=f"symbol anchor '{symbol_path}' {reason}",
+                    )
+                )
+                continue
+            self.symbol_anchors_checked += 1
+            if result is not None:
+                _, missing, reason = result
                 self.report_defect(
                     fix_class=FixClass.UNRESOLVABLE_FRONTMATTER,
                     path=rel_path,
@@ -1108,6 +1187,8 @@ class _Validator:
             references_checked=self.references_checked,
             artifacts_scanned=self.artifacts_scanned,
             pointers_checked=self.pointers_checked,
+            symbol_anchors_checked=self.symbol_anchors_checked,
+            symbol_anchors_unchecked=self.symbol_anchors_unchecked,
         )
 
 

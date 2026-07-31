@@ -95,6 +95,8 @@ class IntegrityResult:
     external_chunks_skipped: int = 0
     # Chunk: docs/chunks/validation_backref_allowlist - Suppression is reported, not silent
     backrefs_suppressed: int = 0
+    # Chunk: docs/chunks/crossref_unchecked_anchors - Symbol anchors ve validate does not check
+    symbol_anchors_unchecked: int = 0
 
 
 # Chunk: docs/chunks/integrity_validate - Core integrity validator class
@@ -144,6 +146,10 @@ class IntegrityValidator:
         self._subsystem_chunks: dict[str, set[str]] = {}
         # Maps chunk_name -> set of file paths referenced in its code_references
         self._chunk_code_files: dict[str, set[str]] = {}
+        # Chunk: docs/chunks/crossref_unchecked_anchors - Symbol anchors this validator does not check
+        # `ve validate` verifies declared file parts only; every symbol anchor
+        # it walks past is unchecked here, and the count says so.
+        self._symbol_anchors_unchecked: int = 0
 
     def _build_artifact_index(self) -> None:
         """Build in-memory index of all existing artifacts.
@@ -285,6 +291,7 @@ class IntegrityValidator:
         """
         errors: list[IntegrityError] = []
         warnings: list[IntegrityWarning] = []
+        self._symbol_anchors_unchecked = 0
 
         # Build index of existing artifacts
         self._build_artifact_index()
@@ -355,6 +362,7 @@ class IntegrityValidator:
         return IntegrityResult(
             success=len(errors) == 0,
             backrefs_suppressed=backrefs_suppressed,
+            symbol_anchors_unchecked=self._symbol_anchors_unchecked,
             errors=errors,
             warnings=warnings,
             chunks_scanned=chunks_scanned,
@@ -384,6 +392,12 @@ class IntegrityValidator:
         the expansion is empty, so "this change applies uniformly across N
         packages" is expressible without enumerating N paths that rot
         independently.
+
+        Symbol anchors (``#Symbol``) are *not* checked here — only the file
+        part is. Every anchor walked past is counted in
+        ``_symbol_anchors_unchecked`` so the report can state what this
+        validator is not seeing (symbol checking runs in ``ve chunk
+        validate``, ``ve subsystem validate``, and ``ve workspace validate``).
         """
         errors: list[IntegrityError] = []
 
@@ -441,7 +455,11 @@ class IntegrityValidator:
 
         for ref in frontmatter.code_references or []:
             # Extract file path from ref (format: file_path or file_path#symbol)
-            check(ref.ref.split("#")[0], "code_references")
+            file_part, _, symbol_part = ref.ref.partition("#")
+            check(file_part, "code_references")
+            # Chunk: docs/chunks/crossref_unchecked_anchors - Anchors walked past are counted
+            if symbol_part:
+                self._symbol_anchors_unchecked += 1
 
         return errors
 

@@ -443,12 +443,57 @@ class TestCheckReferenceTarget:
         (tmp_path / "pkg").mkdir()
         assert check_reference_target(tmp_path, "pkg") == (None, None)
 
-    def test_non_python_symbol_anchor_is_skipped(self, tmp_path: Path):
-        """Symbol anchors on non-Python files are not symbol-checked."""
+    # Chunk: docs/chunks/crossref_unchecked_anchors - Uncheckable anchors are stated, not passed
+    def test_non_python_symbol_anchor_is_unchecked_warning(self, tmp_path: Path):
+        """Symbol anchors on non-Python files are UNCHECKED: warning, not silence.
+
+        There is no symbol checker for YAML/Markdown/etc., and a silent pass
+        reads as coverage that never happened.
+        """
         from symbols import check_reference_target
 
         (tmp_path / "config.yaml").write_text("key: value\n")
-        assert check_reference_target(tmp_path, "config.yaml#key") == (None, None)
+        error, warning = check_reference_target(tmp_path, "config.yaml#key")
+        assert error is None
+        assert warning is not None
+        assert "not checked" in warning
+        assert "config.yaml" in warning
+
+    def test_non_identifier_anchor_on_python_file_is_unchecked_warning(
+        self, tmp_path: Path
+    ):
+        """A dotted/bracketed anchor leaf is undecidable: warning, never error.
+
+        Whole-word \\b semantics around dots and brackets are meaningless, so
+        the checker states UNCHECKED instead of scanning with undefined
+        behavior — the same undecidable signal that makes
+        name_is_reexport_only return None.
+        """
+        from symbols import check_reference_target
+
+        src = tmp_path / "src"
+        src.mkdir()
+        (src / "mod.py").write_text("class RealClass:\n    pass\n")
+
+        error, warning = check_reference_target(
+            tmp_path, "src/mod.py#jobs.Checks.steps[Seed workspace .venv]"
+        )
+        assert error is None
+        assert warning is not None
+        assert "not a checkable identifier" in warning
+
+    def test_empty_symbol_anchor_is_unchecked_warning(self, tmp_path: Path):
+        """A trailing '#' with no symbol is uncheckable, not silently passed."""
+        from symbols import check_reference_target
+
+        src = tmp_path / "src"
+        src.mkdir()
+        (src / "mod.py").write_text("class RealClass:\n    pass\n")
+
+        error, warning = check_reference_target(tmp_path, "src/mod.py#")
+        assert error is None
+        assert warning is not None
+        assert "not a checkable identifier" in warning
 
     def test_module_level_constant_is_warning_not_error(self, tmp_path: Path):
         """A name that occurs in the file but is not a def/class is uncheckable.

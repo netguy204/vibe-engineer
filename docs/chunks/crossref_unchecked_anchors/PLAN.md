@@ -10,170 +10,185 @@ to hand to an agent.
 
 ## Approach
 
-<!--
-How will you build this? Describe the strategy at a high level.
-What patterns or techniques will you use?
-What existing code will you build on?
+The symbol checkers have three silent blind spots, and this chunk makes each
+one say so — without adding any new resolution logic:
 
-Reference docs/trunk/DECISIONS.md entries where relevant.
-If this approach represents a new significant decision, ask the user
-if we should add it to DECISIONS.md and reference it here.
+1. **Workspace mode** (`ve workspace validate`, `src/workspace_validation.py`):
+   `_symbol_is_absent` returns `None` ("may exist") when the anchor's last
+   `::` component fails `str.isidentifier()` — the same undecidable signal
+   that makes `name_is_reexport_only` return `None`. A dotted/bracketed
+   anchor (`jobs.Checks.steps[Seed workspace .venv]`) therefore silently
+   passes. The fix: `_symbol_is_absent` grows a disposition tag — it returns
+   `("absent", name, reason)` or `("unchecked", name, reason)` or `None`
+   ("checked; may exist") — and `check_code_references` routes the
+   `"unchecked"` disposition into the existing `UnverifiedReference`
+   mechanism (the same one `crossref_glob_refs` uses for symbol anchors on
+   glob patterns; no second mechanism is added). Two adjacent silent skips in
+   the same loop — a symbol anchor on a directory target and a symbol anchor
+   on an unreadable file — become `UnverifiedReference` entries too, because
+   they are the same lie ("clean run" implying coverage that never happened).
 
-Always include tests in your implementation plan and adhere to
-docs/trunk/TESTING_PHILOSOPHY.md in your planning.
+2. **Single-tree mode** (`check_reference_target` in `src/symbols.py`, shared
+   by `ve chunk validate`, the completion gate, and `ve subsystem validate`):
+   a symbol anchor on a non-Python file returns `(None, None)` — the
+   docstring explicitly defers honest UNCHECKED reporting to this chunk —
+   and a non-identifier leaf on a Python file falls into a whole-word regex
+   whose `\b` semantics around brackets/dots are undefined behavior for this
+   purpose. Both become warnings (the existing "uncheckable" channel: never
+   errors, so nothing new gates), keyed off the same `isidentifier()` signal.
 
-Remember to update code_paths in the chunk's GOAL.md (e.g., docs/chunks/crossref_unchecked_anchors/GOAL.md)
-with references to the files that you expect to touch.
--->
+3. **Coverage counts**: operators can only see what the validator is not
+   seeing if the counts are printed.
+   - `ValidationReport` gains `symbol_anchors_checked` /
+     `symbol_anchors_unchecked` counters, surfaced in the JSON `counts` block
+     and the text renderer. "Unchecked" folds in every uncheckable-symbol
+     disposition: non-identifier anchors, glob-pattern anchors, anchors on
+     cross-repo-qualified refs, directory targets, unreadable targets.
+     Anchors whose *file part* is already a defect are not counted — the ref
+     is already gating, and the count describes the checker's blind spots,
+     not its queue.
+   - `ve validate` (single-tree `IntegrityValidator`) checks declared file
+     parts only and runs no symbol checker at all, so every symbol anchor on
+     a status-gated (ACTIVE/COMPOSITE) chunk is unchecked there. It gains a
+     `symbol_anchors_unchecked` count and one always-printed output line
+     (same precedent as the allowlist suppression count) pointing at the
+     commands that do check symbols. Counting only a "never-checkable"
+     subset would imply the rest were checked — which would be dishonest.
+
+No new resolution capability is added anywhere: every change reclassifies an
+existing silent pass into a stated disposition, or counts dispositions that
+already exist.
 
 ## Subsystem Considerations
 
-<!--
-Before designing your implementation, check docs/subsystems/ for relevant
-cross-cutting patterns.
-
-QUESTIONS TO CONSIDER:
-- Does this chunk touch any existing subsystem's scope?
-- Will this chunk implement part of a subsystem (contribute code) or use it
-  (depend on it)?
-- Did you discover code during exploration that should be part of a subsystem
-  but doesn't follow its patterns?
-
-If no subsystems are relevant, delete this section.
-
-WHEN SUBSYSTEMS ARE RELEVANT:
-List each relevant subsystem with its status and your relationship:
-- **docs/subsystems/validation** (DOCUMENTED): This chunk USES the validation
-  subsystem to check input
-- **docs/subsystems/error_handling** (REFACTORING): This chunk IMPLEMENTS a
-  new error type following the subsystem's patterns
-
-HOW SUBSYSTEM STATUS AFFECTS YOUR WORK:
-
-DOCUMENTED subsystems: The subsystem's patterns are captured but deviations are not
-being actively fixed. If you discover code that deviates from the subsystem's
-patterns, add it to the subsystem's Known Deviations section. Do NOT prioritize
-fixing those deviations—your chunk has its own goals.
-
-REFACTORING subsystems: The subsystem is being actively consolidated. If your chunk
-work touches code that deviates from the subsystem's patterns, attempt to bring it
-into compliance as part of your work. This is "opportunistic improvement"—improve
-what you touch, but don't expand scope to fix unrelated deviations.
-
-WHEN YOU DISCOVER DEVIATING CODE:
-- Add it to the subsystem's Known Deviations section
-- Note whether you will address it (REFACTORING status + relevant to your work)
-  or leave it for future work (DOCUMENTED status or outside your chunk's scope)
-
-Example:
-- **Discovered deviation**: src/legacy/parser.py#validate_input does its own
-  validation instead of using the validation subsystem
-  - Added to docs/subsystems/validation Known Deviations
-  - Action: Will not address (subsystem is DOCUMENTED; deviation outside chunk scope)
--->
+- **docs/subsystems/workflow_artifacts** (DOCUMENTED): `src/symbols.py` and
+  the validators sit inside this subsystem's scope. This chunk follows the
+  established error/warning contract (`check_reference_target` returning
+  `(error, warning)`) rather than changing it. No new deviations discovered.
 
 ## Sequence
 
-<!--
-Ordered steps to implement this chunk. Each step should be:
-- Small enough to reason about in isolation
-- Large enough to be meaningful
-- Clear about its inputs and outputs
+### Step 1: UNCHECKED disposition in `check_reference_target` (src/symbols.py)
 
-This sequence is your contract with yourself (and with agents).
-Work through it in order. Don't skip ahead.
+- Non-Python file part with a symbol anchor: return a warning
+  (`Symbol anchor '{symbol_path}' in non-Python file {file_path} is not
+  checked (ref: {ref})`) instead of `(None, None)`.
+- Python file whose anchor leaf fails `str.isidentifier()` (including the
+  empty leaf of a trailing `#`): return a warning before the whole-word
+  regex runs (`Symbol anchor '{symbol_path}' is not a checkable identifier
+  and is not checked in {file_path} (ref: {ref})`). Placed after the
+  file-existence check, before symbol extraction — a non-identifier can
+  never appear in `extract_symbols` output.
+- Update the docstring: the `(None, None)` "not symbol-checkable" case is
+  gone; verified is the only silent outcome.
 
-Example:
+Tests (tests/test_symbols.py):
+- Update `test_non_python_symbol_anchor_is_skipped` → now expects a warning.
+- New: bracketed YAML-style anchor on a Python file → warning, not error.
+- New: trailing-`#` empty anchor → warning, not error.
 
-### Step 1: Define the SegmentHeader struct
+### Step 2: Disposition tag on `_symbol_is_absent` (src/workspace_validation.py)
 
-Create the struct that represents a segment's header with fields for:
-- magic number (4 bytes)
-- version (2 bytes)
-- segment_id (8 bytes)
-- message_count (4 bytes)
-- checksum (4 bytes)
+Change the return contract from `(name, reason) | None` to
+`(disposition, name, reason) | None` with `disposition ∈ {"absent",
+"unchecked"}`. The `not name or not name.isidentifier()` branch — which
+today returns `None` — returns `("unchecked", name, "is not a checkable
+identifier; only plain identifier names are symbol-checked")`. The two
+absence branches keep their reasons and gain the `"absent"` tag.
 
-Location: src/segment/format.rs
+### Step 3: Route dispositions and count coverage in `check_code_references`
 
-### Step 2: Implement header serialization
+In the symbol-anchor loop of `check_code_references`:
+- Add `symbol_anchors_checked` / `symbol_anchors_unchecked` counters to
+  `_Validator.__init__`.
+- Cross-repo-qualified ref with a symbol anchor: already unverified (whole
+  ref); count unchecked.
+- Glob-pattern anchor: existing unverified entry; count unchecked.
+- Directory target: currently `continue` — emit `UnverifiedReference`
+  ("symbol anchor on a directory; a symbol cannot be looked up in a
+  directory") and count unchecked.
+- Unreadable target: currently `continue` — emit `UnverifiedReference`
+  ("target file could not be read; symbol anchor is not checked") and count
+  unchecked.
+- `_symbol_is_absent` returns `"unchecked"`: emit `UnverifiedReference`
+  naming the anchor and reason; count unchecked.
+- `_symbol_is_absent` returns `"absent"` or `None`: count checked
+  (`"absent"` keeps producing the same defect as today).
+- File-part defect (missing file, empty glob): counted neither way.
 
-Add `to_bytes()` and `from_bytes()` methods to SegmentHeader.
-Use little-endian encoding per SPEC.md Section 3.1.
+### Step 4: Surface the counts in workspace report and CLI
 
-### Step 3: ...
+- `ValidationReport`: add `symbol_anchors_checked` and
+  `symbol_anchors_unchecked` fields; include both in `to_dict()["counts"]`;
+  thread them through `_Validator.run()`.
+- `src/cli/workspace.py` `_render_report`: print a coverage line whenever
+  any symbol anchors were seen — e.g.
+  `Symbol anchors: N checked, M unchecked (unchecked anchors are listed in
+  the JSON report's "unverified" entries).` Also generalize the existing
+  unverified summary line, which currently claims all unverified entries are
+  cross-repository targets and is no longer accurate.
 
----
+Tests (tests/test_workspace_validation.py):
+- Non-identifier anchor on a YAML file in a member chunk → no defect, one
+  unverified entry with an identifier-mentioning reason, unchecked count 1.
+- Plain identifier anchor that verifies → checked count 1, unchecked 0.
+- Extend the glob-anchor and directory-target tests to assert the unchecked
+  count / new unverified entry.
+- `to_dict()["counts"]` carries both numbers.
 
-**BACKREFERENCE COMMENTS**
+### Step 5: UNCHECKED count in `ve validate` (src/integrity.py, src/cli/init_cmd.py)
 
-When implementing code, add backreference comments to help future agents trace
-code back to its governing documentation.
+- `IntegrityResult`: add `symbol_anchors_unchecked: int = 0`.
+- `IntegrityValidator._validate_chunk_file_paths` already iterates every
+  status-gated chunk's `code_references`; accumulate a count of refs with a
+  non-empty symbol part (instance counter, folded into the result in
+  `validate()`).
+- `src/cli/init_cmd.py` `validate`: when the count is nonzero, print (outside
+  the verbose block, same rationale as the suppression line):
+  `N symbol anchor(s) not checked: ve validate verifies declared file paths
+  only. Symbol checking runs in ve chunk validate, ve subsystem validate,
+  and ve workspace validate.`
 
-**Valid backreference types:**
-- `# Subsystem: docs/subsystems/<name>` - For architectural patterns
-- `# Chunk: docs/chunks/<name>` - For implementation work
+Tests (tests/test_integrity.py): ACTIVE chunk with `file#symbol` refs yields
+the count; FUTURE/HISTORICAL chunks do not contribute; CLI line appears.
 
-Place comments at the appropriate level:
-- **Module-level**: If this code implements the subsystem/chunk's core functionality
-- **Class-level**: If this class is part of the pattern
-- **Method-level**: If this method implements a specific behavior
+### Step 6: Completion-gate behavior pin (tests/test_chunk_complete_gate.py)
 
-Format (place immediately before the symbol):
-```
-# Subsystem: docs/subsystems/workflow_artifacts - Workflow artifact manager pattern
-# Chunk: docs/chunks/auth_refactor - Authentication system redesign
-```
+One test: a chunk whose `code_references` includes a non-Python symbol
+anchor completes with a warning, not an error — UNCHECKED reports honestly
+but never gates.
 
-Do NOT add narrative backreferences. Narratives decompose into chunks; reference
-the implementing chunk instead.
+### Step 7: Full-repo verification
 
-**Task context note**: In multi-project tasks, always use local paths (e.g.,
-`docs/chunks/chunk_name`) for chunk backreferences, not paths to the external
-artifact repo. Each project has `external.yaml` pointers that resolve to the
-actual chunk content.
--->
+`uv run pytest tests/ -q` (baseline 4841 passed) and `uv run ve validate` on
+this repo — the new `ve validate` line will now itself appear (this repo's
+ACTIVE chunks declare many symbol anchors), which is the feature working,
+not a failure. Exit code must remain 0.
 
 ## Dependencies
 
-<!--
-What must exist before this chunk can be implemented?
-- Other chunks that must be complete
-- External libraries to add
-- Infrastructure or configuration
-
-If there are no dependencies, delete this section.
--->
+- `crossref_reexport_absence` (ACTIVE, merged): `name_is_reexport_only`
+  returning `None` for non-identifiers is the undecidable signal this chunk
+  keys off.
+- `crossref_glob_refs` (ACTIVE, merged): the glob symbol-anchor unverified
+  disposition this chunk folds into the coverage counts.
+- `crossref_workspace_parity` (ACTIVE, merged): the workspace
+  `check_code_references` structure being extended.
 
 ## Risks and Open Questions
 
-<!--
-What might go wrong? What are you unsure about?
-Being explicit about uncertainty helps you (and agents) know where to
-be careful and when to stop and ask questions.
-
-Example:
-- fsync behavior may differ across filesystems; need to verify on ext4 and APFS
-- Unclear whether concurrent reads during write are safe; may need mutex
-- Performance target is aggressive; may need to iterate on buffer sizes
--->
+- `ve validate` on this repository will print a large not-checked count
+  every run (every ACTIVE chunk's symbol refs). Accepted: one line, honest,
+  and the alternative (counting only a subset) implies coverage that does
+  not exist.
+- New warnings from `check_reference_target` flow into `ve chunk validate`,
+  the completion gate, and `ve subsystem validate` for existing artifacts
+  with non-Python symbol anchors. Warnings never gate, so nothing breaks;
+  operators see new lines, which is the point.
+- `refactor_move.py` mirrors `check_reference_target` semantics for its own
+  evidence gathering; it is not a validator and reports its own
+  dispositions, so it is deliberately untouched.
 
 ## Deviations
 
-<!--
-POPULATE DURING IMPLEMENTATION, not at planning time.
-
-When reality diverges from the plan, document it here:
-- What changed?
-- Why?
-- What was the impact?
-
-Minor deviations (renamed a function, used a different helper) don't need
-documentation. Significant deviations (changed the approach, skipped a step,
-added steps) do.
-
-Example:
-- Step 4: Originally planned to use std::fs::rename for atomic swap.
-  Testing revealed this isn't atomic across filesystems. Changed to
-  write-fsync-rename-fsync sequence per platform best practices.
--->
+(Populated during implementation if reality diverges from the plan.)

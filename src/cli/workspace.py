@@ -215,6 +215,12 @@ def _render_report(report: ValidationReport) -> None:
         f"reference(s), {report.artifacts_scanned} artifact(s), "
         f"{report.pointers_checked} pointer(s)."
     )
+    # Chunk: docs/chunks/crossref_unchecked_anchors - Symbol coverage is stated, not implied
+    if report.symbol_anchors_checked or report.symbol_anchors_unchecked:
+        click.echo(
+            f"Symbol anchors: {report.symbol_anchors_checked} checked, "
+            f"{report.symbol_anchors_unchecked} unchecked."
+        )
 
     grouped = report.by_fix_class()
     for fix_class, defects in grouped.items():
@@ -250,10 +256,12 @@ def _render_report(report: ValidationReport) -> None:
     elif not report.manifest_errors:
         click.echo("No reference defects found.")
 
+    # Chunk: docs/chunks/crossref_unchecked_anchors - Unverified spans more than cross-repo targets
     if report.unverified:
         click.echo(
-            f"{len(report.unverified)} reference(s) not verified: cross-repository "
-            f"targets are not resolved offline."
+            f"{len(report.unverified)} reference(s) not verified "
+            f"(cross-repository targets and uncheckable symbol anchors; each "
+            f"entry's reason is recorded in the JSON report)."
         )
 
     if report.unregistered_trees:

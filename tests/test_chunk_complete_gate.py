@@ -134,6 +134,24 @@ class TestCompleteReferenceGate:
         assert "InventedWidget" in result.output
         assert _chunk_status(chunk_path) == "IMPLEMENTING"
 
+    # Chunk: docs/chunks/crossref_unchecked_anchors - UNCHECKED reports honestly but never gates
+    def test_unchecked_non_python_anchor_completes(self, cli_runner, temp_project):
+        """A symbol anchor on a non-Python file is UNCHECKED: the chunk still
+        completes — honest reporting, not a new gate."""
+        chunk_path = _create_chunk(cli_runner, temp_project)
+        (temp_project / "config").mkdir()
+        (temp_project / "config" / "ci.yaml").write_text("jobs:\n  Checks: {}\n")
+        _write_goal(
+            chunk_path,
+            code_references=[{"ref": "config/ci.yaml#jobs.Checks"}],
+        )
+
+        result = cli_runner.invoke(
+            cli, ["chunk", "complete", "my-chunk", "--project-dir", str(temp_project)]
+        )
+        assert result.exit_code == 0
+        assert _chunk_status(chunk_path) == "ACTIVE"
+
     def test_blocks_on_missing_code_path(self, cli_runner, temp_project):
         """A code_paths entry naming a missing file blocks completion."""
         chunk_path = _create_chunk(cli_runner, temp_project)
