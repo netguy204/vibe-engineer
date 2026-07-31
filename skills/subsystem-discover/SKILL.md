@@ -1,11 +1,12 @@
 ---
 name: subsystem-discover
 description: Guide collaborative discovery of an emergent subsystem through pattern identification, scope boundaries, invariants, and implementation mapping. Use when the operator asks to document a subsystem or recurring architectural pattern, or to resume discovery on a DISCOVERING subsystem.
-allowed-tools: Bash(ve --help:*), Bash(cat:*), Bash(ve subsystem discover:*), Bash(ve subsystem status:*)
+allowed-tools: Bash(ve --help:*), Bash(cat:*), Bash(ve subsystem discover:*), Bash(ve subsystem status:*), Bash(ve subsystem validate:*)
 ---
 
 <!-- GENERATED from src/templates/plugin/skills/subsystem-discover.md.jinja2 — edit that template and run `ve plugin render`; direct edits here will be overwritten. -->
 <!-- Chunk: docs/chunks/plugin_core_commands - Static plugin port of subsystem-discover -->
+<!-- Chunk: docs/chunks/crossref_generator_verify - Write-time symbol verification in Phase 4 -->
 
 ## Context
 
@@ -268,6 +269,16 @@ rationale in `<subsystem_directory>/OVERVIEW.md`.
 
 Populate the code_references frontmatter with discovered implementations.
 
+### Verify Before You Write
+
+**Never write a symbol name you have not read from the target file in this
+session.** Open the file and copy the definition's name exactly — do not
+reconstruct it from memory or infer it from naming patterns. A
+plausible-but-invented name (writing `OriginationSimulator` when the file
+defines `OriginationRiskAnalyzer`) is precisely the defect this rule kills:
+a generator that emits unverified symbol names manufactures the debt the
+validator later finds.
+
 ### Compliance Levels
 
 For each discovered implementation, classify its compliance:
@@ -305,8 +316,15 @@ When in doubt, mark as PARTIAL and ask the operator.
 5. **Update Implementation Locations section** with prose context for COMPLIANT
    references - explain why they're canonical
 
+6. **Verify what you wrote**: run `ve subsystem validate <subsystem_id>`.
+   Every reported missing file or missing symbol is a generator error —
+   something you wrote that does not exist. Fix each one now (re-read the
+   file and correct the name) before moving on. Do not proceed with
+   validation errors outstanding.
+
 **Exit Criteria**: At least one code_reference in frontmatter; any deviations
-documented in Known Deviations section.
+documented in Known Deviations section; `ve subsystem validate <subsystem_id>`
+passes.
 
 ---
 
@@ -393,6 +411,8 @@ Review the populated sections:
 - [ ] Scope section has In Scope and Out of Scope content
 - [ ] Invariants section has at least one invariant
 - [ ] At least one code_reference in frontmatter
+- [ ] `ve subsystem validate <subsystem_id>` passes (every code_reference
+      names a file and symbol that exist)
 - [ ] Template guidance comments removed from populated sections
 
 ### Status Transition Rules

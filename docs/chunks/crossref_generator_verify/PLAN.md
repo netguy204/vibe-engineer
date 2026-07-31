@@ -1,179 +1,240 @@
 
 
-<!--
-This document captures HOW you'll achieve the chunk's GOAL.
-It should be specific enough that each step is a reasonable unit of work
-to hand to an agent.
--->
-
 # Implementation Plan
 
 ## Approach
 
-<!--
-How will you build this? Describe the strategy at a high level.
-What patterns or techniques will you use?
-What existing code will you build on?
+The chunk closes two generator-side holes that manufacture the reference debt
+the validator later finds:
 
-Reference docs/trunk/DECISIONS.md entries where relevant.
-If this approach represents a new significant decision, ask the user
-if we should add it to DECISIONS.md and reference it here.
+1. **Subsystem discovery** writes `code_references` into subsystem OVERVIEW
+   frontmatter with no verification affordance — `ve subsystem validate`
+   today checks only chunk refs, so an invented symbol name (field case:
+   `OriginationSimulator`) lands silently.
+2. **Chunk completion** treats a code_references entry naming a nonexistent
+   file/symbol as a *warning* (`_validate_symbol_exists_with_context` in
+   src/chunk_validation.py), and `ve chunk complete` performs no validation
+   at all before flipping status to ACTIVE — so a ref can be stale at birth
+   and still land.
 
-Always include tests in your implementation plan and adhere to
-docs/trunk/TESTING_PHILOSOPHY.md in your planning.
+Strategy: extract one shared reference-existence check (building on the
+existing `symbols.extract_symbols` / `parse_reference` machinery), route both
+chunk validation and a new subsystem code_references validation through it,
+promote provable absence from warning to error in chunk validation, gate
+`ve chunk complete` on it, and amend the two skill templates
+(subsystem-discover, chunk-complete) so the agent flows verify what they
+write. This mirrors the direction set by docs/chunks/crossref_rename_integrity
+(stale declared paths fail loudly for chunks that own intent) and stays
+consistent with the honest-reporting principle of the reference_integrity
+narrative: absence is an error, *uncheckable* is a surfaced warning, never a
+silent pass.
 
-Remember to update code_paths in the chunk's GOAL.md (e.g., docs/chunks/crossref_generator_verify/GOAL.md)
-with references to the files that you expect to touch.
--->
+Scope guards (siblings own these): re-export/`__all__` absence semantics
+(crossref_reexport_absence), non-identifier anchors (crossref_unchecked_anchors),
+glob expansion (crossref_glob_refs), and workspace-mode parity
+(crossref_workspace_parity) are explicitly out of scope. The shared check
+keeps today's whole-file `extract_symbols` semantics.
+
+TDD per docs/trunk/TESTING_PHILOSOPHY.md: write failing tests for each new
+disposition first, then implement.
 
 ## Subsystem Considerations
 
-<!--
-Before designing your implementation, check docs/subsystems/ for relevant
-cross-cutting patterns.
-
-QUESTIONS TO CONSIDER:
-- Does this chunk touch any existing subsystem's scope?
-- Will this chunk implement part of a subsystem (contribute code) or use it
-  (depend on it)?
-- Did you discover code during exploration that should be part of a subsystem
-  but doesn't follow its patterns?
-
-If no subsystems are relevant, delete this section.
-
-WHEN SUBSYSTEMS ARE RELEVANT:
-List each relevant subsystem with its status and your relationship:
-- **docs/subsystems/validation** (DOCUMENTED): This chunk USES the validation
-  subsystem to check input
-- **docs/subsystems/error_handling** (REFACTORING): This chunk IMPLEMENTS a
-  new error type following the subsystem's patterns
-
-HOW SUBSYSTEM STATUS AFFECTS YOUR WORK:
-
-DOCUMENTED subsystems: The subsystem's patterns are captured but deviations are not
-being actively fixed. If you discover code that deviates from the subsystem's
-patterns, add it to the subsystem's Known Deviations section. Do NOT prioritize
-fixing those deviations—your chunk has its own goals.
-
-REFACTORING subsystems: The subsystem is being actively consolidated. If your chunk
-work touches code that deviates from the subsystem's patterns, attempt to bring it
-into compliance as part of your work. This is "opportunistic improvement"—improve
-what you touch, but don't expand scope to fix unrelated deviations.
-
-WHEN YOU DISCOVER DEVIATING CODE:
-- Add it to the subsystem's Known Deviations section
-- Note whether you will address it (REFACTORING status + relevant to your work)
-  or leave it for future work (DOCUMENTED status or outside your chunk's scope)
-
-Example:
-- **Discovered deviation**: src/legacy/parser.py#validate_input does its own
-  validation instead of using the validation subsystem
-  - Added to docs/subsystems/validation Known Deviations
-  - Action: Will not address (subsystem is DOCUMENTED; deviation outside chunk scope)
--->
+- **docs/subsystems/workflow_artifacts** (STABLE): this chunk IMPLEMENTS part
+  of the artifact lifecycle — validation of artifact-declared code references
+  at completion/validation time. `src/symbols.py`, `src/subsystems.py`, and
+  the CLI command modules already carry this subsystem's backreferences.
+- **docs/subsystems/template_system** (STABLE): this chunk USES the template
+  system. Hard invariant respected: edit `src/templates/plugin/skills/*.jinja2`
+  sources, re-render with `uv run ve plugin render`, never edit
+  `skills/*/SKILL.md` renders directly.
 
 ## Sequence
 
-<!--
-Ordered steps to implement this chunk. Each step should be:
-- Small enough to reason about in isolation
-- Large enough to be meaningful
-- Clear about its inputs and outputs
+### Step 1: Shared reference-existence check in src/symbols.py
 
-This sequence is your contract with yourself (and with agents).
-Work through it in order. Don't skip ahead.
+Add a public function:
 
-Example:
+```python
+def check_reference_target(project_dir: Path, ref: str) -> tuple[str | None, str | None]:
+    """Check a local (non-project-qualified) symbolic reference against a project.
 
-### Step 1: Define the SegmentHeader struct
-
-Create the struct that represents a segment's header with fields for:
-- magic number (4 bytes)
-- version (2 bytes)
-- segment_id (8 bytes)
-- message_count (4 bytes)
-- checksum (4 bytes)
-
-Location: src/segment/format.rs
-
-### Step 2: Implement header serialization
-
-Add `to_bytes()` and `from_bytes()` methods to SegmentHeader.
-Use little-endian encoding per SPEC.md Section 3.1.
-
-### Step 3: ...
-
----
-
-**BACKREFERENCE COMMENTS**
-
-When implementing code, add backreference comments to help future agents trace
-code back to its governing documentation.
-
-**Valid backreference types:**
-- `# Subsystem: docs/subsystems/<name>` - For architectural patterns
-- `# Chunk: docs/chunks/<name>` - For implementation work
-
-Place comments at the appropriate level:
-- **Module-level**: If this code implements the subsystem/chunk's core functionality
-- **Class-level**: If this class is part of the pattern
-- **Method-level**: If this method implements a specific behavior
-
-Format (place immediately before the symbol):
-```
-# Subsystem: docs/subsystems/workflow_artifacts - Workflow artifact manager pattern
-# Chunk: docs/chunks/auth_refactor - Authentication system redesign
+    Returns (error, warning):
+    - error:   file does not exist, or symbol not found in a parseable Python file
+    - warning: Python file exists but could not be parsed (uncheckable)
+    - (None, None): verified, or not symbol-checkable (non-Python file / no symbol)
+    """
 ```
 
-Do NOT add narrative backreferences. Narratives decompose into chunks; reference
-the implementing chunk instead.
+Behavior (preserving today's semantics from
+`chunk_validation._validate_symbol_exists_with_context`, only reclassified):
+- Parse via `qualify_ref(ref, ".")` + `parse_reference`.
+- Missing file → error `"File not found: {file_path} (ref: {ref})"`.
+- No symbol part → verified after file check.
+- `extract_symbols` empty on a `.py` file → warning
+  `"Could not extract symbols from {file_path} (ref: {ref})"`.
+- Symbol not in extracted set (Python) → error
+  `"Symbol not found: {symbol_path} in {file_path} (ref: {ref})"`.
+- Non-Python files with a symbol part → (None, None) (unchanged; honest
+  UNCHECKED reporting belongs to crossref_unchecked_anchors).
 
-**Task context note**: In multi-project tasks, always use local paths (e.g.,
-`docs/chunks/chunk_name`) for chunk backreferences, not paths to the external
-artifact repo. Each project has `external.yaml` pointers that resolve to the
-actual chunk content.
--->
+Backreference: `# Chunk: docs/chunks/crossref_generator_verify`.
+
+Tests first in tests/test_symbols.py: one test per disposition (missing file,
+missing symbol, valid symbol, file-only ref, non-Python symbol anchor,
+unparseable Python file).
+
+### Step 2: Promote absence to error in chunk validation
+
+In src/chunk_validation.py:
+- Change `_validate_symbol_exists_with_context` to return
+  `tuple[list[str], list[str]]` (errors, warnings). Local branch and the
+  resolved-project cross-project branch delegate to `check_reference_target`
+  (passing the resolved project dir; keep the `in project {ref}` phrasing for
+  cross-project messages). Keep as warnings: "Skipped cross-project reference
+  (no task context)" and "Could not resolve project".
+- Delete the now-unused private `_validate_symbol_exists` (no callers outside
+  this module) and update the module docstring.
+- In `validate_chunk_complete`, extend `errors` with the returned errors and
+  `warnings` with the warnings.
+
+Add a completion-gate helper used by Step 3:
+
+```python
+def validate_chunk_references_exist(
+    chunks: Chunks, chunk_name: str, task_dir: pathlib.Path | None = None,
+) -> tuple[list[str], list[str]]:
+```
+
+which checks *only existence* of declared entries (empty lists pass):
+- each `code_paths` entry exists (`.exists()`, directories allowed — parity
+  with `IntegrityValidator._validate_chunk_file_paths`);
+- each `code_references` entry passes
+  `_validate_symbol_exists_with_context` (errors block, warnings pass
+  through).
+
+Tests first: update tests/test_chunk_validate.py
+`TestSymbolicReferenceValidation` — nonexistent symbol/file now exit 1 with
+the message on stderr; valid refs unchanged; add an unparseable-Python case
+asserting exit 0 + warning.
+
+### Step 3: Gate `ve chunk complete` on reference existence
+
+In src/cli/chunk.py:
+- `complete_chunk` (single-repo path): after resolving `chunk_name`, call
+  `chunks.validate_chunk_references_exist(...)` (expose a thin wrapper on
+  `Chunks` following the existing wrapper pattern, or call the
+  chunk_validation function directly with the `Chunks` instance — follow the
+  existing routing style used by `validate_chunk_complete`). On errors: print
+  each, then guidance:
+  "Cannot complete: code references name targets that do not exist. Fix the
+  reference or the code (a chunk cannot land pointing at code that does not
+  exist); if the target was deliberately deleted, escalate to the operator."
+  Exit 1 without touching the frontmatter.
+- `_complete_task_chunk`: same gate against the external repo's `Chunks`
+  with `task_dir` supplied, before `update_frontmatter_field`.
+
+Tests first (tests/test_chunk_scratchpad_cli.py or a new
+tests/test_chunk_complete_gate.py):
+- complete succeeds when code_references point at an existing file+symbol;
+- complete exits 1 and leaves status IMPLEMENTING when a ref names a missing
+  file; same for a missing symbol;
+- complete still succeeds with empty code_references (existing minimal-chunk
+  tests also cover this — they must keep passing);
+- code_paths entry naming a missing file blocks; a directory entry passes.
+
+### Step 4: `ve subsystem validate` verifies code_references
+
+In src/subsystems.py, add
+`validate_code_references(self, subsystem_id) -> tuple[list[str], list[str]]`:
+iterate the parsed frontmatter's `code_references`, run each through
+`check_reference_target` against `self.project_dir`, collect errors/warnings.
+
+In src/cli/subsystem.py `validate`: call it alongside `validate_chunk_refs`;
+print all errors (exit 1 if any), echo warnings on success.
+
+Tests first in tests/test_subsystem_validate.py:
+- subsystem whose ref names a real file+symbol passes;
+- invented symbol in an existing file → exit 1, output names the symbol and
+  the ref;
+- missing file → exit 1;
+- file-only ref to an existing non-Python file passes;
+- chunk-ref validation behavior unchanged.
+
+### Step 5: Skill template updates (write-time verification in the flows)
+
+Edit `src/templates/plugin/skills/subsystem-discover.md.jinja2`:
+- allowed-tools: add `"Bash(ve subsystem validate:*)"`.
+- Phase 4 (Implementation Mapping): add a rule before formatting refs —
+  never write a symbol name you have not read from the target file in this
+  session; open the file and copy the definition's name exactly (a
+  plausible-but-invented name is precisely the defect this rule kills).
+- Phase 4 documentation steps: after updating frontmatter, run
+  `ve subsystem validate <subsystem_id>`; every reported missing
+  file/symbol is a generator error to fix now. Update Exit Criteria to
+  include the validate pass.
+- Phase 7 completeness checklist: add "ve subsystem validate passes".
+
+Edit `src/templates/plugin/skills/chunk-complete.md.jinja2`:
+- Step 2: add the copy-don't-reconstruct instruction for symbol names.
+- Step 4: note that `ve chunk validate` now **fails** on references naming
+  nonexistent files/symbols and `ve chunk complete` refuses to land them;
+  the remedy is fixing the reference or the code — never deleting a
+  reference to pass the gate (deliberate-deletion cases go to the operator).
+
+Re-render: `uv run ve plugin render`; commit the updated
+`skills/subsystem-discover/SKILL.md` and `skills/chunk-complete/SKILL.md`.
+Verify tests/test_plugin_render.py passes.
+
+### Step 6: Full-suite verification and self-application
+
+- `uv run pytest tests/ -q` — full suite green against the recorded baseline.
+- `uv run ve validate` — clean.
+- `uv run ve chunk validate crossref_generator_verify` once code_references
+  are populated at completion — the chunk lands through its own gate.
 
 ## Dependencies
 
-<!--
-What must exist before this chunk can be implemented?
-- Other chunks that must be complete
-- External libraries to add
-- Infrastructure or configuration
-
-If there are no dependencies, delete this section.
--->
+None on unshipped work. `depends_on: []` stands: the shared check builds on
+ACTIVE machinery (`symbols.extract_symbols`, `crossref_rename_integrity`'s
+loud-failure precedent). Siblings in this narrative touch adjacent code
+(src/integrity.py, src/workspace_validation.py) but not the functions changed
+here.
 
 ## Risks and Open Questions
 
-<!--
-What might go wrong? What are you unsure about?
-Being explicit about uncertainty helps you (and agents) know where to
-be careful and when to stop and ask questions.
-
-Example:
-- fsync behavior may differ across filesystems; need to verify on ext4 and APFS
-- Unclear whether concurrent reads during write are safe; may need mutex
-- Performance target is aggressive; may need to iterate on buffer sizes
--->
+- **Existing tests completing chunks with populated-but-stale refs**: the new
+  complete gate may surface fixture chunks whose code_references point at
+  nothing. Expected and desirable; fix fixtures to reference real files (or
+  leave refs empty where the test's subject is unrelated).
+- **Warning-to-error promotion blast radius**: orchestrator flows that run
+  `ve chunk validate` will now fail on stale refs. That is the intended
+  behavior change; verify no orchestrator test encodes the old tolerance.
+- **Interaction with crossref_glob_refs** (same narrative, may run
+  concurrently): that chunk adds glob expansion to
+  `IntegrityValidator._validate_chunk_file_paths` and workspace validation.
+  If it lands first, the completion gate here should route code_paths checks
+  through the same expansion; if this chunk lands first, note the handoff so
+  the glob chunk extends `validate_chunk_references_exist` too.
+- **Non-Python silent pass**: `check_reference_target` deliberately keeps
+  the silent pass for non-Python symbol anchors — surfacing UNCHECKED
+  belongs to crossref_unchecked_anchors; do not fork that semantics here.
 
 ## Deviations
 
-<!--
-POPULATE DURING IMPLEMENTATION, not at planning time.
-
-When reality diverges from the plan, document it here:
-- What changed?
-- Why?
-- What was the impact?
-
-Minor deviations (renamed a function, used a different helper) don't need
-documentation. Significant deviations (changed the approach, skipped a step,
-added steps) do.
-
-Example:
-- Step 4: Originally planned to use std::fs::rename for atomic swap.
-  Testing revealed this isn't atomic across filesystems. Changed to
-  write-fsync-rename-fsync sequence per platform best practices.
--->
+- **Whole-word fallback before declaring symbol absence** (Step 1, discovered
+  during completion): AST extraction only indexes functions and classes, so a
+  reference to a module-level constant (live case:
+  `docs/chunks/intent_principles` referencing
+  `src/models/chunk.py#VALID_CHUNK_TRANSITIONS`) would have become a *false
+  error* under the warning→error promotion. `check_reference_target` now
+  falls back to a whole-word scan of the symbol's leaf component: name occurs
+  in the file without being a def/class → uncheckable warning ("occurs but
+  cannot be verified"); name absent entirely → error. Invented names
+  (`OriginationSimulator`) still fail because they occur nowhere. Covered by
+  three added disposition tests.
+- **Stale-ref repairs in overlapping chunks** (completion phase): deleting
+  the redundant `_validate_symbol_exists` invalidated code_references in
+  three ACTIVE chunks (`chunk_validate`, `chunk_validator_extract`,
+  `symbolic_code_refs`); each was re-pointed at the surviving
+  `_validate_symbol_exists_with_context`, verified via the new gate itself.

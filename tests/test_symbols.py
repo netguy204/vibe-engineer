@@ -382,3 +382,130 @@ class TestOverlapDetectionAcrossProjects:
         """File-level references don't overlap across projects."""
         # File reference doesn't contain symbols from different project
         assert is_parent_of("org/a::src/foo.py", "org/b::src/foo.py#Bar") is False
+
+
+# Chunk: docs/chunks/crossref_generator_verify - Shared reference-existence check tests
+class TestCheckReferenceTarget:
+    """Tests for check_reference_target dispositions.
+
+    Success criterion: a single shared check reports absence (missing file,
+    missing Python symbol) as an error, unparseable Python as a warning,
+    and verified / non-checkable targets as clean.
+    """
+
+    def test_missing_file_is_error(self, tmp_path: Path):
+        """A reference naming a nonexistent file returns an error."""
+        from symbols import check_reference_target
+
+        error, warning = check_reference_target(tmp_path, "src/nope.py#Thing")
+        assert error is not None
+        assert "src/nope.py" in error
+        assert warning is None
+
+    def test_missing_symbol_in_parseable_python_is_error(self, tmp_path: Path):
+        """An invented symbol in a real, parseable Python file is an error."""
+        from symbols import check_reference_target
+
+        src = tmp_path / "src"
+        src.mkdir()
+        (src / "mod.py").write_text("class RealClass:\n    pass\n")
+
+        error, warning = check_reference_target(tmp_path, "src/mod.py#InventedClass")
+        assert error is not None
+        assert "InventedClass" in error
+        assert warning is None
+
+    def test_existing_symbol_is_clean(self, tmp_path: Path):
+        """A reference to a defined symbol passes with no error or warning."""
+        from symbols import check_reference_target
+
+        src = tmp_path / "src"
+        src.mkdir()
+        (src / "mod.py").write_text("class RealClass:\n    def method(self):\n        pass\n")
+
+        assert check_reference_target(tmp_path, "src/mod.py#RealClass") == (None, None)
+        assert check_reference_target(tmp_path, "src/mod.py#RealClass::method") == (None, None)
+
+    def test_file_only_reference_checks_existence_only(self, tmp_path: Path):
+        """A file-only reference passes iff the file exists."""
+        from symbols import check_reference_target
+
+        (tmp_path / "README.md").write_text("hello\n")
+
+        assert check_reference_target(tmp_path, "README.md") == (None, None)
+        error, _ = check_reference_target(tmp_path, "MISSING.md")
+        assert error is not None
+
+    def test_directory_reference_is_clean(self, tmp_path: Path):
+        """A file-only reference to an existing directory passes."""
+        from symbols import check_reference_target
+
+        (tmp_path / "pkg").mkdir()
+        assert check_reference_target(tmp_path, "pkg") == (None, None)
+
+    def test_non_python_symbol_anchor_is_skipped(self, tmp_path: Path):
+        """Symbol anchors on non-Python files are not symbol-checked."""
+        from symbols import check_reference_target
+
+        (tmp_path / "config.yaml").write_text("key: value\n")
+        assert check_reference_target(tmp_path, "config.yaml#key") == (None, None)
+
+    def test_module_level_constant_is_warning_not_error(self, tmp_path: Path):
+        """A name that occurs in the file but is not a def/class is uncheckable.
+
+        AST extraction only indexes functions and classes; a reference to a
+        module-level constant (e.g. VALID_TRANSITIONS) is legitimate and must
+        not be declared provably absent — that would false-block completion.
+        """
+        from symbols import check_reference_target
+
+        src = tmp_path / "src"
+        src.mkdir()
+        (src / "mod.py").write_text(
+            "VALID_TRANSITIONS = {1: 2}\n\n\nclass RealClass:\n    pass\n"
+        )
+
+        error, warning = check_reference_target(tmp_path, "src/mod.py#VALID_TRANSITIONS")
+        assert error is None
+        assert warning is not None
+        assert "VALID_TRANSITIONS" in warning
+
+    def test_name_absent_from_file_entirely_is_error(self, tmp_path: Path):
+        """A name that occurs nowhere in the file at all is provably absent."""
+        from symbols import check_reference_target
+
+        src = tmp_path / "src"
+        src.mkdir()
+        (src / "mod.py").write_text(
+            "SOME_CONST = 1\n\n\nclass RealClass:\n    pass\n"
+        )
+
+        error, warning = check_reference_target(tmp_path, "src/mod.py#GhostName")
+        assert error is not None
+        assert "GhostName" in error
+
+    def test_prefix_of_longer_name_is_still_error(self, tmp_path: Path):
+        """A symbol that only occurs as a prefix of a longer identifier is absent."""
+        from symbols import check_reference_target
+
+        src = tmp_path / "src"
+        src.mkdir()
+        (src / "mod.py").write_text(
+            "def validate_symbol_with_context():\n    pass\n"
+        )
+
+        error, warning = check_reference_target(tmp_path, "src/mod.py#validate_symbol")
+        assert error is not None
+
+    def test_unparseable_python_is_warning_not_error(self, tmp_path: Path):
+        """A Python file with a syntax error is uncheckable: warning, no error."""
+        from symbols import check_reference_target
+
+        src = tmp_path / "src"
+        src.mkdir()
+        (src / "broken.py").write_text("def broken(:\n")
+
+        error, warning = check_reference_target(tmp_path, "src/broken.py#broken")
+        assert error is None
+        assert warning is not None
+        assert "src/broken.py" in warning

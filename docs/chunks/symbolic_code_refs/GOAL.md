@@ -29,8 +29,8 @@ code_references:
   implements: Overlap detection using symbolic references
 - ref: src/chunks.py#Chunks::validate_chunk_complete
   implements: Thin wrapper delegating to chunk_validation module for chunk completion with symbolic reference support
-- ref: src/chunk_validation.py#_validate_symbol_exists
-  implements: Symbol existence validation producing warnings
+- ref: src/chunk_validation.py#_validate_symbol_exists_with_context
+  implements: Symbol existence validation for code references (absence handling now owned by crossref_generator_verify)
 - ref: src/chunks.py#Chunks::_extract_symbolic_refs
   implements: Extract symbolic reference strings from code_references
 - ref: src/chunks.py#Chunks::_is_symbolic_format

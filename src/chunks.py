@@ -59,6 +59,7 @@ from chunk_validation import (
     plan_has_content,
     validate_chunk_complete as _validate_chunk_complete,
     validate_chunk_injectable as _validate_chunk_injectable,
+    validate_chunk_references_exist as _validate_chunk_references_exist,
 )
 # Chunk: docs/chunks/chunks_class_decouple - Top-level imports from integrity (no late imports needed)
 # Chunk: docs/chunks/integrity_deprecate_standalone - Updated to use IntegrityValidator and _errors_to_messages
@@ -864,6 +865,19 @@ class Chunks(ArtifactManager[ChunkFrontmatter, ChunkStatus]):
         Delegates to chunk_validation.validate_chunk_complete().
         """
         return _validate_chunk_complete(self, chunk_id, task_dir)
+
+    # Chunk: docs/chunks/crossref_generator_verify - Completion gate wrapper
+    def validate_chunk_references_exist(
+        self,
+        chunk_name: str,
+        task_dir: pathlib.Path | None = None,
+    ) -> tuple[list[str], list[str]]:
+        """Check that a chunk's declared code references exist.
+
+        Delegates to chunk_validation.validate_chunk_references_exist().
+        Empty declarations pass; whatever is declared must resolve.
+        """
+        return _validate_chunk_references_exist(self, chunk_name, task_dir)
 
     # Chunk: docs/chunks/project_artifact_registry - Refactored to accept Project for unified manager access
     # Chunk: docs/chunks/chunks_class_decouple - Deprecated: delegates to Project.list_proposed_chunks()
