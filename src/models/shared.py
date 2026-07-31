@@ -9,9 +9,15 @@ from pydantic import BaseModel, field_validator
 from validation import validate_identifier
 
 
+# Chunk: docs/chunks/crossref_artifact_id_cap - Length capped by path legality, not 31
 def _require_valid_dir_name(value: str, field_name: str) -> str:
-    """Validate a directory name, raising ValueError if invalid."""
-    errors = validate_identifier(value, field_name, allow_dot=True, max_length=31)
+    """Validate a directory name, raising ValueError if invalid.
+
+    Length is bounded by the filesystem path-component limit (the
+    validate_identifier default), so ordinary descriptive artifact names of
+    any realistic length are representable.
+    """
+    errors = validate_identifier(value, field_name, allow_dot=True)
     if errors:
         raise ValueError("; ".join(errors))
     return value

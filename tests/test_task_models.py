@@ -197,3 +197,33 @@ class TestExternalArtifactRef:
             artifact_id="my_feature",
         )
         assert ref.artifact_id == "my_feature"
+
+    # Chunk: docs/chunks/crossref_artifact_id_cap - Long descriptive ids are representable
+    def test_external_artifact_ref_accepts_long_descriptive_artifact_id(self):
+        """Accepts ordinary descriptive names beyond 31 characters (field defect)."""
+        ref = ExternalArtifactRef(
+            artifact_type=ArtifactType.CHUNK,
+            repo="acme/myproject",
+            artifact_id="database_and_sagemaker_savings_plans",  # 36 chars
+        )
+        assert ref.artifact_id == "database_and_sagemaker_savings_plans"
+
+    # Chunk: docs/chunks/crossref_artifact_id_cap - Cap is the filesystem component limit
+    def test_external_artifact_ref_accepts_artifact_id_at_path_component_limit(self):
+        """Accepts an artifact_id at the 255-char filesystem path-component limit."""
+        ref = ExternalArtifactRef(
+            artifact_type=ArtifactType.CHUNK,
+            repo="acme/myproject",
+            artifact_id="a" * 255,
+        )
+        assert len(ref.artifact_id) == 255
+
+    # Chunk: docs/chunks/crossref_artifact_id_cap - Path legality still enforced
+    def test_external_artifact_ref_rejects_artifact_id_over_path_component_limit(self):
+        """Rejects an artifact_id that cannot be a filesystem path component."""
+        with pytest.raises(ValidationError, match="255"):
+            ExternalArtifactRef(
+                artifact_type=ArtifactType.CHUNK,
+                repo="acme/myproject",
+                artifact_id="a" * 256,
+            )

@@ -52,15 +52,26 @@ class TestShortNameValidation:
         assert result.exit_code != 0
         assert "character" in result.output.lower()
 
-    def test_rejects_length_32_or_more(self, runner, temp_project):
-        """short_name with 32+ characters is rejected."""
-        long_name = "a" * 32
+    # Chunk: docs/chunks/crossref_artifact_id_cap - Descriptive names beyond 31 chars are legal
+    def test_accepts_descriptive_name_beyond_31_chars(self, runner, temp_project):
+        """Ordinary descriptive names over 31 characters are accepted."""
+        long_name = "database_and_sagemaker_savings_plans"  # 36 chars
+        result = runner.invoke(
+            cli,
+            ["chunk", "start", long_name, "--project-dir", str(temp_project)]
+        )
+        assert result.exit_code == 0, f"Failed with: {result.output}"
+
+    # Chunk: docs/chunks/crossref_artifact_id_cap - Cap is the filesystem component limit
+    def test_rejects_length_over_path_component_limit(self, runner, temp_project):
+        """short_name over 255 characters (filesystem limit) is rejected."""
+        long_name = "a" * 256
         result = runner.invoke(
             cli,
             ["chunk", "start", long_name, "--project-dir", str(temp_project)]
         )
         assert result.exit_code != 0
-        assert "32" in result.output or "length" in result.output.lower()
+        assert "255" in result.output
 
     def test_accepts_valid_short_name(self, runner, temp_project):
         """Valid short_name with alphanumeric, underscore, hyphen is accepted."""
@@ -72,8 +83,8 @@ class TestShortNameValidation:
 
     def test_collects_all_errors(self, runner, temp_project):
         """Multiple validation errors are collected and shown together."""
-        # 33 chars with a space and invalid char
-        bad_name = "a" * 30 + " @!"
+        # 258 chars (over the 255 limit) with a space and invalid char
+        bad_name = "a" * 255 + " @!"
         result = runner.invoke(
             cli,
             ["chunk", "start", bad_name, "--project-dir", str(temp_project)]
@@ -82,7 +93,7 @@ class TestShortNameValidation:
         # Should mention multiple issues
         output_lower = result.output.lower()
         assert "invalid characters" in output_lower
-        assert "31" in result.output or "at most" in output_lower
+        assert "255" in result.output or "at most" in output_lower
 
 
 class TestTicketIdValidation:
@@ -379,33 +390,33 @@ class TestImplementingGuard:
         assert "second_chunk" in chunk_list
 
 
+# Chunk: docs/chunks/crossref_artifact_id_cap - Length boundary moved to the filesystem limit
 class TestCombinedNameLengthValidation:
     """Tests for chunk name length validation.
 
     Since ticket_id no longer affects the directory name (it's stored only in
     frontmatter), we only validate the short_name length. The directory name
-    is just {short_name} and must not exceed 31 characters.
+    is just {short_name} and must be a legal filesystem path component: at
+    most 255 characters (the per-component limit on APFS/ext4/NTFS).
     """
 
     def test_long_short_name_with_ticket_only_validates_short_name(self, runner, temp_project):
-        """Long short_name is rejected regardless of ticket_id (ticket doesn't affect directory)."""
-        # short_name (33 chars) exceeds the 31 char limit for directory names
-        short_name = "a" * 33  # 33 chars - exceeds 31 limit
+        """Over-limit short_name is rejected regardless of ticket_id (ticket doesn't affect directory)."""
+        # short_name (256 chars) exceeds the 255-char path-component limit
+        short_name = "a" * 256
         ticket_id = "b" * 15   # 15 chars (doesn't affect directory name)
         result = runner.invoke(
             cli,
             ["chunk", "start", short_name, ticket_id, "--project-dir", str(temp_project)]
         )
         assert result.exit_code != 0
-        # Should report short_name validation error (exceeds 32 char limit for identifiers)
-        assert "32" in result.output or "character" in result.output.lower()
+        # Should report the short_name length validation error
+        assert "255" in result.output
 
-    def test_accepts_short_name_at_31_chars_with_ticket(self, runner, temp_project):
-        """Short name at 31 chars is accepted (ticket_id doesn't affect directory)."""
-        # Ticket ID only in frontmatter - use dashed ticket format for positional arg
-        short_name = "a" * 31  # 31 chars
+    def test_accepts_short_name_beyond_31_chars_with_ticket(self, runner, temp_project):
+        """Descriptive short name over the old 31-char cap is accepted with a ticket."""
+        short_name = "database_and_sagemaker_savings_plans"  # 36 chars
         ticket_id = "ve-001"   # Dashed ticket - doesn't affect directory name
-        # Directory will be just short_name (31 chars) - accepted
         result = runner.invoke(
             cli,
             ["chunk", "start", short_name, ticket_id, "--project-dir", str(temp_project)]
@@ -414,44 +425,43 @@ class TestCombinedNameLengthValidation:
 
     def test_error_message_shows_limit_for_long_short_name(self, runner, temp_project):
         """Error message explains limit when short_name exceeds limit."""
-        # Create a short_name that's 40 chars
-        short_name = "a" * 40  # 40 chars - exceeds 31 limit
+        short_name = "a" * 300  # Well over the 255-char limit
         ticket_id = "b" * 14   # Ticket doesn't affect validation
         result = runner.invoke(
             cli,
             ["chunk", "start", short_name, ticket_id, "--project-dir", str(temp_project)]
         )
         assert result.exit_code != 0
-        # Should mention the limit (32 for identifier) and actual length
-        assert "32" in result.output or "character" in result.output.lower()
+        # Should mention the limit and actual length
+        assert "255" in result.output
+        assert "300" in result.output
 
     def test_validates_short_name_alone(self, runner, temp_project):
-        """Short name alone > 31 chars fails on short_name validation."""
-        # A short_name that alone exceeds 31 chars should fail
-        long_name = "a" * 35  # 35 chars - exceeds 31 limit
+        """Short name alone over 255 chars fails on short_name validation."""
+        long_name = "a" * 256
         result = runner.invoke(
             cli,
             ["chunk", "start", long_name, "--project-dir", str(temp_project)]
         )
         assert result.exit_code != 0
         # Should report the short_name validation error
-        assert "32" in result.output or "character" in result.output.lower()
+        assert "255" in result.output
 
-    def test_short_name_at_31_with_ticket_accepted(self, runner, temp_project):
-        """Short name at 31 chars with ticket_id is accepted (ticket in frontmatter only)."""
+    def test_short_name_at_limit_with_ticket_accepted(self, runner, temp_project):
+        """Short name at 255 chars with ticket_id is accepted (ticket in frontmatter only)."""
         # Ticket ID only in frontmatter - use dashed ticket format for positional arg
-        short_name = "a" * 31  # 31 chars
+        short_name = "a" * 255  # At the path-component limit
         ticket_id = "ve-001"   # Dashed ticket - doesn't affect directory name
         result = runner.invoke(
             cli,
             ["chunk", "start", short_name, ticket_id, "--project-dir", str(temp_project)]
         )
-        # Since ticket_id no longer affects directory name, 31-char short_name is fine
+        # Since ticket_id no longer affects directory name, a 255-char short_name is fine
         assert result.exit_code == 0, f"Failed with: {result.output}"
 
-    def test_short_name_only_at_31_chars_accepted(self, runner, temp_project):
-        """Short name only at 31 chars is accepted (no ticket_id)."""
-        short_name = "a" * 31  # 31 chars exactly
+    def test_short_name_only_at_limit_accepted(self, runner, temp_project):
+        """Short name only at 255 chars is accepted (no ticket_id)."""
+        short_name = "a" * 255  # At the path-component limit
         result = runner.invoke(
             cli,
             ["chunk", "start", short_name, "--project-dir", str(temp_project)]

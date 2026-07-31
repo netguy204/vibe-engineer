@@ -467,7 +467,7 @@ Alias: `ve chunk start` (deprecated, same behavior)
   - `--future`: Create chunk with `FUTURE` status instead of `IMPLEMENTING`
 - **Preconditions**:
   - `docs/chunks/` directory exists
-  - `SHORT_NAME` matches pattern `^[a-zA-Z0-9_-]{1,31}$`
+  - `SHORT_NAME` matches pattern `^[a-zA-Z0-9_-]{1,255}$`
   - `TICKET_ID` (if provided) matches pattern `^[a-zA-Z0-9_-]+$`
 - **Postconditions**:
   - New directory `docs/chunks/{short_name}/` created
@@ -479,7 +479,7 @@ Alias: `ve chunk start` (deprecated, same behavior)
 - **Errors**:
   - ValidationError if SHORT_NAME contains spaces
   - ValidationError if SHORT_NAME contains invalid characters
-  - ValidationError if SHORT_NAME exceeds 31 characters
+  - ValidationError if SHORT_NAME exceeds 255 characters
   - ValidationError if TICKET_ID contains spaces or invalid characters
 - **Exit codes**: 0 on success, 1 on validation error or user abort
 
@@ -533,7 +533,7 @@ Create a new subsystem directory with OVERVIEW.md template for guided discovery.
 - **Options**:
   - `--project-dir PATH`: Target directory (default: current working directory)
 - **Preconditions**:
-  - `SHORT_NAME` matches pattern `^[a-zA-Z0-9_-]{1,31}$`
+  - `SHORT_NAME` matches pattern `^[a-zA-Z0-9_-]{1,255}$`
   - No existing subsystem with the same short name
 - **Postconditions**:
   - New directory `docs/subsystems/{short_name}/` created
@@ -542,7 +542,7 @@ Create a new subsystem directory with OVERVIEW.md template for guided discovery.
   - Input is normalized to lowercase
 - **Errors**:
   - ValidationError if SHORT_NAME contains invalid characters
-  - ValidationError if SHORT_NAME exceeds 31 characters
+  - ValidationError if SHORT_NAME exceeds 255 characters
   - Error if subsystem with same short name already exists
 - **Exit codes**: 0 on success, 1 on validation error
 
@@ -615,7 +615,7 @@ Create a new investigation directory with OVERVIEW.md template.
 - **Options**:
   - `--project-dir PATH`: Target directory (default: current working directory)
 - **Preconditions**:
-  - `SHORT_NAME` matches pattern `^[a-zA-Z0-9_-]{1,31}$`
+  - `SHORT_NAME` matches pattern `^[a-zA-Z0-9_-]{1,255}$`
   - No existing investigation with the same short name
 - **Postconditions**:
   - New directory `docs/investigations/{short_name}/` created
@@ -624,7 +624,7 @@ Create a new investigation directory with OVERVIEW.md template.
   - Input is normalized to lowercase
 - **Errors**:
   - ValidationError if SHORT_NAME contains invalid characters
-  - ValidationError if SHORT_NAME exceeds 31 characters
+  - ValidationError if SHORT_NAME exceeds 255 characters
   - Error if investigation with same short name already exists
 - **Exit codes**: 0 on success, 1 on validation error
 
@@ -665,8 +665,8 @@ This tool is for documentation management, not high-throughput data processing. 
 
 | Limit | Value | Behavior when exceeded |
 |-------|-------|------------------------|
-| SHORT_NAME length | 31 characters | ValidationError, operation aborted |
-| Chunk name length | 31 characters | ValidationError, operation aborted |
+| SHORT_NAME length | 255 characters (filesystem path-component limit) | ValidationError, operation aborted |
+| Chunk name length | 255 characters (filesystem path-component limit) | ValidationError, operation aborted |
 | Character set | `[a-zA-Z0-9_-]` | ValidationError, operation aborted |
 
 ## Versioning and Compatibility

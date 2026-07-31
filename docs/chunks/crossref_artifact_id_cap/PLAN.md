@@ -10,170 +10,122 @@ to hand to an agent.
 
 ## Approach
 
-<!--
-How will you build this? Describe the strategy at a high level.
-What patterns or techniques will you use?
-What existing code will you build on?
+The 31-character cap has a single origin: `validate_identifier` in
+`src/validation.py` defaults `max_length=31`, and two call sites repeat that
+arbitrary number explicitly:
 
-Reference docs/trunk/DECISIONS.md entries where relevant.
-If this approach represents a new significant decision, ask the user
-if we should add it to DECISIONS.md and reference it here.
+1. `src/models/shared.py#_require_valid_dir_name` (`max_length=31`) — the only
+   validator behind `ExternalArtifactRef.artifact_id`. This is what makes
+   36-character artifact names like `database_and_sagemaker_savings_plans`
+   unrepresentable in external.yaml pointers (the 3 field defects).
+2. `src/cli/utils.py#validate_short_name` (`max_length=31`) — governs artifact
+   creation (`ve chunk create`, `ve narrative create`, `ve investigation
+   create`, `ve subsystem discover`).
 
-Always include tests in your implementation plan and adhere to
-docs/trunk/TESTING_PHILOSOPHY.md in your planning.
+The audit for other same-origin caps found none: the remaining `max_length`
+uses are real external constraints (GitHub's 39-char org / 100-char repo limits
+in `_require_valid_repo_ref`) or explicit opt-outs (`max_length=None` for
+ticket ids and member qualifiers). `validate_member_name` in
+`models/workspace.py` has no length cap at all.
 
-Remember to update code_paths in the chunk's GOAL.md (e.g., docs/chunks/crossref_artifact_id_cap/GOAL.md)
-with references to the files that you expect to touch.
--->
+The real constraint on an artifact id is path legality: an artifact id becomes
+a directory name, and every filesystem we care about (APFS, ext4, NTFS) caps a
+path component at 255 bytes. The identifier charset is pure ASCII
+(`[a-zA-Z0-9_.-]`), so characters == bytes and a 255-character cap is exactly
+the filesystem limit. The charset check (which is also a real constraint —
+it is what keeps ids shell-safe and unambiguous against `::`/`/` qualifiers)
+stays unchanged.
+
+Plan: introduce `MAX_PATH_COMPONENT_LENGTH = 255` in `src/validation.py`, make
+it the default `max_length`, and drop the explicit `31` at both call sites so
+they inherit the real constraint. Both validators then agree by construction —
+a pointer can never name an artifact that local creation refuses.
+
+TDD per docs/trunk/TESTING_PHILOSOPHY.md: write failing tests first for the
+field-defect case (36-char artifact_id in ExternalArtifactRef, 36-char
+`ve chunk create`) and the new 255/256 boundary, then flip the implementation.
 
 ## Subsystem Considerations
 
-<!--
-Before designing your implementation, check docs/subsystems/ for relevant
-cross-cutting patterns.
-
-QUESTIONS TO CONSIDER:
-- Does this chunk touch any existing subsystem's scope?
-- Will this chunk implement part of a subsystem (contribute code) or use it
-  (depend on it)?
-- Did you discover code during exploration that should be part of a subsystem
-  but doesn't follow its patterns?
-
-If no subsystems are relevant, delete this section.
-
-WHEN SUBSYSTEMS ARE RELEVANT:
-List each relevant subsystem with its status and your relationship:
-- **docs/subsystems/validation** (DOCUMENTED): This chunk USES the validation
-  subsystem to check input
-- **docs/subsystems/error_handling** (REFACTORING): This chunk IMPLEMENTS a
-  new error type following the subsystem's patterns
-
-HOW SUBSYSTEM STATUS AFFECTS YOUR WORK:
-
-DOCUMENTED subsystems: The subsystem's patterns are captured but deviations are not
-being actively fixed. If you discover code that deviates from the subsystem's
-patterns, add it to the subsystem's Known Deviations section. Do NOT prioritize
-fixing those deviations—your chunk has its own goals.
-
-REFACTORING subsystems: The subsystem is being actively consolidated. If your chunk
-work touches code that deviates from the subsystem's patterns, attempt to bring it
-into compliance as part of your work. This is "opportunistic improvement"—improve
-what you touch, but don't expand scope to fix unrelated deviations.
-
-WHEN YOU DISCOVER DEVIATING CODE:
-- Add it to the subsystem's Known Deviations section
-- Note whether you will address it (REFACTORING status + relevant to your work)
-  or leave it for future work (DOCUMENTED status or outside your chunk's scope)
-
-Example:
-- **Discovered deviation**: src/legacy/parser.py#validate_input does its own
-  validation instead of using the validation subsystem
-  - Added to docs/subsystems/validation Known Deviations
-  - Action: Will not address (subsystem is DOCUMENTED; deviation outside chunk scope)
--->
+- **docs/subsystems/workflow_artifacts** (backreferenced by both
+  `src/validation.py` and `src/models/shared.py`): this chunk USES the
+  subsystem's validation helpers and tightens their documented rationale; it
+  does not change the artifact lifecycle pattern itself.
 
 ## Sequence
 
-<!--
-Ordered steps to implement this chunk. Each step should be:
-- Small enough to reason about in isolation
-- Large enough to be meaningful
-- Clear about its inputs and outputs
+### Step 1: Failing tests for the lifted cap
 
-This sequence is your contract with yourself (and with agents).
-Work through it in order. Don't skip ahead.
+- `tests/test_task_models.py` (`TestExternalArtifactRef`): accept
+  `artifact_id="database_and_sagemaker_savings_plans"` (36 chars, the field
+  defect); accept a 255-char id; reject a 256-char id with a message naming
+  255; still reject charset violations (spaces).
+- `tests/test_validation.py`: default cap is `MAX_PATH_COMPONENT_LENGTH`
+  (255) — 36-char and 255-char values pass with no explicit `max_length`,
+  256-char values fail; explicit `max_length` still honored (existing tests).
+- `tests/test_chunk_start.py`: a 36-char descriptive name is accepted by
+  `ve chunk create`; 255-char accepted; 256-char rejected.
+- `tests/test_narrative_create.py`: same for `ve narrative create`.
 
-Example:
+Run the suite; the new tests must fail against the current 31-char cap.
 
-### Step 1: Define the SegmentHeader struct
+### Step 2: Lift the cap at its origin
 
-Create the struct that represents a segment's header with fields for:
-- magic number (4 bytes)
-- version (2 bytes)
-- segment_id (8 bytes)
-- message_count (4 bytes)
-- checksum (4 bytes)
+In `src/validation.py`: add `MAX_PATH_COMPONENT_LENGTH = 255` with a comment
+explaining it is the filesystem path-component limit (bytes == chars for the
+ASCII identifier charset), change `validate_identifier`'s default to it, and
+add a chunk backreference.
 
-Location: src/segment/format.rs
+### Step 3: Remove the arbitrary caps at call sites
 
-### Step 2: Implement header serialization
+- `src/models/shared.py#_require_valid_dir_name`: drop `max_length=31`
+  (inherits the 255 default). Leave the GitHub 39/100 caps in
+  `_require_valid_repo_ref` untouched — they are real external constraints.
+- `src/cli/utils.py#validate_short_name`: drop `max_length=31`.
 
-Add `to_bytes()` and `from_bytes()` methods to SegmentHeader.
-Use little-endian encoding per SPEC.md Section 3.1.
+Add chunk backreferences at both sites.
 
-### Step 3: ...
+### Step 4: Update stale tests asserting the old cap
+
+- `tests/test_chunk_start.py`: `test_rejects_length_32_or_more` and the
+  `TestCombinedNameLengthValidation` class assert 32-40 char names are
+  rejected; rewrite them around the 255/256 boundary and update docstrings.
+  `test_collects_all_errors` uses a 33-char name expecting both a length and
+  a charset error; keep it multi-error by exceeding 255.
+- `tests/test_narrative_create.py`: same treatment for its copies.
+
+### Step 5: Update SPEC.md
+
+Replace `^[a-zA-Z0-9_-]{1,31}$` with `^[a-zA-Z0-9_-]{1,255}$`, "exceeds 31
+characters" with "exceeds 255 characters", and update the Limits table
+(SHORT_NAME length / Chunk name length: 255 characters, noting the filesystem
+path-component origin).
+
+### Step 6: Full verification
+
+`uv run pytest tests/` green; `uv run ve validate` clean.
 
 ---
 
 **BACKREFERENCE COMMENTS**
 
-When implementing code, add backreference comments to help future agents trace
-code back to its governing documentation.
-
-**Valid backreference types:**
-- `# Subsystem: docs/subsystems/<name>` - For architectural patterns
-- `# Chunk: docs/chunks/<name>` - For implementation work
-
-Place comments at the appropriate level:
-- **Module-level**: If this code implements the subsystem/chunk's core functionality
-- **Class-level**: If this class is part of the pattern
-- **Method-level**: If this method implements a specific behavior
-
-Format (place immediately before the symbol):
-```
-# Subsystem: docs/subsystems/workflow_artifacts - Workflow artifact manager pattern
-# Chunk: docs/chunks/auth_refactor - Authentication system redesign
-```
-
-Do NOT add narrative backreferences. Narratives decompose into chunks; reference
-the implementing chunk instead.
-
-**Task context note**: In multi-project tasks, always use local paths (e.g.,
-`docs/chunks/chunk_name`) for chunk backreferences, not paths to the external
-artifact repo. Each project has `external.yaml` pointers that resolve to the
-actual chunk content.
--->
-
-## Dependencies
-
-<!--
-What must exist before this chunk can be implemented?
-- Other chunks that must be complete
-- External libraries to add
-- Infrastructure or configuration
-
-If there are no dependencies, delete this section.
--->
+Add `# Chunk: docs/chunks/crossref_artifact_id_cap` at the modified symbols
+(`MAX_PATH_COMPONENT_LENGTH`/`validate_identifier`, `_require_valid_dir_name`,
+`validate_short_name`).
 
 ## Risks and Open Questions
 
-<!--
-What might go wrong? What are you unsure about?
-Being explicit about uncertainty helps you (and agents) know where to
-be careful and when to stop and ask questions.
-
-Example:
-- fsync behavior may differ across filesystems; need to verify on ext4 and APFS
-- Unclear whether concurrent reads during write are safe; may need mutex
-- Performance target is aggressive; may need to iterate on buffer sizes
--->
+- Byte-vs-character equivalence holds only because the identifier charset is
+  ASCII; the comment on the constant records this so a future charset widening
+  revisits the cap.
+- Test directories up to 255 chars are created under pytest tmp paths; total
+  path stays far below macOS/Linux `PATH_MAX`, and the component itself is at
+  the limit, not over it, so creation succeeds on APFS/ext4/NTFS.
+- SPEC.md's limits table is prose, not code — grep for every `31` tied to
+  name length to avoid leaving a stale statement.
 
 ## Deviations
 
-<!--
-POPULATE DURING IMPLEMENTATION, not at planning time.
-
-When reality diverges from the plan, document it here:
-- What changed?
-- Why?
-- What was the impact?
-
-Minor deviations (renamed a function, used a different helper) don't need
-documentation. Significant deviations (changed the approach, skipped a step,
-added steps) do.
-
-Example:
-- Step 4: Originally planned to use std::fs::rename for atomic swap.
-  Testing revealed this isn't atomic across filesystems. Changed to
-  write-fsync-rename-fsync sequence per platform best practices.
--->
+None. The implementation followed the planned sequence; the same-origin audit
+confirmed no additional arbitrary caps beyond the two identified at planning
+time.

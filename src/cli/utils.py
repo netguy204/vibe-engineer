@@ -15,9 +15,15 @@ from task import TaskProjectContext, is_task_directory
 
 
 # Chunk: docs/chunks/implement_chunk_start-ve-001 - Short name validation delegating to validate_identifier()
+# Chunk: docs/chunks/crossref_artifact_id_cap - Length capped by path legality, not 31
 def validate_short_name(short_name: str) -> list[str]:
-    """Validate short_name and return list of error messages."""
-    return validate_identifier(short_name, "short_name", max_length=31)
+    """Validate short_name and return list of error messages.
+
+    Length is bounded by the filesystem path-component limit (the
+    validate_identifier default), matching what ExternalArtifactRef accepts
+    so a pointer can never name an artifact local creation refuses.
+    """
+    return validate_identifier(short_name, "short_name")
 
 
 # Chunk: docs/chunks/implement_chunk_start-ve-001 - Ticket ID validation delegating to validate_identifier()
