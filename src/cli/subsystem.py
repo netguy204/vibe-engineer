@@ -295,11 +295,12 @@ def _create_task_subsystem(task_dir: pathlib.Path, short_name: str, projects_inp
 
 
 # Chunk: docs/chunks/bidirectional_refs - Subsystem validate CLI command for chunk ref validation
+# Chunk: docs/chunks/crossref_generator_verify - code_references existence checking
 @subsystem.command()
 @click.argument("subsystem_id")
 @click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=".")
 def validate(subsystem_id, project_dir):
-    """Validate subsystem frontmatter and chunk references."""
+    """Validate subsystem frontmatter, chunk references, and code references."""
     # Normalize subsystem_id to strip path prefixes
     subsystem_id = strip_artifact_path_prefix(subsystem_id, ArtifactType.SUBSYSTEM)
 
@@ -314,6 +315,14 @@ def validate(subsystem_id, project_dir):
 
     # Validate chunk references
     errors = subsystems_mgr.validate_chunk_refs(subsystem_id)
+
+    # Validate code_references name existing targets (write-time verification
+    # for the subsystem-discovery flow: invented symbols fail loudly here)
+    ref_errors, ref_warnings = subsystems_mgr.validate_code_references(subsystem_id)
+    errors.extend(ref_errors)
+
+    for warning in ref_warnings:
+        click.echo(warning, err=True)
 
     if errors:
         for error in errors:

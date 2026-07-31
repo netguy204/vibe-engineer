@@ -569,6 +569,9 @@ def complete_chunk(chunk_id, project_dir):
         click.echo(f"Error: {format_not_found_error('Chunk', chunk_id, 've chunk list')}", err=True)
         raise SystemExit(1)
 
+    # Chunk: docs/chunks/crossref_generator_verify - Refuse to land refs to nonexistent code
+    _gate_completion_on_reference_existence(chunks, chunk_name)
+
     goal_path = project_dir / "docs" / "chunks" / chunk_name / "GOAL.md"
     update_frontmatter_field(goal_path, "status", "ACTIVE")
     click.echo(f"Completed docs/chunks/{chunk_name}")
@@ -577,6 +580,32 @@ def complete_chunk(chunk_id, project_dir):
     context = check_task_project_context(project_dir)
     if context:
         _auto_demote_if_eligible(context, chunk_name)
+
+
+# Chunk: docs/chunks/crossref_generator_verify - Completion gate: declared references must exist
+def _gate_completion_on_reference_existence(chunks, chunk_name, task_dir=None):
+    """Block completion when declared code references name nonexistent targets.
+
+    A chunk that lands pointing at code that does not exist is stale at
+    birth — the validator will find the debt this gate prevents. Prints the
+    offending entries and exits 1 without touching the chunk's status.
+    """
+    errors, warnings = chunks.validate_chunk_references_exist(
+        chunk_name, task_dir=task_dir
+    )
+    for warning in warnings:
+        click.echo(warning, err=True)
+    if errors:
+        for error in errors:
+            click.echo(f"Error: {error}", err=True)
+        click.echo(
+            "Cannot complete: code references name targets that do not exist. "
+            "Fix the reference or the code — a chunk cannot land pointing at "
+            "code that does not exist. If the target was deliberately "
+            "deleted, escalate to the operator.",
+            err=True,
+        )
+        raise SystemExit(1)
 
 
 # Chunk: docs/chunks/artifact_demote_to_project - Task context chunk completion
@@ -622,6 +651,11 @@ def _complete_task_chunk(chunk_id, task_dir):
     if not goal_path.exists():
         click.echo(f"Error: chunk '{chunk_name}' not found in external repo", err=True)
         raise SystemExit(1)
+
+    # Chunk: docs/chunks/crossref_generator_verify - Refuse to land refs to nonexistent code
+    _gate_completion_on_reference_existence(
+        Chunks(external_repo_path), chunk_name, task_dir=task_dir
+    )
 
     update_frontmatter_field(goal_path, "status", "ACTIVE")
     click.echo(f"Completed docs/chunks/{chunk_name}")

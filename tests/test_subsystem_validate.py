@@ -9,6 +9,7 @@ def _write_subsystem_overview(
     subsystem_path: pathlib.Path,
     status: str,
     chunks: list[dict] | None = None,
+    code_references: list[dict] | None = None,
 ):
     """Helper to write OVERVIEW.md with frontmatter.
 
@@ -16,6 +17,7 @@ def _write_subsystem_overview(
         subsystem_path: Path to subsystem directory
         status: Subsystem status (DISCOVERING, DOCUMENTED, etc.)
         chunks: List of dicts with 'chunk_id' and 'relationship' keys
+        code_references: List of dicts with 'ref' and 'implements' keys
     """
     overview_path = subsystem_path / "OVERVIEW.md"
 
@@ -27,10 +29,18 @@ def _write_subsystem_overview(
     else:
         chunks_yaml = "chunks: []"
 
+    if code_references:
+        refs_yaml = "code_references:\n"
+        for ref in code_references:
+            refs_yaml += f"  - ref: \"{ref['ref']}\"\n"
+            refs_yaml += f"    implements: \"{ref.get('implements', 'test')}\"\n"
+    else:
+        refs_yaml = "code_references: []"
+
     frontmatter = f"""---
 status: {status}
 {chunks_yaml}
-code_references: []
+{refs_yaml}
 ---
 
 # Subsystem
@@ -164,3 +174,110 @@ class TestInvalidSubsystem:
         # Both errors should be reported
         assert "nonexistent1" in result.output
         assert "nonexistent_two" in result.output
+
+
+# Chunk: docs/chunks/crossref_generator_verify - Subsystem code_references verification tests
+class TestCodeReferenceValidation:
+    """Tests for code_references existence checking in 've subsystem validate'.
+
+    Success criterion: an invented symbol name (the OriginationSimulator
+    class of defect) or a missing file fails validation loudly; verified
+    refs and non-Python file refs pass.
+    """
+
+    def _make_subsystem(self, temp_project, code_references):
+        subsystem_path = temp_project / "docs" / "subsystems" / "validation"
+        subsystem_path.mkdir(parents=True)
+        _write_subsystem_overview(
+            subsystem_path, "DISCOVERING", [], code_references
+        )
+        return subsystem_path
+
+    def test_ref_to_existing_symbol_passes(self, runner, temp_project):
+        """A ref naming a real file and defined symbol passes."""
+        src = temp_project / "src"
+        src.mkdir(exist_ok=True)
+        (src / "analyzer.py").write_text(
+            "class OriginationRiskAnalyzer:\n    pass\n"
+        )
+        self._make_subsystem(temp_project, [
+            {"ref": "src/analyzer.py#OriginationRiskAnalyzer",
+             "implements": "risk analysis"},
+        ])
+
+        result = runner.invoke(
+            cli,
+            ["subsystem", "validate", "validation", "--project-dir", str(temp_project)]
+        )
+        assert result.exit_code == 0
+
+    def test_invented_symbol_fails(self, runner, temp_project):
+        """A plausible-but-nonexistent symbol in a real file fails validation."""
+        src = temp_project / "src"
+        src.mkdir(exist_ok=True)
+        (src / "analyzer.py").write_text(
+            "class OriginationRiskAnalyzer:\n    pass\n"
+        )
+        self._make_subsystem(temp_project, [
+            {"ref": "src/analyzer.py#OriginationSimulator",
+             "implements": "invented by the generator"},
+        ])
+
+        result = runner.invoke(
+            cli,
+            ["subsystem", "validate", "validation", "--project-dir", str(temp_project)]
+        )
+        assert result.exit_code != 0
+        assert "OriginationSimulator" in result.output
+
+    def test_missing_file_fails(self, runner, temp_project):
+        """A ref naming a nonexistent file fails validation."""
+        self._make_subsystem(temp_project, [
+            {"ref": "src/ghost.py#Anything", "implements": "missing file"},
+        ])
+
+        result = runner.invoke(
+            cli,
+            ["subsystem", "validate", "validation", "--project-dir", str(temp_project)]
+        )
+        assert result.exit_code != 0
+        assert "src/ghost.py" in result.output
+
+    def test_file_only_ref_to_non_python_file_passes(self, runner, temp_project):
+        """A file-only ref to an existing non-Python file passes."""
+        (temp_project / "config.yaml").write_text("key: value\n")
+        self._make_subsystem(temp_project, [
+            {"ref": "config.yaml", "implements": "configuration"},
+        ])
+
+        result = runner.invoke(
+            cli,
+            ["subsystem", "validate", "validation", "--project-dir", str(temp_project)]
+        )
+        assert result.exit_code == 0
+
+    def test_empty_code_references_passes(self, runner, temp_project):
+        """A subsystem with no code_references still validates."""
+        self._make_subsystem(temp_project, [])
+
+        result = runner.invoke(
+            cli,
+            ["subsystem", "validate", "validation", "--project-dir", str(temp_project)]
+        )
+        assert result.exit_code == 0
+
+    def test_unparseable_python_warns_but_passes(self, runner, temp_project):
+        """An unparseable Python target is uncheckable: surfaced, not fatal."""
+        src = temp_project / "src"
+        src.mkdir(exist_ok=True)
+        (src / "broken.py").write_text("def broken(:\n")
+        self._make_subsystem(temp_project, [
+            {"ref": "src/broken.py#broken", "implements": "uncheckable"},
+        ])
+
+        result = runner.invoke(
+            cli,
+            ["subsystem", "validate", "validation", "--project-dir", str(temp_project)]
+        )
+        assert result.exit_code == 0
+        assert "src/broken.py" in result.output

@@ -7,6 +7,7 @@ references in the {file_path}#{symbol_path} format.
 # Subsystem: docs/subsystems/workflow_artifacts - Workflow artifact lifecycle
 
 import ast
+import re
 from pathlib import Path
 
 
@@ -147,6 +148,78 @@ def parse_reference(
         return project, file_path, symbol_path
 
     return project, file_and_symbol, None
+
+
+# Chunk: docs/chunks/crossref_generator_verify - Shared reference-existence check
+def check_reference_target(
+    project_dir: Path, ref: str
+) -> tuple[str | None, str | None]:
+    """Check a local (non-project-qualified) symbolic reference against a project.
+
+    This is the single existence check shared by chunk validation, the chunk
+    completion gate, and subsystem code_references validation, so every
+    reference-emitting flow agrees on what "absent" means.
+
+    Args:
+        project_dir: Project root to resolve the file part against.
+        ref: Reference in {file_path} or {file_path}#{symbol_path} form.
+
+    Returns:
+        Tuple of (error, warning):
+        - error: the target is provably absent — the file does not exist, or
+          the symbol is neither defined nor mentioned in a parseable Python
+          file.
+        - warning: the target is uncheckable — a Python file that could not
+          be parsed, or a name that occurs in the file without being a
+          def/class definition (module-level constants are legitimate
+          reference targets that AST extraction does not index).
+        - (None, None): verified, or not symbol-checkable (non-Python file
+          symbol anchors are skipped; honest UNCHECKED reporting for those
+          belongs to crossref_unchecked_anchors).
+    """
+    qualified_ref = qualify_ref(ref, ".")
+    _, file_path, symbol_path = parse_reference(qualified_ref)
+
+    full_path = project_dir / file_path
+    if not full_path.exists():
+        return (f"File not found: {file_path} (ref: {ref})", None)
+
+    if symbol_path is None:
+        return (None, None)
+
+    symbols = extract_symbols(full_path)
+    if not symbols:
+        if str(file_path).endswith(".py"):
+            return (
+                None,
+                f"Could not extract symbols from {file_path} (ref: {ref})",
+            )
+        # Non-Python files can't have symbol validation
+        return (None, None)
+
+    if symbol_path not in symbols:
+        # AST extraction only indexes functions and classes. A reference to a
+        # module-level constant is legitimate, so before declaring provable
+        # absence, check whether the name occurs as a whole word anywhere in
+        # the file. Present-but-not-a-definition is uncheckable (warning);
+        # absent entirely is an invented or deleted name (error).
+        leaf = symbol_path.rsplit("::", 1)[-1]
+        try:
+            content = full_path.read_text()
+        except (OSError, UnicodeDecodeError):
+            content = ""
+        if re.search(rf"\b{re.escape(leaf)}\b", content):
+            return (
+                None,
+                f"Symbol {symbol_path} is not a def/class definition in "
+                f"{file_path}; the name occurs but cannot be verified (ref: {ref})",
+            )
+        return (
+            f"Symbol not found: {symbol_path} in {file_path} (ref: {ref})",
+            None,
+        )
+
+    return (None, None)
 
 
 def qualify_ref(ref: str, project: str) -> str:

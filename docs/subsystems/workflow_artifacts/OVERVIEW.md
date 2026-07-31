@@ -77,6 +77,8 @@ chunks:
     relationship: implements
   - chunk_id: artifact_pattern_consolidation
     relationship: implements
+  - chunk_id: crossref_generator_verify
+    relationship: implements
 code_references:
 - ref: src/chunks.py#Chunks
   implements: Chunk workflow manager class
@@ -703,6 +705,12 @@ from within a project directory to get complete corpus coverage.
   code backreferences (`# Chunk:`, `# Subsystem:`), frontmatter references (`chunk_id`,
   `parent_chunk`, `subsystem_id`), and template examples. Migration script created at
   `docs/chunks/update_crossref_format/migrate_crossrefs.py`
+
+- **crossref_generator_verify** - Made reference-emitting flows verify what they write.
+  Added the shared existence check `src/symbols.py#check_reference_target`, promoted
+  provable absence to an error in `ve chunk validate`, gated `ve chunk complete` on
+  declared references resolving (`Chunks.validate_chunk_references_exist`), and added
+  `Subsystems.validate_code_references` behind `ve subsystem validate`
 
 - **ordering_active_only** - Enhanced `ArtifactIndex.find_tips()` to filter by status,
   excluding "future/queued" artifacts from tip detection. Chunks only include ACTIVE or

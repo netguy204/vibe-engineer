@@ -6,6 +6,7 @@ allowed-tools: Bash(ve --help:*), Bash(cat:*), Bash(ve chunk list:*), Bash(ve ch
 
 <!-- GENERATED from src/templates/plugin/skills/chunk-complete.md.jinja2 — edit that template and run `ve plugin render`; direct edits here will be overwritten. -->
 <!-- Chunk: docs/chunks/plugin_core_commands - Static plugin port of chunk-complete -->
+<!-- Chunk: docs/chunks/crossref_generator_verify - References verified before landing -->
 
 ## Context
 
@@ -88,6 +89,11 @@ Interpret the context above before following the instructions:
    - `ref`: The symbolic reference string
    - `implements`: Description of what requirement/goal this code implements
 
+   **Never write a symbol name you have not read from the target file in
+   this session.** Open the file and copy the definition's name exactly —
+   do not reconstruct it from memory or infer it from naming patterns. A
+   plausible-but-invented symbol is a reference that is stale at birth.
+
    Example code_references in a task workspace:
    ```yaml
    code_references:
@@ -117,7 +123,12 @@ Interpret the context above before following the instructions:
    `docs/chunks/ordering_audit_seqnums`) is the `<chunk_id>` used by CLI commands below.
 
 4. Run `ve chunk validate <chunk_id>` to verify that the metadata syntax for the
-   GOAL.md file is correct
+   GOAL.md file is correct. Validation **fails** when a code_references entry
+   names a file or symbol that does not exist, and `ve chunk complete`
+   refuses to land such a chunk. The remedy is always to fix the reference
+   or the code — never delete a reference to pass the gate. If the
+   referenced code was deliberately deleted, stop and escalate to the
+   operator.
 
 5. Run `ve chunk overlap <chunk_id>` to find the previous chunks whose
    references and validity may have been impacted by this chunk's changes.

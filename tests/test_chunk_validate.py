@@ -13,6 +13,27 @@ from conftest import setup_task_directory
 from ve import cli
 
 
+# Chunk: docs/chunks/crossref_generator_verify - Referenced targets must exist for passing tests
+def materialize_common_targets(chunk_path: pathlib.Path):
+    """Create the source files that this module's passing fixtures reference.
+
+    Reference absence is now an error, not a warning, so fixtures that are
+    meant to pass must point at real files and symbols. Deliberately does
+    NOT define the NonExistent* symbols or src/nonexistent.py used by the
+    absence tests.
+    """
+    repo_root = chunk_path.parents[2]
+    src_dir = repo_root / "src"
+    src_dir.mkdir(exist_ok=True)
+    (src_dir / "main.py").write_text(
+        "class Main:\n    pass\n\n\n"
+        "class MyClass:\n    def method(self):\n        pass\n"
+    )
+    (src_dir / "models.py").write_text(
+        "class SymbolicReference:\n    pass\n"
+    )
+
+
 def write_goal_frontmatter(
     chunk_path: pathlib.Path,
     status: str,
@@ -26,6 +47,7 @@ def write_goal_frontmatter(
         code_references: List of dicts with 'ref' and 'implements' keys, e.g.:
             [{"ref": "src/main.py#MyClass", "implements": "feature"}]
     """
+    materialize_common_targets(chunk_path)
     goal_path = chunk_path / "GOAL.md"
 
     if code_references:
@@ -65,6 +87,7 @@ def write_symbolic_frontmatter(
         code_references: List of dicts with 'ref' and 'implements' keys, e.g.:
             [{"ref": "src/main.py#MyClass::method", "implements": "req1"}]
     """
+    materialize_common_targets(chunk_path)
     goal_path = chunk_path / "GOAL.md"
 
     if code_references:
@@ -398,8 +421,14 @@ class TestSuccessOutput:
 
 
 # Chunk: docs/chunks/chunk_validate - Test coverage for symbolic reference validation
+# Chunk: docs/chunks/crossref_generator_verify - Absence promoted from warning to error
 class TestSymbolicReferenceValidation:
-    """Tests for symbolic code_references validation with warnings."""
+    """Tests for symbolic code_references validation.
+
+    Provable absence (missing file, missing symbol in a parseable Python
+    file) is an error; uncheckable targets (unparseable Python) remain
+    warnings.
+    """
 
     def test_valid_symbolic_reference_passes(self, runner, tmp_path):
         """Valid symbolic reference passes validation."""
@@ -437,8 +466,8 @@ class TestSymbolicReferenceValidation:
         )
         assert result.exit_code == 0
 
-    def test_nonexistent_symbol_produces_warning(self, runner, tmp_path):
-        """Reference to non-existent symbol produces warning but succeeds."""
+    def test_nonexistent_symbol_produces_error(self, runner, tmp_path):
+        """Reference to non-existent symbol is an error (stale-at-birth guard)."""
         task_dir, external_path, _ = setup_task_directory(tmp_path)
         runner.invoke(
             cli,
@@ -453,12 +482,12 @@ class TestSymbolicReferenceValidation:
             cli,
             ["chunk", "validate", "feature", "--project-dir", str(task_dir)]
         )
-        # Should succeed (exit 0) but show warning
-        assert result.exit_code == 0
-        assert "warning" in result.output.lower() or "not found" in result.output.lower()
+        assert result.exit_code != 0
+        assert "not found" in result.output.lower()
+        assert "NonExistentClass" in result.output
 
-    def test_nonexistent_file_produces_warning(self, runner, tmp_path):
-        """Reference to non-existent file produces warning but succeeds."""
+    def test_nonexistent_file_produces_error(self, runner, tmp_path):
+        """Reference to non-existent file is an error (stale-at-birth guard)."""
         task_dir, external_path, _ = setup_task_directory(tmp_path)
         runner.invoke(
             cli,
@@ -473,12 +502,12 @@ class TestSymbolicReferenceValidation:
             cli,
             ["chunk", "validate", "feature", "--project-dir", str(task_dir)]
         )
-        # Should succeed (exit 0) but show warning
-        assert result.exit_code == 0
-        assert "warning" in result.output.lower() or "not found" in result.output.lower()
+        assert result.exit_code != 0
+        assert "not found" in result.output.lower()
+        assert "src/nonexistent.py" in result.output
 
-    def test_multiple_warnings_collected(self, runner, tmp_path):
-        """Multiple invalid references produce multiple warnings."""
+    def test_multiple_absences_collected(self, runner, tmp_path):
+        """Multiple invalid references produce an error for each."""
         task_dir, external_path, _ = setup_task_directory(tmp_path)
         runner.invoke(
             cli,
@@ -494,10 +523,31 @@ class TestSymbolicReferenceValidation:
             cli,
             ["chunk", "validate", "feature", "--project-dir", str(task_dir)]
         )
-        # Should succeed but show warnings for both
-        assert result.exit_code == 0
+        assert result.exit_code != 0
         # Both symbols should be mentioned
-        assert "NonExistent1" in result.output or "warning" in result.output.lower()
+        assert "NonExistent1" in result.output
+        assert "NonExistent2" in result.output
+
+    def test_unparseable_python_produces_warning_not_error(self, runner, tmp_path):
+        """A syntactically broken Python target is uncheckable: warn, succeed."""
+        task_dir, external_path, _ = setup_task_directory(tmp_path)
+        runner.invoke(
+            cli,
+            ["chunk", "start", "feature", "--project-dir", str(task_dir)]
+        )
+        chunk_path = external_path / "docs" / "chunks" / "feature"
+        write_symbolic_frontmatter(chunk_path, "IMPLEMENTING", [
+            {"ref": "src/broken.py#anything", "implements": "Uncheckable target"}
+        ])
+        (external_path / "src" / "broken.py").write_text("def broken(:\n")
+
+        result = runner.invoke(
+            cli,
+            ["chunk", "validate", "feature", "--project-dir", str(task_dir)]
+        )
+        assert result.exit_code == 0
+        assert "warning" in result.output.lower()
+        assert "src/broken.py" in result.output
 
     def test_no_warnings_when_all_symbols_valid(self, runner, tmp_path):
         """No warnings shown when all symbols are valid."""
@@ -536,6 +586,7 @@ class TestSubsystemRefValidation:
         subsystems: list[dict] | None = None,
     ):
         """Helper to write GOAL.md with subsystems field."""
+        materialize_common_targets(chunk_path)
         goal_path = chunk_path / "GOAL.md"
 
         if code_references:
@@ -688,6 +739,7 @@ class TestInvestigationRefValidation:
         investigation: str | None = None,
     ):
         """Helper to write GOAL.md with investigation field."""
+        materialize_common_targets(chunk_path)
         goal_path = chunk_path / "GOAL.md"
 
         if code_references:
@@ -1002,17 +1054,18 @@ Test chunk content.
         # Should succeed since the file and symbol exist in the referenced project
         assert result.exit_code == 0
 
-    def test_cross_project_ref_warns_on_missing_symbol(self, runner, tmp_path):
-        """Cross-project reference to missing symbol produces warning but succeeds."""
+    # Chunk: docs/chunks/crossref_generator_verify - Resolved cross-project absence is an error
+    def test_cross_project_ref_errors_on_missing_symbol(self, runner, tmp_path):
+        """Cross-project reference to a missing symbol fails when resolvable."""
         from conftest import setup_task_directory
 
         # Set up task with project
         task_dir, external_path, [project_path] = setup_task_directory(tmp_path)
 
-        # Create a file without the expected symbol
+        # Create a file with a symbol the reference does not name
         src_dir = project_path / "src"
         src_dir.mkdir(exist_ok=True)
-        (src_dir / "service.py").write_text("# Empty module\n")
+        (src_dir / "service.py").write_text("class RealService:\n    pass\n")
 
         # Create chunk with reference to non-existent symbol
         external_chunk_path = external_path / "docs" / "chunks" / "missing_symbol_ref"
@@ -1022,16 +1075,18 @@ Test chunk content.
             [{"ref": "acme/proj::src/service.py#NonExistent", "implements": "missing"}],
         )
 
-        # Validate should succeed but show warning
+        # The project resolves, so the absence is provable: error
         result = runner.invoke(
             cli,
             ["chunk", "validate", "missing_symbol_ref", "--project-dir", str(task_dir)]
         )
-        assert result.exit_code == 0
-        assert "warning" in result.output.lower() or "not found" in result.output.lower()
+        assert result.exit_code != 0
+        assert "not found" in result.output.lower()
+        assert "NonExistent" in result.output
 
-    def test_cross_project_ref_warns_on_missing_file(self, runner, tmp_path):
-        """Cross-project reference to missing file produces warning but succeeds."""
+    # Chunk: docs/chunks/crossref_generator_verify - Resolved cross-project absence is an error
+    def test_cross_project_ref_errors_on_missing_file(self, runner, tmp_path):
+        """Cross-project reference to a missing file fails when resolvable."""
         from conftest import setup_task_directory
 
         # Set up task with project
@@ -1047,13 +1102,14 @@ Test chunk content.
             [{"ref": "acme/proj::src/nonexistent.py#Foo", "implements": "missing file"}],
         )
 
-        # Validate should succeed but show warning
+        # The project resolves, so the absence is provable: error
         result = runner.invoke(
             cli,
             ["chunk", "validate", "missing_file_ref", "--project-dir", str(task_dir)]
         )
-        assert result.exit_code == 0
-        assert "warning" in result.output.lower() or "not found" in result.output.lower()
+        assert result.exit_code != 0
+        assert "not found" in result.output.lower()
+        assert "src/nonexistent.py" in result.output
 
     def test_local_ref_validated_against_chunk_project(self, runner, tmp_path):
         """Non-qualified references are validated against the project containing the chunk."""
@@ -1224,6 +1280,7 @@ class TestNarrativeRefValidation:
         narrative: str | None = None,
     ):
         """Helper to write GOAL.md with narrative field."""
+        materialize_common_targets(chunk_path)
         goal_path = chunk_path / "GOAL.md"
 
         if code_references:
@@ -1351,6 +1408,7 @@ class TestFrictionEntryRefValidation:
         friction_entries: list[dict] | None = None,
     ):
         """Helper to write GOAL.md with friction_entries field."""
+        materialize_common_targets(chunk_path)
         goal_path = chunk_path / "GOAL.md"
 
         if code_references:
