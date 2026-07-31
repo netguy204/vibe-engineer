@@ -100,6 +100,17 @@ def validate(project_dir, verbose, strict):
             "validation.ignore_backreferences in .ve-config.yaml"
         )
 
+    # Chunk: docs/chunks/crossref_unchecked_anchors - What this validator is not seeing
+    # Also printed outside the verbose block: a clean run must not read as
+    # symbol coverage when this command checks declared file parts only.
+    if result.symbol_anchors_unchecked:
+        click.echo(
+            f"{result.symbol_anchors_unchecked} symbol anchor(s) not checked: "
+            "ve validate verifies declared file paths only. Symbol checking "
+            "runs in ve chunk validate, ve subsystem validate, and "
+            "ve workspace validate."
+        )
+
     # Summary
     error_count = len(result.errors)
     warning_count = len(result.warnings)

@@ -244,6 +244,7 @@ def name_is_reexport_only(content: str, name: str) -> bool | None:
 
 # Chunk: docs/chunks/crossref_generator_verify - Shared reference-existence check
 # Chunk: docs/chunks/crossref_glob_refs - Glob file parts: error only on empty expansion
+# Chunk: docs/chunks/crossref_unchecked_anchors - Uncheckable anchors warn instead of silently passing
 def check_reference_target(
     project_dir: Path, ref: str
 ) -> tuple[str | None, str | None]:
@@ -263,13 +264,15 @@ def check_reference_target(
           the symbol is neither defined nor mentioned in a parseable Python
           file, or every mention of it sits inside import/`__all__`
           re-export statements (the definition lives in another file).
-        - warning: the target is uncheckable — a Python file that could not
-          be parsed, or a name that occurs in the file without being a
-          def/class definition (module-level constants are legitimate
-          reference targets that AST extraction does not index).
-        - (None, None): verified, or not symbol-checkable (non-Python file
-          symbol anchors are skipped; honest UNCHECKED reporting for those
-          belongs to crossref_unchecked_anchors).
+        - warning: the target is uncheckable (UNCHECKED) — a Python file
+          that could not be parsed, a name that occurs in the file without
+          being a def/class definition (module-level constants are
+          legitimate reference targets that AST extraction does not index),
+          a symbol anchor on a non-Python file, or an anchor whose last
+          ``::`` component is not an identifier (dotted/bracketed anchors
+          such as YAML workflow paths). Uncheckable is stated, never
+          silently passed, and never gates.
+        - (None, None): verified.
 
     Glob file parts (``packages/tasks/*/Dockerfile``) are patterns, not
     literal paths: an empty expansion is an error, a non-empty expansion is
@@ -299,9 +302,28 @@ def check_reference_target(
     if symbol_path is None:
         return (None, None)
 
+    # Chunk: docs/chunks/crossref_unchecked_anchors - Non-Python anchors are UNCHECKED, not passed
     if not str(file_path).endswith(".py"):
-        # Non-Python files can't have symbol validation
-        return (None, None)
+        # Non-Python files have no symbol checker; say so instead of passing.
+        return (
+            None,
+            f"Symbol anchor '{symbol_path}' in non-Python file {file_path} "
+            f"is not checked (ref: {ref})",
+        )
+
+    # Chunk: docs/chunks/crossref_unchecked_anchors - Non-identifier anchors are UNCHECKED
+    # The same undecidable signal name_is_reexport_only keys off: a leaf that
+    # is not an identifier can never appear in extract_symbols output, and
+    # whole-word \b semantics around dots/brackets are meaningless, so the
+    # honest disposition is a stated warning, not a scan with undefined
+    # behavior.
+    leaf = symbol_path.rsplit("::", 1)[-1].strip()
+    if not leaf.isidentifier():
+        return (
+            None,
+            f"Symbol anchor '{symbol_path}' is not a checkable identifier "
+            f"and is not checked in {file_path} (ref: {ref})",
+        )
 
     symbols = extract_symbols(full_path)
     if symbol_path in symbols:
@@ -315,7 +337,6 @@ def check_reference_target(
     # Present-but-not-a-definition is uncheckable (warning); absent
     # entirely, or re-export-only, is an invented, deleted, or relocated
     # name (error). Unparseable Python stays a warning, never an error.
-    leaf = symbol_path.rsplit("::", 1)[-1]
     try:
         content = full_path.read_text()
         ast.parse(content)

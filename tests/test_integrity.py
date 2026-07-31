@@ -1026,6 +1026,42 @@ class TestIntegrityValidatorFilePaths:
         assert "code_references" in errors[0].message
         assert "matches nothing" in errors[0].message
 
+    # Chunk: docs/chunks/crossref_unchecked_anchors - ve validate states its symbol blind spot
+    def test_symbol_anchors_are_counted_as_unchecked(self, temp_project):
+        """ve validate checks file parts only; every symbol anchor on a
+        status-gated chunk is counted so the output can say what was not
+        seen."""
+        make_ve_initialized_git_repo(temp_project)
+        (temp_project / "src").mkdir()
+        (temp_project / "src" / "present.py").write_text("x = 1\n")
+        self._make_chunk(
+            temp_project,
+            "anchored",
+            status="ACTIVE",
+            code_references=[
+                {"ref": "src/present.py#x"},
+                {"ref": "src/present.py#Widget::method"},
+                {"ref": "src/present.py"},  # no anchor: not counted
+            ],
+        )
+
+        result, _ = self._file_path_errors(temp_project)
+        assert result.symbol_anchors_unchecked == 2
+
+    def test_non_owning_chunk_anchors_are_not_counted(self, temp_project):
+        """FUTURE/HISTORICAL chunks are not path-checked, so their anchors do
+        not contribute to the unchecked count."""
+        make_ve_initialized_git_repo(temp_project)
+        self._make_chunk(
+            temp_project,
+            "pending",
+            status="FUTURE",
+            code_references=[{"ref": "src/not_yet.py#Symbol"}],
+        )
+
+        result, _ = self._file_path_errors(temp_project)
+        assert result.symbol_anchors_unchecked == 0
+
 
 class TestIntegrityValidatorCLI:
     """Tests for the ve validate CLI command."""
@@ -1093,6 +1129,41 @@ class TestIntegrityValidatorCLI:
         assert result.exit_code == 0
         assert "Chunks: 1" in result.output
         assert "Scanning artifacts" in result.output
+
+    # Chunk: docs/chunks/crossref_unchecked_anchors - Unchecked anchor count in CLI output
+    def test_validate_reports_unchecked_symbol_anchors(self, runner, temp_project):
+        """ve validate states how many symbol anchors it did not check, and
+        where symbol checking does run — without gating on them."""
+        from ve import cli
+
+        make_ve_initialized_git_repo(temp_project)
+        (temp_project / "src").mkdir()
+        (temp_project / "src" / "present.py").write_text("x = 1\n")
+
+        chunk_path = temp_project / "docs" / "chunks" / "anchored"
+        chunk_path.mkdir(parents=True)
+        write_chunk_goal(
+            chunk_path,
+            status="ACTIVE",
+            code_references=[{"ref": "src/present.py#x"}],
+        )
+
+        result = runner.invoke(cli, ["validate", "--project-dir", str(temp_project)])
+        assert result.exit_code == 0
+        assert "1 symbol anchor(s) not checked" in result.output
+        assert "ve workspace validate" in result.output
+
+    def test_validate_without_symbol_anchors_prints_no_unchecked_line(
+        self, runner, temp_project
+    ):
+        """No symbol anchors, no coverage nag."""
+        from ve import cli
+
+        make_ve_initialized_git_repo(temp_project)
+
+        result = runner.invoke(cli, ["validate", "--project-dir", str(temp_project)])
+        assert result.exit_code == 0
+        assert "symbol anchor(s) not checked" not in result.output
 
 
 # Chunk: docs/chunks/integrity_bidirectional - Tests for bidirectional consistency warnings

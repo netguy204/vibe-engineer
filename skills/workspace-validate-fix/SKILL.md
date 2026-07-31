@@ -116,7 +116,7 @@ The JSON is the contract. Read these fields:
 | `ok` | `true` means stop, you are done |
 | `defects[]` | what to fix, each with `fix_class`, `path`, `line`, `location`, `reference`, `message`, `member` |
 | `defects[].candidates[]` | trees that *do* hold the named artifact: `member`, `path`, `qualifier` |
-| `unverified[]` | references the validator declines to resolve offline (`org/repo` targets). Report them; never "fix" them |
+| `unverified[]` | references the validator cannot check: `org/repo` targets it declines to resolve offline, and UNCHECKED symbol anchors (glob patterns, non-identifier anchors, directory targets) with a `reason` each. Report them; never "fix" them |
 | `manifest_errors[]` | a member whose path is gone. These gate `ok`, so the loop cannot report clean while one stands |
 | `unregistered_trees[]` | VE trees no member registers. A note, not a defect |
 | `members[]` | the registered member names — the qualifiers you are allowed to write |

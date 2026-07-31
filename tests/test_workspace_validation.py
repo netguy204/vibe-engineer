@@ -701,8 +701,10 @@ def test_code_reference_to_a_missing_directory_still_defects(tmp_path):
     assert defect.reference == "src/gone-dir"
 
 
-def test_symbol_anchor_on_a_directory_target_is_skipped(tmp_path):
-    """A symbol cannot be looked up in a directory; the anchor is not a defect."""
+# Chunk: docs/chunks/crossref_unchecked_anchors - Directory anchors are UNCHECKED, not silent
+def test_symbol_anchor_on_a_directory_target_is_unchecked(tmp_path):
+    """A symbol cannot be looked up in a directory; the anchor is not a defect,
+    but it is stated as unverified and counted as unchecked."""
     make_workspace(tmp_path, {"lib": "packages/lib"})
     lib = tmp_path / "packages" / "lib"
     (lib / "src" / "pkg").mkdir(parents=True)
@@ -711,6 +713,11 @@ def test_symbol_anchor_on_a_directory_target_is_skipped(tmp_path):
     report = validate(tmp_path)
 
     assert report.defects == ()
+    (unverified,) = report.unverified
+    assert unverified.reference == "src/pkg#Widget"
+    assert "directory" in unverified.reason
+    assert report.symbol_anchors_unchecked == 1
+    assert report.symbol_anchors_checked == 0
 
 
 def test_stale_code_paths_entry_is_unresolvable_frontmatter(tmp_path):
@@ -838,6 +845,120 @@ def test_symbol_anchor_on_glob_pattern_is_unverified(tmp_path):
     (unverified,) = report.unverified
     assert unverified.reference == "pkgs/*/handler.py#Handler"
     assert "glob" in unverified.reason
+    # Chunk: docs/chunks/crossref_unchecked_anchors - Glob anchors fold into the unchecked count
+    assert report.symbol_anchors_unchecked == 1
+    assert report.symbol_anchors_checked == 0
+
+
+# Chunk: docs/chunks/crossref_unchecked_anchors - Non-identifier anchors and coverage counts
+
+
+def test_non_identifier_symbol_anchor_is_unchecked_not_passed(tmp_path):
+    """A dotted/bracketed anchor (the YAML workflow field case) has zero
+    symbol coverage; the validator says so instead of silently passing.
+
+    Keyed off the same undecidable signal as name_is_reexport_only: the
+    anchor's last :: component is not an identifier.
+    """
+    make_workspace(tmp_path, {"lib": "packages/lib"})
+    lib = tmp_path / "packages" / "lib"
+    source(
+        lib / ".github" / "workflows" / "checks.yaml",
+        "jobs:",
+        "  Checks:",
+        "    steps:",
+        "      - name: Seed workspace .venv",
+    )
+    code_ref_chunk(
+        lib,
+        "widget",
+        ".github/workflows/checks.yaml#jobs.Checks.steps[Seed workspace .venv]",
+    )
+
+    report = validate(tmp_path)
+
+    assert report.defects == ()
+    (unverified,) = report.unverified
+    assert (
+        unverified.reference
+        == ".github/workflows/checks.yaml#jobs.Checks.steps[Seed workspace .venv]"
+    )
+    assert "not a checkable identifier" in unverified.reason
+    assert unverified.path == "packages/lib/docs/chunks/widget/GOAL.md"
+    assert report.symbol_anchors_unchecked == 1
+    assert report.symbol_anchors_checked == 0
+
+
+def test_identifier_symbol_anchor_counts_as_checked(tmp_path):
+    """An anchor the symbol checker actually examined counts as checked —
+    whether it verified or gated."""
+    make_workspace(tmp_path, {"lib": "packages/lib"})
+    lib = tmp_path / "packages" / "lib"
+    source(lib / "src" / "widget.py", "class Widget:", "    pass")
+    declared_paths_chunk(
+        lib,
+        "widget",
+        code_references=("src/widget.py#Widget", "src/widget.py#Gone"),
+    )
+
+    report = validate(tmp_path)
+
+    # One verified, one provably absent: both were *checked*.
+    (defect,) = of_class(report, FixClass.UNRESOLVABLE_FRONTMATTER)
+    assert "Gone" in defect.message
+    assert report.symbol_anchors_checked == 2
+    assert report.symbol_anchors_unchecked == 0
+
+
+def test_anchor_on_a_defective_file_part_is_not_counted(tmp_path):
+    """A missing file is already a gating defect; its anchor is neither
+    checked nor counted — the coverage count describes blind spots, not
+    the fix queue."""
+    make_workspace(tmp_path, {"lib": "packages/lib"})
+    code_ref_chunk(tmp_path / "packages" / "lib", "widget", "src/gone.py#Widget")
+
+    report = validate(tmp_path)
+
+    (defect,) = of_class(report, FixClass.UNRESOLVABLE_FRONTMATTER)
+    assert defect.reference == "src/gone.py#Widget"
+    assert report.symbol_anchors_checked == 0
+    assert report.symbol_anchors_unchecked == 0
+
+
+def test_cross_repo_qualified_anchor_counts_as_unchecked(tmp_path):
+    """A symbol anchor on a cross-repository ref is part of what was not
+    verified offline."""
+    make_workspace(tmp_path, {"lib": "packages/lib"})
+    code_ref_chunk(
+        tmp_path / "packages" / "lib", "widget", "acme/hub::src/w.py#Widget"
+    )
+
+    report = validate(tmp_path)
+
+    assert report.defects == ()
+    (unverified,) = report.unverified
+    assert unverified.reference == "acme/hub::src/w.py#Widget"
+    assert report.symbol_anchors_unchecked == 1
+    assert report.symbol_anchors_checked == 0
+
+
+def test_symbol_anchor_coverage_counts_in_json_report(tmp_path):
+    """Both coverage counters travel in the JSON counts block."""
+    make_workspace(tmp_path, {"lib": "packages/lib"})
+    lib = tmp_path / "packages" / "lib"
+    source(lib / "src" / "widget.py", "class Widget:", "    pass")
+    source(lib / "config.yaml", "key: value")
+    declared_paths_chunk(
+        lib,
+        "widget",
+        code_references=("src/widget.py#Widget", "config.yaml#some.dotted[path]"),
+    )
+
+    report = validate(tmp_path)
+    counts = report.to_dict()["counts"]
+
+    assert counts["symbol_anchors_checked"] == 1
+    assert counts["symbol_anchors_unchecked"] == 1
 
 
 @pytest.mark.parametrize("status", ["FUTURE", "IMPLEMENTING", "HISTORICAL", "SUPERSEDED"])
