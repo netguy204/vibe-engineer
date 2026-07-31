@@ -1,5 +1,5 @@
 ---
-status: ACTIVE
+status: COMPLETED
 advances_trunk_goal: 'Required Properties: ''Maintaining the referential integrity
   of documents is an agent problem'' and ''Following the workflow must maintain the
   health of documents over time and should not grow more difficult over time.'''
@@ -179,9 +179,9 @@ fixtures missed.
    operator-authorized deletion disposition. (prompt 7)
 9. `crossref_refactor_move` — evidence-backed rename propagation with
    parent-dir guard and never-existed disposition. (prompt 8, depends on 8)
-10. `crossref_generator_verification` — generators verify symbols at write
+10. `crossref_generator_verify` — generators verify symbols at write
     time; completion checks refs before landing. (prompt 9)
-11. `crossref_pointer_deletion_guard` — pointer coverage is never grounds
+11. `crossref_pointer_guard` — pointer coverage is never grounds
     for reference deletion. (prompt 10)
 
 ## Completion Criteria
