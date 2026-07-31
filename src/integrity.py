@@ -27,6 +27,7 @@ from models import ArtifactType, ChunkFrontmatter, ChunkStatus
 from narratives import Narratives
 from source_files import enumerate_source_files
 from subsystems import Subsystems
+from symbols import expand_glob, is_glob_pattern
 
 if TYPE_CHECKING:
     from chunks import Chunks
@@ -367,6 +368,7 @@ class IntegrityValidator:
         )
 
     # Chunk: docs/chunks/crossref_rename_integrity - File-existence check for chunk-declared paths
+    # Chunk: docs/chunks/crossref_glob_refs - Glob entries error only on empty expansion
     def _validate_chunk_file_paths(self, chunk_name: str) -> list[IntegrityError]:
         """Validate that a chunk's declared file paths exist on disk.
 
@@ -376,6 +378,12 @@ class IntegrityValidator:
         gone. A stale path on a chunk that currently owns intent is broken
         addressing — an error, so a rename cannot silently strand the
         references pointing at the old path.
+
+        Entries containing glob magic (``packages/tasks/*/Dockerfile``) are
+        patterns: they expand against the project root and error only when
+        the expansion is empty, so "this change applies uniformly across N
+        packages" is expressible without enumerating N paths that rot
+        independently.
         """
         errors: list[IntegrityError] = []
 
@@ -392,6 +400,21 @@ class IntegrityValidator:
             if key in seen:
                 return
             seen.add(key)
+            if is_glob_pattern(path):
+                if not expand_glob(self.project_dir, path):
+                    errors.append(
+                        IntegrityError(
+                            source=f"docs/chunks/{chunk_name}/GOAL.md",
+                            target=path,
+                            link_type="chunk→file",
+                            message=(
+                                f"{field_name} glob pattern '{path}' matches "
+                                "nothing — if the matching files were moved or "
+                                "renamed, update this pattern"
+                            ),
+                        )
+                    )
+                return
             if not (self.project_dir / path).exists():
                 errors.append(
                     IntegrityError(

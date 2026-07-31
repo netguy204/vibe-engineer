@@ -244,6 +244,16 @@ Code references use symbolic paths rather than line numbers for stability as cod
 - `src/chunks.py#Chunks::create_chunk` - a method in a class
 - `src/ve.py#validate_short_name` - a standalone function
 - `src/models.py#Outer::Inner::method` - deeply nested symbol
+- `packages/tasks/*/Dockerfile` - a glob pattern covering every match
+
+**Glob patterns**: A file path (in `code_paths` or the file part of a
+`code_references` ref) containing glob magic (`*`, `?`, `[`) is a pattern,
+not a literal path. It expresses "this applies uniformly across everything
+matching this shape" without enumerating N concrete paths that rot
+independently. Validators expand the pattern against the project root and
+error **only when the expansion is empty**; a non-empty expansion is a
+verified reference. Symbol anchors on glob patterns are reported as
+uncheckable (warning/unverified), never checked across the expansion.
 
 **Validation**:
 - When validating a chunk (`ve chunk validate`), symbolic references are validated

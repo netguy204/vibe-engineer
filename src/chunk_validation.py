@@ -21,7 +21,7 @@ import re
 from typing import TYPE_CHECKING
 
 from models import ChunkStatus
-from symbols import check_reference_target
+from symbols import check_reference_target, expand_glob, is_glob_pattern
 
 if TYPE_CHECKING:
     from chunks import Chunks
@@ -184,6 +184,15 @@ def validate_chunk_references_exist(
         return ([f"Could not parse frontmatter for chunk '{chunk_name}'"], [])
 
     for path in frontmatter.code_paths or []:
+        # Chunk: docs/chunks/crossref_glob_refs - Glob entries error only on empty expansion
+        if is_glob_pattern(path):
+            if not expand_glob(chunks.project_dir, path):
+                errors.append(
+                    f"code_paths glob pattern '{path}' matches nothing — if "
+                    "the matching files were moved or renamed, update this "
+                    "pattern"
+                )
+            continue
         if not (chunks.project_dir / path).exists():
             errors.append(
                 f"code_paths entry '{path}' does not exist — if the file was "
