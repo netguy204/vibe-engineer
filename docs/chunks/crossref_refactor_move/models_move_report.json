@@ -1,0 +1,468 @@
+{
+  "old": "src/models.py",
+  "new": "src/models",
+  "applied": true,
+  "git_evidence": {
+    "detected": true,
+    "rename_records": [],
+    "deletion_sha": "9cdd0d24640655761f1c014e4dc91f308431b046"
+  },
+  "decisions": [
+    {
+      "artifact": "docs/subsystems/cross_repo_operations",
+      "artifact_kind": "subsystem",
+      "field": "code_references",
+      "value": "src/models.py#TaskConfig",
+      "implements": ".ve-task.yaml configuration model",
+      "disposition": "REWRITTEN",
+      "new_value": "src/models/shared.py#TaskConfig",
+      "evidence": [
+        "old path deleted in 9cdd0d246406",
+        "symbol TaskConfig has exactly one definition under src/models/: src/models/shared.py (AST)"
+      ],
+      "candidates": [],
+      "absence_basis": null
+    },
+    {
+      "artifact": "docs/subsystems/cross_repo_operations",
+      "artifact_kind": "subsystem",
+      "field": "code_references",
+      "value": "src/models.py#ExternalArtifactRef",
+      "implements": "Generic external reference model",
+      "disposition": "REWRITTEN",
+      "new_value": "src/models/references.py#ExternalArtifactRef",
+      "evidence": [
+        "old path deleted in 9cdd0d246406",
+        "symbol ExternalArtifactRef has exactly one definition under src/models/: src/models/references.py (AST)"
+      ],
+      "candidates": [],
+      "absence_basis": null
+    },
+    {
+      "artifact": "docs/subsystems/friction_tracking",
+      "artifact_kind": "subsystem",
+      "field": "code_references",
+      "value": "src/models.py#FrictionTheme",
+      "implements": "Pydantic model for friction theme/category",
+      "disposition": "REWRITTEN",
+      "new_value": "src/models/friction.py#FrictionTheme",
+      "evidence": [
+        "old path deleted in 9cdd0d246406",
+        "symbol FrictionTheme has exactly one definition under src/models/: src/models/friction.py (AST)"
+      ],
+      "candidates": [],
+      "absence_basis": null
+    },
+    {
+      "artifact": "docs/subsystems/friction_tracking",
+      "artifact_kind": "subsystem",
+      "field": "code_references",
+      "value": "src/models.py#FrictionProposedChunk",
+      "implements": "Proposed chunk with addresses linking to entry IDs",
+      "disposition": "REWRITTEN",
+      "new_value": "src/models/friction.py#FrictionProposedChunk",
+      "evidence": [
+        "old path deleted in 9cdd0d246406",
+        "symbol FrictionProposedChunk has exactly one definition under src/models/: src/models/friction.py (AST)"
+      ],
+      "candidates": [],
+      "absence_basis": null
+    },
+    {
+      "artifact": "docs/subsystems/friction_tracking",
+      "artifact_kind": "subsystem",
+      "field": "code_references",
+      "value": "src/models.py#FrictionFrontmatter",
+      "implements": "FRICTION.md frontmatter schema",
+      "disposition": "REWRITTEN",
+      "new_value": "src/models/friction.py#FrictionFrontmatter",
+      "evidence": [
+        "old path deleted in 9cdd0d246406",
+        "symbol FrictionFrontmatter has exactly one definition under src/models/: src/models/friction.py (AST)"
+      ],
+      "candidates": [],
+      "absence_basis": null
+    },
+    {
+      "artifact": "docs/subsystems/workflow_artifacts",
+      "artifact_kind": "subsystem",
+      "field": "code_references",
+      "value": "src/models.py#ChunkStatus",
+      "implements": "Chunk lifecycle states",
+      "disposition": "REWRITTEN",
+      "new_value": "src/models/chunk.py#ChunkStatus",
+      "evidence": [
+        "old path deleted in 9cdd0d246406",
+        "symbol ChunkStatus has exactly one definition under src/models/: src/models/chunk.py (AST)"
+      ],
+      "candidates": [],
+      "absence_basis": null
+    },
+    {
+      "artifact": "docs/subsystems/workflow_artifacts",
+      "artifact_kind": "subsystem",
+      "field": "code_references",
+      "value": "src/models.py#ChunkFrontmatter",
+      "implements": "Chunk frontmatter schema",
+      "disposition": "REWRITTEN",
+      "new_value": "src/models/chunk.py#ChunkFrontmatter",
+      "evidence": [
+        "old path deleted in 9cdd0d246406",
+        "symbol ChunkFrontmatter has exactly one definition under src/models/: src/models/chunk.py (AST)"
+      ],
+      "candidates": [],
+      "absence_basis": null
+    },
+    {
+      "artifact": "docs/subsystems/workflow_artifacts",
+      "artifact_kind": "subsystem",
+      "field": "code_references",
+      "value": "src/models.py#SubsystemStatus",
+      "implements": "Subsystem lifecycle states",
+      "disposition": "REWRITTEN",
+      "new_value": "src/models/subsystem.py#SubsystemStatus",
+      "evidence": [
+        "old path deleted in 9cdd0d246406",
+        "symbol SubsystemStatus has exactly one definition under src/models/: src/models/subsystem.py (AST)"
+      ],
+      "candidates": [],
+      "absence_basis": null
+    },
+    {
+      "artifact": "docs/subsystems/workflow_artifacts",
+      "artifact_kind": "subsystem",
+      "field": "code_references",
+      "value": "src/models.py#InvestigationStatus",
+      "implements": "Investigation lifecycle states",
+      "disposition": "REWRITTEN",
+      "new_value": "src/models/investigation.py#InvestigationStatus",
+      "evidence": [
+        "old path deleted in 9cdd0d246406",
+        "symbol InvestigationStatus has exactly one definition under src/models/: src/models/investigation.py (AST)"
+      ],
+      "candidates": [],
+      "absence_basis": null
+    },
+    {
+      "artifact": "docs/subsystems/workflow_artifacts",
+      "artifact_kind": "subsystem",
+      "field": "code_references",
+      "value": "src/models.py#NarrativeStatus",
+      "implements": "Narrative lifecycle states",
+      "disposition": "REWRITTEN",
+      "new_value": "src/models/narrative.py#NarrativeStatus",
+      "evidence": [
+        "old path deleted in 9cdd0d246406",
+        "symbol NarrativeStatus has exactly one definition under src/models/: src/models/narrative.py (AST)"
+      ],
+      "candidates": [],
+      "absence_basis": null
+    },
+    {
+      "artifact": "docs/subsystems/workflow_artifacts",
+      "artifact_kind": "subsystem",
+      "field": "code_references",
+      "value": "src/models.py#SubsystemFrontmatter",
+      "implements": "Subsystem frontmatter schema",
+      "disposition": "REWRITTEN",
+      "new_value": "src/models/subsystem.py#SubsystemFrontmatter",
+      "evidence": [
+        "old path deleted in 9cdd0d246406",
+        "symbol SubsystemFrontmatter has exactly one definition under src/models/: src/models/subsystem.py (AST)"
+      ],
+      "candidates": [],
+      "absence_basis": null
+    },
+    {
+      "artifact": "docs/subsystems/workflow_artifacts",
+      "artifact_kind": "subsystem",
+      "field": "code_references",
+      "value": "src/models.py#NarrativeFrontmatter",
+      "implements": "Narrative frontmatter schema",
+      "disposition": "REWRITTEN",
+      "new_value": "src/models/narrative.py#NarrativeFrontmatter",
+      "evidence": [
+        "old path deleted in 9cdd0d246406",
+        "symbol NarrativeFrontmatter has exactly one definition under src/models/: src/models/narrative.py (AST)"
+      ],
+      "candidates": [],
+      "absence_basis": null
+    },
+    {
+      "artifact": "docs/subsystems/workflow_artifacts",
+      "artifact_kind": "subsystem",
+      "field": "code_references",
+      "value": "src/models.py#InvestigationFrontmatter",
+      "implements": "Investigation frontmatter schema",
+      "disposition": "REWRITTEN",
+      "new_value": "src/models/investigation.py#InvestigationFrontmatter",
+      "evidence": [
+        "old path deleted in 9cdd0d246406",
+        "symbol InvestigationFrontmatter has exactly one definition under src/models/: src/models/investigation.py (AST)"
+      ],
+      "candidates": [],
+      "absence_basis": null
+    },
+    {
+      "artifact": "docs/subsystems/workflow_artifacts",
+      "artifact_kind": "subsystem",
+      "field": "code_references",
+      "value": "src/models.py#ProposedChunk",
+      "implements": "Proposed chunk schema (shared across types)",
+      "disposition": "REWRITTEN",
+      "new_value": "src/models/references.py#ProposedChunk",
+      "evidence": [
+        "old path deleted in 9cdd0d246406",
+        "symbol ProposedChunk has exactly one definition under src/models/: src/models/references.py (AST)"
+      ],
+      "candidates": [],
+      "absence_basis": null
+    },
+    {
+      "artifact": "docs/subsystems/workflow_artifacts",
+      "artifact_kind": "subsystem",
+      "field": "code_references",
+      "value": "src/models.py#VALID_STATUS_TRANSITIONS",
+      "implements": "Subsystem state transition rules",
+      "disposition": "REWRITTEN",
+      "new_value": "src/models/subsystem.py#VALID_STATUS_TRANSITIONS",
+      "evidence": [
+        "old path deleted in 9cdd0d246406",
+        "symbol VALID_STATUS_TRANSITIONS has exactly one definition under src/models/: src/models/subsystem.py (AST)"
+      ],
+      "candidates": [],
+      "absence_basis": null
+    },
+    {
+      "artifact": "docs/subsystems/workflow_artifacts",
+      "artifact_kind": "subsystem",
+      "field": "code_references",
+      "value": "src/models.py#VALID_CHUNK_TRANSITIONS",
+      "implements": "Chunk state transition rules",
+      "disposition": "REWRITTEN",
+      "new_value": "src/models/chunk.py#VALID_CHUNK_TRANSITIONS",
+      "evidence": [
+        "old path deleted in 9cdd0d246406",
+        "symbol VALID_CHUNK_TRANSITIONS has exactly one definition under src/models/: src/models/chunk.py (AST)"
+      ],
+      "candidates": [],
+      "absence_basis": null
+    },
+    {
+      "artifact": "docs/subsystems/workflow_artifacts",
+      "artifact_kind": "subsystem",
+      "field": "code_references",
+      "value": "src/models.py#VALID_NARRATIVE_TRANSITIONS",
+      "implements": "Narrative state transition rules",
+      "disposition": "REWRITTEN",
+      "new_value": "src/models/narrative.py#VALID_NARRATIVE_TRANSITIONS",
+      "evidence": [
+        "old path deleted in 9cdd0d246406",
+        "symbol VALID_NARRATIVE_TRANSITIONS has exactly one definition under src/models/: src/models/narrative.py (AST)"
+      ],
+      "candidates": [],
+      "absence_basis": null
+    },
+    {
+      "artifact": "docs/subsystems/workflow_artifacts",
+      "artifact_kind": "subsystem",
+      "field": "code_references",
+      "value": "src/models.py#VALID_INVESTIGATION_TRANSITIONS",
+      "implements": "Investigation state transition rules",
+      "disposition": "REWRITTEN",
+      "new_value": "src/models/investigation.py#VALID_INVESTIGATION_TRANSITIONS",
+      "evidence": [
+        "old path deleted in 9cdd0d246406",
+        "symbol VALID_INVESTIGATION_TRANSITIONS has exactly one definition under src/models/: src/models/investigation.py (AST)"
+      ],
+      "candidates": [],
+      "absence_basis": null
+    },
+    {
+      "artifact": "docs/subsystems/workflow_artifacts",
+      "artifact_kind": "subsystem",
+      "field": "code_references",
+      "value": "src/models.py#ExternalArtifactRef",
+      "implements": "Generic external artifact reference schema for any workflow type",
+      "disposition": "REWRITTEN",
+      "new_value": "src/models/references.py#ExternalArtifactRef",
+      "evidence": [
+        "old path deleted in 9cdd0d246406",
+        "symbol ExternalArtifactRef has exactly one definition under src/models/: src/models/references.py (AST)"
+      ],
+      "candidates": [],
+      "absence_basis": null
+    },
+    {
+      "artifact": "docs/subsystems/workflow_artifacts",
+      "artifact_kind": "subsystem",
+      "field": "code_references",
+      "value": "src/models.py#ArtifactType",
+      "implements": "Workflow artifact type enum (moved from artifact_ordering.py)",
+      "disposition": "REWRITTEN",
+      "new_value": "src/models/references.py#ArtifactType",
+      "evidence": [
+        "old path deleted in 9cdd0d246406",
+        "symbol ArtifactType has exactly one definition under src/models/: src/models/references.py (AST)"
+      ],
+      "candidates": [],
+      "absence_basis": null
+    },
+    {
+      "artifact": "docs/subsystems/workflow_artifacts",
+      "artifact_kind": "subsystem",
+      "field": "code_references",
+      "value": "src/models.py#ScratchpadChunkStatus",
+      "implements": "Scratchpad chunk lifecycle states",
+      "disposition": "NEVER_EXISTED",
+      "new_value": null,
+      "evidence": [
+        "old path deleted in 9cdd0d246406",
+        "symbol ScratchpadChunkStatus not found under src/models/",
+        "name ScratchpadChunkStatus not found anywhere in tree scope \u2014 never-existed/reconstruct-or-drop, not a rename hunt (record a drop with `ve deletion record`)"
+      ],
+      "candidates": [],
+      "absence_basis": {
+        "query": "ScratchpadChunkStatus",
+        "found": false,
+        "scope": {
+          "kind": "tree",
+          "root": "/Users/btaylor/Projects/vibe-engineer/.claude/worktrees/agent-a48b5f54c38c71161",
+          "members": []
+        },
+        "path_matches": [],
+        "basename_matches": [],
+        "symbol_matches": [],
+        "counts": {
+          "files_scanned": 2035,
+          "source_files_scanned": 401,
+          "path_matches": 0,
+          "basename_matches": 0,
+          "symbol_matches": 0
+        }
+      }
+    },
+    {
+      "artifact": "docs/subsystems/workflow_artifacts",
+      "artifact_kind": "subsystem",
+      "field": "code_references",
+      "value": "src/models.py#ScratchpadChunkFrontmatter",
+      "implements": "Scratchpad chunk frontmatter schema",
+      "disposition": "NEVER_EXISTED",
+      "new_value": null,
+      "evidence": [
+        "old path deleted in 9cdd0d246406",
+        "symbol ScratchpadChunkFrontmatter not found under src/models/",
+        "name ScratchpadChunkFrontmatter not found anywhere in tree scope \u2014 never-existed/reconstruct-or-drop, not a rename hunt (record a drop with `ve deletion record`)"
+      ],
+      "candidates": [],
+      "absence_basis": {
+        "query": "ScratchpadChunkFrontmatter",
+        "found": false,
+        "scope": {
+          "kind": "tree",
+          "root": "/Users/btaylor/Projects/vibe-engineer/.claude/worktrees/agent-a48b5f54c38c71161",
+          "members": []
+        },
+        "path_matches": [],
+        "basename_matches": [],
+        "symbol_matches": [],
+        "counts": {
+          "files_scanned": 2035,
+          "source_files_scanned": 401,
+          "path_matches": 0,
+          "basename_matches": 0,
+          "symbol_matches": 0
+        }
+      }
+    },
+    {
+      "artifact": "docs/subsystems/workflow_artifacts",
+      "artifact_kind": "subsystem",
+      "field": "code_references",
+      "value": "src/models.py#ScratchpadNarrativeStatus",
+      "implements": "Scratchpad narrative lifecycle states",
+      "disposition": "NEVER_EXISTED",
+      "new_value": null,
+      "evidence": [
+        "old path deleted in 9cdd0d246406",
+        "symbol ScratchpadNarrativeStatus not found under src/models/",
+        "name ScratchpadNarrativeStatus not found anywhere in tree scope \u2014 never-existed/reconstruct-or-drop, not a rename hunt (record a drop with `ve deletion record`)"
+      ],
+      "candidates": [],
+      "absence_basis": {
+        "query": "ScratchpadNarrativeStatus",
+        "found": false,
+        "scope": {
+          "kind": "tree",
+          "root": "/Users/btaylor/Projects/vibe-engineer/.claude/worktrees/agent-a48b5f54c38c71161",
+          "members": []
+        },
+        "path_matches": [],
+        "basename_matches": [],
+        "symbol_matches": [],
+        "counts": {
+          "files_scanned": 2035,
+          "source_files_scanned": 401,
+          "path_matches": 0,
+          "basename_matches": 0,
+          "symbol_matches": 0
+        }
+      }
+    },
+    {
+      "artifact": "docs/subsystems/workflow_artifacts",
+      "artifact_kind": "subsystem",
+      "field": "code_references",
+      "value": "src/models.py#ScratchpadNarrativeFrontmatter",
+      "implements": "Scratchpad narrative frontmatter schema",
+      "disposition": "NEVER_EXISTED",
+      "new_value": null,
+      "evidence": [
+        "old path deleted in 9cdd0d246406",
+        "symbol ScratchpadNarrativeFrontmatter not found under src/models/",
+        "name ScratchpadNarrativeFrontmatter not found anywhere in tree scope \u2014 never-existed/reconstruct-or-drop, not a rename hunt (record a drop with `ve deletion record`)"
+      ],
+      "candidates": [],
+      "absence_basis": {
+        "query": "ScratchpadNarrativeFrontmatter",
+        "found": false,
+        "scope": {
+          "kind": "tree",
+          "root": "/Users/btaylor/Projects/vibe-engineer/.claude/worktrees/agent-a48b5f54c38c71161",
+          "members": []
+        },
+        "path_matches": [],
+        "basename_matches": [],
+        "symbol_matches": [],
+        "counts": {
+          "files_scanned": 2035,
+          "source_files_scanned": 401,
+          "path_matches": 0,
+          "basename_matches": 0,
+          "symbol_matches": 0
+        }
+      }
+    },
+    {
+      "artifact": "docs/subsystems/workflow_artifacts",
+      "artifact_kind": "subsystem",
+      "field": "code_references",
+      "value": "src/models.py#ExternalFrictionSource",
+      "implements": "External friction source reference schema for task contexts",
+      "disposition": "REWRITTEN",
+      "new_value": "src/models/friction.py#ExternalFrictionSource",
+      "evidence": [
+        "old path deleted in 9cdd0d246406",
+        "symbol ExternalFrictionSource has exactly one definition under src/models/: src/models/friction.py (AST)"
+      ],
+      "candidates": [],
+      "absence_basis": null
+    }
+  ],
+  "counts": {
+    "rewritten": 21,
+    "ambiguous": 0,
+    "never_existed": 4
+  }
+}
