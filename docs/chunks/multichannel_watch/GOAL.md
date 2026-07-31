@@ -6,7 +6,7 @@ code_paths:
 - src/board/client.py
 - src/cli/board.py
 - src/leader_board/server.py
-- src/templates/commands/swarm-monitor.md.jinja2
+- src/templates/plugin/skills/swarm-monitor.md.jinja2
 - workers/leader-board/src/swarm-do.ts
 - tests/test_board_client.py
 - tests/test_board_cli.py
@@ -28,7 +28,7 @@ code_references:
     channel entries
 - ref: workers/leader-board/src/swarm-do.ts#SwarmDO::removeWatcher
   implements: Updated to clear all channel watches on disconnect
-- ref: commands/swarm-monitor.md
+- ref: skills/swarm-monitor/SKILL.md
   implements: Updated swarm-monitor to use single watch-multi connection instead of
     N separate watches
 - ref: tests/test_board_cli.py

@@ -4,15 +4,15 @@ ticket: null
 parent_chunk: null
 code_paths:
 - src/templates/plugin/partials/claude/idioms.md.jinja2
-- src/templates/plugin/commands/ve-status.md.jinja2
-- src/templates/plugin/commands/chunk-create.md.jinja2
+- src/templates/plugin/skills/ve-status.md.jinja2
+- src/templates/plugin/skills/chunk-create.md.jinja2
 - src/plugin_render.py
 - src/cli/plugin.py
 - src/cli/__init__.py
-- commands/ve-status.md
-- commands/chunk-create.md
+- skills/ve-status/SKILL.md
+- skills/chunk-create/SKILL.md
 - tests/test_plugin_render.py
-- tests/test_plugin_commands.py
+- tests/test_plugin_skills.py
 - docs/chunks/dualplugin_template_source/TEMPLATING_GUIDE.md
 - tests/test_plugin_skills.py
 code_references:
@@ -31,9 +31,9 @@ code_references:
 - ref: src/templates/plugin/partials/claude/idioms.md.jinja2
   implements: "Claude idiom macros \u2014 the flavor-substitution interface (frontmatter,\
     \ generated_marker, probe, canonical_preamble, plugin_root)"
-- ref: src/templates/plugin/commands/ve-status.md.jinja2
+- ref: src/templates/plugin/skills/ve-status.md.jinja2
   implements: Pilot template with custom context probes
-- ref: src/templates/plugin/commands/chunk-create.md.jinja2
+- ref: src/templates/plugin/skills/chunk-create.md.jinja2
   implements: Pilot template using the canonical preamble with task guidance via {%
     call %}
 - ref: tests/test_plugin_render.py#TestDrift

@@ -3,11 +3,11 @@ status: ACTIVE
 ticket: null
 parent_chunk: null
 code_paths:
-- src/templates/commands/validate-fix.md.jinja2
+- src/templates/plugin/skills/validate-fix.md.jinja2
 - src/templates/claude/CLAUDE.md.jinja2
 - tests/test_template_system.py
 code_references:
-  - ref: commands/validate-fix.md
+  - ref: skills/validate-fix/SKILL.md
     implements: "Slash command defining the iterative fix loop logic and error classification (static plugin command)"
 narrative: null
 investigation: referential_integrity

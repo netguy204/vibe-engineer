@@ -5,7 +5,6 @@ parent_chunk: null
 code_paths:
 - src/templates/reviewers/baseline/METADATA.yaml.jinja2
 - src/templates/reviewers/baseline/PROMPT.md.jinja2
-- src/templates/reviewers/baseline/DECISION_LOG.md.jinja2
 - src/project.py
 - tests/test_project.py
 code_references:
@@ -15,8 +14,6 @@ code_references:
     implements: "Baseline reviewer configuration template"
   - ref: src/templates/reviewers/baseline/PROMPT.md.jinja2
     implements: "Baseline reviewer instructions template"
-  - ref: src/templates/reviewers/baseline/DECISION_LOG.md.jinja2
-    implements: "Baseline reviewer decision log template"
   - ref: tests/test_project.py#TestProjectInitReviewers
     implements: "Test coverage for reviewer initialization"
 narrative: null

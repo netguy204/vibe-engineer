@@ -5,7 +5,7 @@ parent_chunk: multichannel_watch
 code_paths:
 - src/board/client.py
 - src/cli/board.py
-- src/templates/commands/swarm-monitor.md.jinja2
+- src/templates/plugin/skills/swarm-monitor.md.jinja2
 - tests/test_board_client.py
 - tests/test_board_cli.py
 code_references:
@@ -15,7 +15,7 @@ code_references:
   implements: Count tracking across reconnects for total message cap
 - ref: src/cli/board.py#watch_multi_cmd
   implements: --count CLI flag wired through to client methods
-- ref: commands/swarm-monitor.md
+- ref: skills/swarm-monitor/SKILL.md
   implements: Event-driven loop pattern using --count 1 with run_in_background
 - ref: tests/test_board_cli.py
   implements: CLI count flag tests

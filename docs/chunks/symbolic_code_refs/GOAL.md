@@ -9,8 +9,8 @@ code_paths:
 - src/chunk_validation.py
 - src/ve.py
 - src/templates/chunk/GOAL.md.jinja2
-- src/templates/commands/chunk-complete.md.jinja2
-- src/templates/commands/chunk-update-references.md.jinja2
+- src/templates/plugin/skills/chunk-complete.md.jinja2
+- src/templates/plugin/skills/chunk-update-references.md.jinja2
 - tests/test_models.py
 - tests/test_symbols.py
 - tests/test_chunks.py

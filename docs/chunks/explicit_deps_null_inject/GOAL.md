@@ -4,7 +4,7 @@ ticket: null
 parent_chunk: null
 code_paths: []
 code_references:
-  - ref: src/models.py#ChunkFrontmatter
+  - ref: src/models/chunk.py#ChunkFrontmatter
     implements: "depends_on field type changed to list[str] | None = None to preserve null vs empty distinction"
   - ref: src/ve.py#read_chunk_dependencies
     implements: "Returns None vs [] to signal unknown vs explicit-no-deps"

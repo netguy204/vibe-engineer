@@ -6,7 +6,7 @@ code_paths:
 - src/chunks.py
 - src/ve.py
 - src/task/artifact_ops.py
-- src/templates/commands/chunk-create.md.jinja2
+- src/templates/plugin/skills/chunk-create.md.jinja2
 - tests/test_chunks.py
 - tests/test_chunk_scratchpad_cli.py
 code_references:

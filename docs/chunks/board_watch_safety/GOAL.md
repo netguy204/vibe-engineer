@@ -5,7 +5,7 @@ parent_chunk: null
 code_paths:
 - src/board/storage.py
 - src/cli/board.py
-- src/templates/commands/steward-watch.md.jinja2
+- src/templates/plugin/skills/steward-watch.md.jinja2
 - tests/test_board_storage.py
 - tests/test_board_cli.py
 code_references:
@@ -21,7 +21,7 @@ code_references:
   implements: Kill-previous-watch logic and PID lifecycle in single-channel watch
 - ref: src/cli/board.py#watch_multi_cmd
   implements: Kill-previous-watch logic and PID lifecycle in multi-channel watch
-- ref: commands/steward-watch.md
+- ref: skills/steward-watch/SKILL.md
   implements: Watch Safety SOP guidance on ack discipline, multi-channel patterns,
     and timeout cleanup
 - ref: tests/test_board_cli.py

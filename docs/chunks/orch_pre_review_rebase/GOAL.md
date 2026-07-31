@@ -8,8 +8,8 @@ code_paths:
 - src/orchestrator/scheduler.py
 - src/orchestrator/state.py
 - src/cli/orch.py
-- src/templates/commands/chunk-rebase.md.jinja2
-- .claude/commands/chunk-rebase.md
+- src/templates/plugin/skills/chunk-rebase.md.jinja2
+- skills/chunk-rebase/SKILL.md
 - tests/test_orchestrator_scheduler.py
 - tests/test_orchestrator_scheduler_review.py
 code_references:
@@ -25,7 +25,7 @@ code_references:
   implements: "IMPLEMENT\u2192REBASE\u2192REVIEW phase progression"
 - ref: src/orchestrator/state.py#StateStore::_migrate_v13
   implements: Document REBASE as valid phase value in schema v13
-- ref: commands/chunk-rebase.md
+- ref: skills/chunk-rebase/SKILL.md
   implements: Agent prompt template for commit-merge-resolve-test workflow
 - ref: tests/test_orchestrator_scheduler.py
   implements: REBASE phase tests

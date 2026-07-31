@@ -10,9 +10,9 @@ code_paths:
 - docs/subsystems/workflow_artifacts/OVERVIEW.md
 - tests/test_task_friction_log.py
 code_references:
-- ref: src/models.py#ExternalFrictionSource
+- ref: src/models/friction.py#ExternalFrictionSource
   implements: External friction source reference schema for task contexts
-- ref: src/models.py#FrictionFrontmatter
+- ref: src/models/friction.py#FrictionFrontmatter
   implements: Friction log frontmatter schema with external_friction_sources field
 - ref: src/task/exceptions.py#TaskFrictionError
   implements: Error class for task-aware friction operations

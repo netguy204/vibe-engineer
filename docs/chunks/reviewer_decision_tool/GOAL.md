@@ -7,7 +7,7 @@ code_paths:
 - src/orchestrator/scheduler.py
 - src/orchestrator/models.py
 - src/orchestrator/state.py
-- src/templates/commands/chunk-review.md.jinja2
+- src/templates/plugin/skills/chunk-review.md.jinja2
 - tests/test_orchestrator_scheduler.py
 - tests/test_orchestrator_agent_review.py
 code_references:
@@ -29,7 +29,7 @@ code_references:
   implements: Sets up review_decision_callback during REVIEW phase dispatch
 - ref: src/orchestrator/state.py#StateStore::_migrate_v10
   implements: Schema migration adding review_nudge_count column to work_units table
-- ref: commands/chunk-review.md
+- ref: skills/chunk-review/SKILL.md
   implements: Updated reviewer skill instructions requiring ReviewDecision tool usage
 - ref: tests/test_orchestrator_scheduler_review.py#TestReviewDecisionTool
   implements: Test class verifying tool submission, nudging, and escalation behavior

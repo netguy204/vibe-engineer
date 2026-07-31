@@ -5,7 +5,7 @@ parent_chunk: null
 code_paths:
 - docs/trunk/SPEC.md
 - CLAUDE.md
-- .claude/commands/investigation-create.md
+- skills/investigation-create/SKILL.md
 code_references:
 - ref: docs/trunk/SPEC.md#Artifacts
   implements: Investigation terminology entry in Artifacts section

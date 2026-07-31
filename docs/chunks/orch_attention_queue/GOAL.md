@@ -3,7 +3,7 @@ status: ACTIVE
 ticket: null
 parent_chunk: null
 code_paths:
-- src/orchestrator/api.py
+- src/orchestrator/api
 - src/orchestrator/state.py
 - src/orchestrator/scheduler.py
 - src/orchestrator/agent.py

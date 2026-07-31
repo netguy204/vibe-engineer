@@ -94,6 +94,25 @@ that looks right. When in doubt, walk up from the file until you find
 References that cross a tree boundary must say so explicitly rather than relying
 on this rule.
 
+{# Chunk: docs/chunks/crossref_rename_integrity - Rename-integrity mandate #}
+### File Moves and Renames
+
+**File moves and renames are never scope-complete until reference integrity is
+restored.** Any `git mv`, rename, or path change MUST update every `code_paths`
+entry, `ref:` field, `# Chunk:` / `# Subsystem:` backreference, and config path
+that names the old path — in both directions: references *inside* the moved file
+and references *pointing at* it from `docs/`. Reference updates are part of the
+rename, not a follow-up, regardless of how narrowly the rename was requested.
+
+After any move, validate (works without installing `ve`):
+
+```bash
+uvx --from vibe-engineer ve validate
+```
+
+Fix all reported stale paths before considering the rename done. If `uvx` is
+unavailable, grep the repository for the old path and update every hit.
+
 {# Chunk: docs/chunks/template_artifact_guidance - Creating Artifacts section with artifact creation guidance #}
 ## Creating Artifacts
 

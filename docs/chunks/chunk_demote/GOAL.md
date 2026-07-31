@@ -5,7 +5,7 @@ parent_chunk: null
 code_paths:
 - src/cli/chunk.py
 - src/chunk_demote.py
-- src/templates/commands/chunk-demote.md.jinja2
+- src/templates/plugin/skills/chunk-demote.md.jinja2
 - docs/trunk/EXTERNAL.md
 - tests/test_chunk_demote.py
 code_references:
@@ -24,7 +24,7 @@ code_references:
 - ref: src/cli/chunk.py#demote_cmd
   implements: "ve chunk demote CLI command \u2014 wires demote_chunk() to the chunk\
     \ subcommand group"
-- ref: commands/chunk-demote.md
+- ref: skills/chunk-demote/SKILL.md
   implements: /chunk-demote skill template wrapping the CLI with operator confirmation
 - ref: docs/trunk/EXTERNAL.md
   implements: 'Documentation: when to demote, invariants enforced, step-by-step commit

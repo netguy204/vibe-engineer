@@ -3,18 +3,18 @@ status: ACTIVE
 ticket: null
 parent_chunk: null
 code_paths:
-- src/templates/plugin/commands/workspace-validate-fix.md.jinja2
-- commands/workspace-validate-fix.md
+- src/templates/plugin/skills/workspace-validate-fix.md.jinja2
+- skills/workspace-validate-fix/SKILL.md
 - tests/test_workspace_validate_fix_skill.py
 - docs/trunk/EXTERNAL.md
 - src/templates/trunk/EXTERNAL.md.jinja2
 - README.md
 code_references:
-- ref: src/templates/plugin/commands/workspace-validate-fix.md.jinja2
+- ref: src/templates/plugin/skills/workspace-validate-fix.md.jinja2
   implements: 'The workspace compliance loop, as the source of truth: validator run,
     fix-class dispatch, mechanical repairs, escalation with candidates, re-run until
     clean. Rendered to commands/workspace-validate-fix.md by `ve plugin render`.'
-- ref: commands/workspace-validate-fix.md
+- ref: skills/workspace-validate-fix/SKILL.md
   implements: The committed render that reaches operators through the plugin; generated
     output, not the edit surface
 - ref: tests/test_workspace_validate_fix_skill.py

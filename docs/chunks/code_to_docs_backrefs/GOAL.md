@@ -9,7 +9,7 @@ code_references:
   implements: Backreference guidance in subsystem OVERVIEW.md template
 - ref: src/templates/claude/CLAUDE.md.jinja2
   implements: Code Backreferences section documenting the convention
-- ref: commands/chunk-update-references.md
+- ref: skills/chunk-update-references/SKILL.md
   implements: Backreference maintenance during reference reconciliation (static plugin command)
 - ref: CLAUDE.md
   implements: Code Backreferences section in project CLAUDE.md

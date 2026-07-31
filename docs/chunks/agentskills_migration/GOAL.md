@@ -4,7 +4,7 @@ ticket: null
 parent_chunk: null
 code_paths:
 - src/templates/claude/AGENTS.md.jinja2
-- src/templates/commands/
+- src/templates/plugin/skills/
 - src/project.py
 - src/template_system.py
 - src/task_init.py

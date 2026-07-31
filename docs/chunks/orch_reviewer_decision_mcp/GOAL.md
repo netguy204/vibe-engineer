@@ -5,7 +5,7 @@ parent_chunk: reviewer_decision_tool
 code_paths:
 - src/orchestrator/agent.py
 - src/orchestrator/scheduler.py
-- src/templates/commands/chunk-review.md.jinja2
+- src/templates/plugin/skills/chunk-review.md.jinja2
 - tests/test_orchestrator_scheduler.py
 - tests/test_orchestrator_agent.py
 - tests/test_orchestrator_agent_callbacks.py

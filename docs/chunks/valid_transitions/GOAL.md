@@ -3,21 +3,21 @@ status: ACTIVE
 ticket: null
 parent_chunk: null
 code_paths:
-- src/models.py
+- src/models
 - src/chunks.py
 - src/narratives.py
 - src/investigations.py
 - src/ve.py
-- .claude/commands/chunk-complete.md
-- .claude/commands/investigation-create.md
+- skills/chunk-complete/SKILL.md
+- skills/investigation-create/SKILL.md
 - docs/subsystems/workflow_artifacts/OVERVIEW.md
 - tests/test_transitions.py
 code_references:
-- ref: src/models.py#VALID_CHUNK_TRANSITIONS
+- ref: src/models/chunk.py#VALID_CHUNK_TRANSITIONS
   implements: Chunk state transition rules (FUTURE->IMPLEMENTING->ACTIVE->SUPERSEDED->HISTORICAL)
-- ref: src/models.py#VALID_NARRATIVE_TRANSITIONS
+- ref: src/models/narrative.py#VALID_NARRATIVE_TRANSITIONS
   implements: Narrative state transition rules (DRAFTING->ACTIVE->COMPLETED)
-- ref: src/models.py#VALID_INVESTIGATION_TRANSITIONS
+- ref: src/models/investigation.py#VALID_INVESTIGATION_TRANSITIONS
   implements: Investigation state transition rules (ONGOING->SOLVED/NOTED/DEFERRED)
 - ref: src/chunks.py#Chunks::get_status
   implements: Get current chunk status from frontmatter

@@ -91,6 +91,25 @@ References that cross a tree boundary must say so explicitly rather than relying
 on this rule.
 
 
+### File Moves and Renames
+
+**File moves and renames are never scope-complete until reference integrity is
+restored.** Any `git mv`, rename, or path change MUST update every `code_paths`
+entry, `ref:` field, `# Chunk:` / `# Subsystem:` backreference, and config path
+that names the old path — in both directions: references *inside* the moved file
+and references *pointing at* it from `docs/`. Reference updates are part of the
+rename, not a follow-up, regardless of how narrowly the rename was requested.
+
+After any move, validate (works without installing `ve`):
+
+```bash
+uvx --from vibe-engineer ve validate
+```
+
+Fix all reported stale paths before considering the rename done. If `uvx` is
+unavailable, grep the repository for the old path and update every hit.
+
+
 ## Creating Artifacts
 
 **CRITICAL: Never manually create artifact files.** Do not use `mkdir` or write files directly to create GOAL.md, PLAN.md, or OVERVIEW.md files. Always use the appropriate creation command:

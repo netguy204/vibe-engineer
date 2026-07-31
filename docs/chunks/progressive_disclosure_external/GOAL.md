@@ -11,7 +11,7 @@ code_references:
     implements: "Comprehensive external artifacts documentation for multi-repo workflows"
   - ref: docs/trunk/ARTIFACTS.md#external-artifacts
     implements: "Simplified external artifacts section with cross-reference to EXTERNAL.md"
-  - ref: src/templates/claude/CLAUDE.md.jinja2#External Artifacts
+  - ref: src/templates/claude/CLAUDE.md.jinja2#Extended Artifacts
     implements: "Signpost directing agents to EXTERNAL.md when encountering external.yaml files"
 narrative: null
 investigation: claudemd_progressive_disclosure

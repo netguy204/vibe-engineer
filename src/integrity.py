@@ -23,7 +23,7 @@ from backreferences import parse_backreference
 from external_refs import is_external_artifact
 from friction import Friction
 from investigations import Investigations
-from models import ArtifactType, ChunkFrontmatter
+from models import ArtifactType, ChunkFrontmatter, ChunkStatus
 from narratives import Narratives
 from source_files import enumerate_source_files
 from subsystems import Subsystems
@@ -307,6 +307,8 @@ class IntegrityValidator:
             chunk_errors, chunk_warnings = self._validate_chunk_outbound(chunk_name)
             errors.extend(chunk_errors)
             warnings.extend(chunk_warnings)
+            # Chunk: docs/chunks/crossref_rename_integrity - Stale declared paths fail loudly
+            errors.extend(self._validate_chunk_file_paths(chunk_name))
 
         # 2. Validate narrative → chunk references
         for narrative_name in self._narrative_names:
@@ -363,6 +365,54 @@ class IntegrityValidator:
             subsystem_backrefs_found=subsystem_backrefs_found,
             external_chunks_skipped=len(self._external_chunk_names),
         )
+
+    # Chunk: docs/chunks/crossref_rename_integrity - File-existence check for chunk-declared paths
+    def _validate_chunk_file_paths(self, chunk_name: str) -> list[IntegrityError]:
+        """Validate that a chunk's declared file paths exist on disk.
+
+        Applies only to ACTIVE and COMPOSITE chunks. FUTURE and IMPLEMENTING
+        chunks legitimately list files they expect to create, and HISTORICAL/
+        SUPERSEDED chunks keep archaeological references to code that may be
+        gone. A stale path on a chunk that currently owns intent is broken
+        addressing — an error, so a rename cannot silently strand the
+        references pointing at the old path.
+        """
+        errors: list[IntegrityError] = []
+
+        frontmatter = self.chunks.parse_chunk_frontmatter(chunk_name)
+        if frontmatter is None:
+            return errors
+        if frontmatter.status not in (ChunkStatus.ACTIVE, ChunkStatus.COMPOSITE):
+            return errors
+
+        seen: set[tuple[str, str]] = set()
+
+        def check(path: str, field_name: str) -> None:
+            key = (field_name, path)
+            if key in seen:
+                return
+            seen.add(key)
+            if not (self.project_dir / path).exists():
+                errors.append(
+                    IntegrityError(
+                        source=f"docs/chunks/{chunk_name}/GOAL.md",
+                        target=path,
+                        link_type="chunk→file",
+                        message=(
+                            f"{field_name} entry '{path}' does not exist — if the "
+                            "file was moved or renamed, update this reference"
+                        ),
+                    )
+                )
+
+        for path in frontmatter.code_paths or []:
+            check(path, "code_paths")
+
+        for ref in frontmatter.code_references or []:
+            # Extract file path from ref (format: file_path or file_path#symbol)
+            check(ref.ref.split("#")[0], "code_references")
+
+        return errors
 
     # Chunk: docs/chunks/integrity_bidirectional - Bidirectional checks for chunk↔narrative and chunk↔investigation
     def _validate_chunk_outbound(

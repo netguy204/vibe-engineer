@@ -3,16 +3,16 @@ status: ACTIVE
 ticket: null
 parent_chunk: null
 code_paths:
-- src/templates/plugin/commands/
+- src/templates/plugin/skills
 - src/templates/plugin/agents/
-- commands/
+- skills/
 - agents/
 - tests/test_plugin_render.py
 - docs/chunks/dualplugin_content_migration/migrate_templates.py
 code_references:
-- ref: src/templates/plugin/commands/chunk-plan.md.jinja2
+- ref: src/templates/plugin/skills/chunk-plan.md.jinja2
   implements: "Representative of the 34 command templates using the canonical preamble (8 with {% call %} task-workspace bullets, 26 plain)"
-- ref: src/templates/plugin/commands/chunk-commit.md.jinja2
+- ref: src/templates/plugin/skills/chunk-commit.md.jinja2
   implements: "Representative of the nonstandard-context class (chunk-commit, chunk-execute-all): own ## Context heading with idioms.probe per probe line"
 - ref: src/templates/plugin/agents/chunk-executor.md.jinja2
   implements: "Agent template with literal frontmatter (tools: key is outside the five-macro flavor interface) and generated marker"

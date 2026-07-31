@@ -7,7 +7,7 @@ code_paths:
 - src/cli/init_cmd.py
 - src/orchestrator/agent.py
 - pyproject.toml
-- commands/chunk-create.md
+- skills/chunk-create/SKILL.md
 - tests/test_init.py
 - tests/test_orchestrator_agent_skills.py
 - README.md

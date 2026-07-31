@@ -20,17 +20,25 @@ def write_chunk_goal(
     friction_entries: list[dict] | None = None,
     depends_on: list[str] | None = None,
     code_references: list[dict] | None = None,
+    status: str = "IMPLEMENTING",
+    code_paths: list[str] | None = None,
 ):
     """Helper to write a chunk GOAL.md with optional outbound references."""
     goal_path = chunk_path / "GOAL.md"
 
     frontmatter_lines = [
         "---",
-        "status: IMPLEMENTING",
+        f"status: {status}",
         "ticket: null",
         "parent_chunk: null",
-        "code_paths: []",
     ]
+
+    if code_paths:
+        frontmatter_lines.append("code_paths:")
+        for path in code_paths:
+            frontmatter_lines.append(f"  - {path}")
+    else:
+        frontmatter_lines.append("code_paths: []")
 
     if code_references:
         frontmatter_lines.append("code_references:")
@@ -814,6 +822,125 @@ class TestIntegrityValidatorMultipleErrors:
         assert len(result.errors) == 2
 
 
+# Chunk: docs/chunks/crossref_rename_integrity - Tests for chunk-declared file path existence
+class TestIntegrityValidatorFilePaths:
+    """Tests for the chunk→file existence check on code_paths/code_references."""
+
+    def _make_chunk(self, temp_project, name, **kwargs):
+        chunk_path = temp_project / "docs" / "chunks" / name
+        chunk_path.mkdir(parents=True)
+        write_chunk_goal(chunk_path, **kwargs)
+        return chunk_path
+
+    def _file_path_errors(self, temp_project):
+        result = IntegrityValidator(temp_project).validate()
+        return result, [e for e in result.errors if e.link_type == "chunk→file"]
+
+    def test_active_chunk_stale_code_path_errors(self, temp_project):
+        """ACTIVE chunk with a code_paths entry naming a missing file → error."""
+        make_ve_initialized_git_repo(temp_project)
+        self._make_chunk(
+            temp_project, "stale", status="ACTIVE", code_paths=["src/gone.py"]
+        )
+
+        result, errors = self._file_path_errors(temp_project)
+        assert result.success is False
+        assert len(errors) == 1
+        assert errors[0].source == "docs/chunks/stale/GOAL.md"
+        assert errors[0].target == "src/gone.py"
+        assert "code_paths" in errors[0].message
+        assert "moved or renamed" in errors[0].message
+
+    def test_active_chunk_stale_code_reference_errors(self, temp_project):
+        """ACTIVE chunk with a code_references ref to a missing file → error."""
+        make_ve_initialized_git_repo(temp_project)
+        self._make_chunk(
+            temp_project,
+            "stale_ref",
+            status="ACTIVE",
+            code_references=[{"ref": "src/gone.py#Symbol"}],
+        )
+
+        result, errors = self._file_path_errors(temp_project)
+        assert result.success is False
+        assert len(errors) == 1
+        assert errors[0].target == "src/gone.py"
+        assert "code_references" in errors[0].message
+
+    def test_active_chunk_existing_paths_clean(self, temp_project):
+        """ACTIVE chunk whose declared paths all exist → no chunk→file errors."""
+        make_ve_initialized_git_repo(temp_project)
+        (temp_project / "src").mkdir()
+        (temp_project / "src" / "present.py").write_text("x = 1\n")
+        self._make_chunk(
+            temp_project,
+            "healthy",
+            status="ACTIVE",
+            code_paths=["src/present.py"],
+            code_references=[{"ref": "src/present.py#x"}],
+        )
+
+        result, errors = self._file_path_errors(temp_project)
+        assert errors == []
+        assert result.success is True
+
+    def test_directory_code_path_exists_clean(self, temp_project):
+        """A code_paths entry naming an existing directory is valid."""
+        make_ve_initialized_git_repo(temp_project)
+        (temp_project / "src").mkdir()
+        self._make_chunk(
+            temp_project, "dir_ref", status="ACTIVE", code_paths=["src"]
+        )
+
+        _, errors = self._file_path_errors(temp_project)
+        assert errors == []
+
+    @pytest.mark.parametrize(
+        "status", ["IMPLEMENTING", "FUTURE", "HISTORICAL", "SUPERSEDED"]
+    )
+    def test_non_owning_statuses_skip_check(self, temp_project, status):
+        """Stale paths on non-ACTIVE/COMPOSITE chunks are not errors."""
+        make_ve_initialized_git_repo(temp_project)
+        self._make_chunk(
+            temp_project,
+            "pending",
+            status=status,
+            code_paths=["src/not_yet_created.py"],
+            code_references=[{"ref": "src/gone.py#Symbol"}],
+        )
+
+        result, errors = self._file_path_errors(temp_project)
+        assert errors == []
+        assert result.success is True
+
+    def test_composite_chunk_stale_path_errors(self, temp_project):
+        """COMPOSITE chunks share intent ownership; stale paths are errors."""
+        make_ve_initialized_git_repo(temp_project)
+        self._make_chunk(
+            temp_project, "shared", status="COMPOSITE", code_paths=["src/gone.py"]
+        )
+
+        result, errors = self._file_path_errors(temp_project)
+        assert result.success is False
+        assert len(errors) == 1
+
+    def test_duplicate_references_report_once_per_field(self, temp_project):
+        """Several refs into one missing file report once per field type."""
+        make_ve_initialized_git_repo(temp_project)
+        self._make_chunk(
+            temp_project,
+            "dupes",
+            status="ACTIVE",
+            code_references=[
+                {"ref": "src/gone.py#SymbolA"},
+                {"ref": "src/gone.py#SymbolB"},
+            ],
+        )
+
+        _, errors = self._file_path_errors(temp_project)
+        assert len(errors) == 1
+
+
 class TestIntegrityValidatorCLI:
     """Tests for the ve validate CLI command."""
 
@@ -848,6 +975,21 @@ class TestIntegrityValidatorCLI:
         result = runner.invoke(cli, ["validate", "--project-dir", str(temp_project)])
         assert result.exit_code == 1
         assert "Validation failed" in result.output
+
+    # Chunk: docs/chunks/crossref_rename_integrity - Stale declared paths fail the CLI
+    def test_validate_stale_code_path_fails(self, runner, temp_project):
+        """ve validate exits non-zero when an ACTIVE chunk declares a missing file."""
+        from ve import cli
+
+        make_ve_initialized_git_repo(temp_project)
+
+        chunk_path = temp_project / "docs" / "chunks" / "renamed_away"
+        chunk_path.mkdir(parents=True)
+        write_chunk_goal(chunk_path, status="ACTIVE", code_paths=["src/old_name.py"])
+
+        result = runner.invoke(cli, ["validate", "--project-dir", str(temp_project)])
+        assert result.exit_code == 1
+        assert "src/old_name.py" in result.output
 
     def test_validate_verbose_shows_stats(self, runner, temp_project):
         """ve validate --verbose shows statistics."""

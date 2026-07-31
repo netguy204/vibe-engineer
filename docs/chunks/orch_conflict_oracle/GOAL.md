@@ -6,7 +6,7 @@ code_paths:
 - src/orchestrator/oracle.py
 - src/orchestrator/models.py
 - src/orchestrator/state.py
-- src/orchestrator/api.py
+- src/orchestrator/api
 - src/orchestrator/scheduler.py
 - src/orchestrator/client.py
 - src/cli/orch.py
@@ -48,13 +48,13 @@ code_references:
   implements: List all conflicts across all chunks with optional verdict filter
 - ref: src/orchestrator/state.py#StateStore::clear_conflicts_for_chunk
   implements: Clear stale conflicts on lifecycle advancement
-- ref: src/orchestrator/api.py#get_conflicts_endpoint
+- ref: src/orchestrator/api/conflicts.py#get_conflicts_endpoint
   implements: GET /conflicts/{chunk} API endpoint
-- ref: src/orchestrator/api.py#list_all_conflicts_endpoint
+- ref: src/orchestrator/api/conflicts.py#list_all_conflicts_endpoint
   implements: GET /conflicts API endpoint with verdict filter
-- ref: src/orchestrator/api.py#analyze_conflicts_endpoint
+- ref: src/orchestrator/api/conflicts.py#analyze_conflicts_endpoint
   implements: POST /conflicts/analyze API endpoint
-- ref: src/orchestrator/api.py#resolve_conflict_endpoint
+- ref: src/orchestrator/api/conflicts.py#resolve_conflict_endpoint
   implements: POST /work-units/{chunk}/resolve API endpoint for operator resolution
 - ref: src/orchestrator/scheduler.py#Scheduler::_check_conflicts
   implements: Conflict checking before dispatch; populates blocked_by

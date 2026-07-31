@@ -10,7 +10,8 @@ code_references:
   implements: Subsystem terminology, directory structure, frontmatter schema, status
     values, CLI commands, and guarantees
 - ref: src/templates/claude/CLAUDE.md.jinja2
-  implements: Agent guidance for subsystems section and /subsystem-discover command
+  implements: Agent guidance for subsystems as an extended artifact type (command
+    docs moved to the plugin)
 narrative: subsystem_documentation
 subsystems: []
 created_after:

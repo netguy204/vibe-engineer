@@ -7,7 +7,7 @@ code_paths:
   - src/ve.py
   - pyproject.toml
   - tests/test_chunk_suggest_prefix.py
-  - .claude/commands/chunk-plan.md
+  - skills/chunk-plan/SKILL.md
 code_references:
   - ref: src/chunks.py#SuggestPrefixResult
     implements: "Result dataclass for prefix suggestion analysis"
@@ -21,7 +21,7 @@ code_references:
     implements: "CLI command ve chunk suggest-prefix"
   - ref: tests/test_chunk_suggest_prefix.py
     implements: "TDD tests for business logic, task context, and CLI"
-  - ref: .claude/commands/chunk-plan.md
+  - ref: skills/chunk-plan/SKILL.md
     implements: "Skill integration to call suggest-prefix during planning"
   - ref: src/cli/chunk.py#suggest_prefix_cmd
     implements: "CLI chunk suggest-prefix command after CLI modularization"

@@ -6,7 +6,7 @@ code_paths:
 - src/investigations.py
 - src/cli/investigation.py
 - src/models/investigation.py
-- src/templates/commands/investigation-create.md.jinja2
+- src/templates/plugin/skills/investigation-create.md.jinja2
 - tests/test_investigations.py
 code_references:
 - ref: src/investigations.py#Investigations
@@ -29,7 +29,7 @@ code_references:
   implements: CLI investigation list command with --state filter
 - ref: src/template_system.py#ActiveInvestigation
   implements: Template context dataclass for investigation rendering
-- ref: commands/investigation-create.md
+- ref: skills/investigation-create/SKILL.md
   implements: Slash command with scale assessment for investigation vs chunk decision
 narrative: investigations
 subsystems: []

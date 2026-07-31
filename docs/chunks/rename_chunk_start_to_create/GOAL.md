@@ -4,8 +4,8 @@ ticket: null
 parent_chunk: null
 code_paths:
 - src/ve.py
-- src/templates/commands/chunk-create.md.jinja2
-- .claude/commands/chunk-create.md
+- src/templates/plugin/skills/chunk-create.md.jinja2
+- skills/chunk-create/SKILL.md
 - README.md
 - docs/subsystems/workflow_artifacts/OVERVIEW.md
 code_references:

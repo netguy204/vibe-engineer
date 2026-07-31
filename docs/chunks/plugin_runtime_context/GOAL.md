@@ -3,24 +3,24 @@ status: ACTIVE
 ticket: null
 parent_chunk: null
 code_paths:
-- commands/chunk-create.md
+- skills/chunk-create/SKILL.md
 - docs/chunks/plugin_runtime_context/PORTING_GUIDE.md
-- tests/test_plugin_commands.py
+- tests/test_plugin_skills.py
 - tests/test_plugin_skills.py
 code_references:
-- ref: commands/chunk-create.md
+- ref: skills/chunk-create/SKILL.md
   implements: 'Pilot port: chunk-create as a static plugin command using the runtime
     context-detection preamble'
 - ref: docs/chunks/plugin_runtime_context/PORTING_GUIDE.md
   implements: The documented convention and mechanical porting recipe applied by plugin_core_commands
     and plugin_orch_commands
-- ref: tests/test_plugin_commands.py#TestCommandInvariants
+- ref: tests/test_plugin_skills.py#TestCommandInvariants
   implements: 'Generic invariants over every plugin command: valid frontmatter, no
     Jinja2 syntax, no auto-generated header'
-- ref: tests/test_plugin_commands.py#TestChunkCreateCommand
+- ref: tests/test_plugin_skills.py#TestChunkCreateCommand
   implements: 'Pilot assertions: runtime detection references, preserved task-context
     guidance, $ARGUMENTS, backreference'
-- ref: tests/test_plugin_commands.py#TestRuntimeDetection
+- ref: tests/test_plugin_skills.py#TestRuntimeDetection
   implements: Behavioral check that the preamble's shell lines distinguish plain project,
     configured project, and task workspace
 - ref: tests/test_plugin_skills.py

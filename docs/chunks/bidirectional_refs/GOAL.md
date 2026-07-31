@@ -3,12 +3,12 @@ status: ACTIVE
 ticket: null
 parent_chunk: null
 code_paths:
-- src/models.py
+- src/models
 - src/chunks.py
 - src/subsystems.py
 - src/ve.py
 - src/templates/chunk/GOAL.md.jinja2
-- src/templates/commands/chunk-complete.md
+- src/templates/plugin/skills/chunk-complete.md.jinja2
 - tests/test_models.py
 - tests/test_chunks.py
 - tests/test_subsystems.py

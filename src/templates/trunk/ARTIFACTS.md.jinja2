@@ -135,6 +135,8 @@ Source code may contain comments linking back to documentation:
 
 When you see backreferences, read the referenced artifact to understand the code's context and constraints.
 
+References are maintained under the rename mandate (see CLAUDE.md, "File Moves and Renames"): any file move or rename must update every reference that names the old path — chunk `code_paths` and `ref:` fields included — validated with `uvx --from vibe-engineer ve validate`.
+
 **Do NOT add `# Narrative:` backreferences.** Narratives decompose into chunks; reference the implementing chunk instead.
 
 **Chunk backreferences in multi-project tasks:**

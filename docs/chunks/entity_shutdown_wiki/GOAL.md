@@ -5,7 +5,7 @@ parent_chunk: null
 code_paths:
 - src/entity_shutdown.py
 - src/cli/entity.py
-- src/templates/commands/entity-shutdown.md.jinja2
+- src/templates/plugin/skills/entity-shutdown.md.jinja2
 code_references:
 - ref: src/entity_shutdown.py#extract_wiki_diff
   implements: "Mechanical git diff extraction from entity's wiki/ directory — zero-LLM journal creation"
@@ -19,7 +19,7 @@ code_references:
   implements: "Dispatcher routing wiki entities to wiki pipeline and legacy entities to legacy pipeline"
 - ref: src/cli/entity.py#shutdown
   implements: "CLI shutdown command with optional --memories-file and wiki-aware routing"
-- ref: commands/entity-shutdown.md
+- ref: skills/entity-shutdown/SKILL.md
   implements: "Skill template with branching flow for wiki vs legacy entity shutdown"
 narrative: null
 investigation: entity_wiki_memory
