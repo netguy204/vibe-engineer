@@ -1054,10 +1054,15 @@ class _Validator:
             if not symbol_path:
                 continue
             if "::" in file_part:
-                # The whole ref is already recorded unverified (cross-repo);
-                # its symbol anchor is part of what was not checked.
-                self.symbol_anchors_unchecked += 1
-                continue
+                qualifier = file_part.partition("::")[0]
+                kind, _ = classify_qualifier_shape(qualifier) if qualifier else ("invalid", None)
+                if kind != "member":
+                    # org/repo refs are recorded unverified (cross-repo);
+                    # their symbol anchor is part of what was not checked.
+                    self.symbol_anchors_unchecked += 1
+                    continue
+                # member:: targets resolve against the named member's root and
+                # are verified like local files — fall through to the check.
             if not targets:
                 # The file part is already a gating defect (missing file or
                 # empty glob); the anchor is neither checked nor counted —
