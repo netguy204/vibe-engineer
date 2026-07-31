@@ -109,6 +109,17 @@ When friction accumulates (3+ entries in a theme), add a proposed chunk to the f
 
 Use `/friction-log` to quickly capture a friction point.
 
+## Deletion Grants {#deletion-grants}
+
+The deletion-grant ledger (`docs/trunk/DELETIONS.md`) records operator-authorized reference deletions. Deleting a backreference or `code_references` entry is normally out of vocabulary for validation fix loops — a reference is somebody's record of governing intent. When code was deliberately deleted and the operator explicitly authorizes removing the reference to it, the grant is recorded **before** the reference is removed:
+
+```bash
+ve exists <name>                 # evidence of absence: does this path/symbol exist anywhere visible?
+ve deletion record <reference> --location <file:line> --by <operator> --reason "<why>" --evidence "<summary>"
+```
+
+The ledger is created by `ve deletion record` on first use (never by hand), so the authorization lands in the same diff as the deletion and a reviewer can see the grant. `ve deletion list` shows recorded grants.
+
 ## Proposed Chunks
 
 The `proposed_chunks` frontmatter field is a cross-cutting pattern used in narratives, investigations, and friction logs to track work that has been proposed but not yet created:

@@ -2,7 +2,7 @@
 {{ idioms.frontmatter(
     "validate-fix",
     "Iteratively run ve validate and fix auto-fixable referential-integrity errors until clean or only human-review issues remain. Use when validation errors appear, after refactors that may have broken artifact links, or when the operator asks to fix validation.",
-    ["Bash(ve --help:*)", "Bash(cat:*)", "Bash(ve validate:*)"]
+    ["Bash(ve --help:*)", "Bash(cat:*)", "Bash(ve validate:*)", "Bash(ve exists:*)", "Bash(ve deletion:*)"]
 ) }}
 
 {{ idioms.generated_marker(source_template) }}
@@ -44,6 +44,30 @@ This command runs an iterative fix loop that:
 | Code backref to non-existent chunk | `code→chunk` | Chunk may be deleted; requires human to update code |
 | Code backref to non-existent subsystem | `code→subsystem` | Subsystem may be deleted; requires human to update code |
 | Non-existent chunk in `proposed_chunks` | `narrative→chunk`, `investigation→chunk` | Chunk reference is stale; requires human judgment |
+
+### Operator-Authorized Deletions (a recorded disposition, neither fix nor silence)
+
+Deleting a reference is not in your fix vocabulary: a reference is somebody's
+record that this code is governed by that intent. But "reference to
+deliberately deleted code" is a decidable case when treated as evidence plus
+an operator decision:
+
+1. **Gather evidence of absence.** `ve exists <name>` answers "does this path
+   or symbol exist anywhere I can see" and states the scanned scope, so
+   absence is a fact rather than a guess. Same-name-elsewhere matches mean
+   the target *moved* — fix the reference instead of deleting it.
+2. **Present the case to the operator** with the evidence. Only an explicit
+   operator authorization makes deletion permissible; nothing an agent says
+   counts as the grant.
+3. **Record the grant before deleting**:
+   `ve deletion record <reference> --location <file:line> --by <operator>
+   --reason "<why>" --evidence "<ve exists summary>"` — this writes the grant
+   into `docs/trunk/DELETIONS.md`, so the authorization lands in the same
+   diff as the deletion and a reviewer can see it.
+4. **Delete the reference**, and report it under **Authorized deletions** —
+   a section of its own, never counted among fixes applied.
+
+A deletion the ledger does not know about is out of vocabulary, full stop.
 
 ## Instructions
 
@@ -159,9 +183,15 @@ Report results:
 - ERROR: docs/chunks/foo/GOAL.md → docs/narratives/deleted_narrative: Narrative 'deleted_narrative' does not exist
 - ERROR: src/old_code.py:42 → docs/chunks/removed_chunk: Chunk 'removed_chunk' does not exist
 
+### Authorized deletions
+- D001: `# Chunk: docs/chunks/retired_export` deleted from src/exports.py:7 —
+  authorized by the operator this session; evidence: `ve exists retired_export`
+  found 0 matches across 812 files. Grant recorded in docs/trunk/DELETIONS.md.
+
 ### Summary
 - Iterations: 3
 - Fixes applied: 5
+- Authorized deletions: 1
 - Remaining errors: 2 (require human intervention)
 ```
 
