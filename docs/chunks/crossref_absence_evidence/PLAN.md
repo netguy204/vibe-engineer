@@ -10,170 +10,205 @@ to hand to an agent.
 
 ## Approach
 
-<!--
-How will you build this? Describe the strategy at a high level.
-What patterns or techniques will you use?
-What existing code will you build on?
+Two coupled affordances, built on machinery the reference_integrity narrative
+already established:
 
-Reference docs/trunk/DECISIONS.md entries where relevant.
-If this approach represents a new significant decision, ask the user
-if we should add it to DECISIONS.md and reference it here.
+**(a) Evidence-of-absence query — `ve exists NAME`.** A top-level command
+(peer of `ve validate`) backed by a new `src/absence.py` module. The question
+it answers is exactly the GOAL's: "does this name (path or symbol) exist
+anywhere I can see?" Visibility is resolved the same way the workspace
+validator resolves it: if a `.ve-workspace.yaml` manifest is found upward from
+`--dir`, the scan scope is the workspace root plus every registered member
+(same union-and-dedupe as `workspace_validation.enumerate_workspace_files`);
+otherwise the scope falls back to the nearest enclosing VE tree, and failing
+that the directory itself. The report always states the scope and the file
+counts — that is what turns "not found" from silence into evidence.
 
-Always include tests in your implementation plan and adhere to
-docs/trunk/TESTING_PHILOSOPHY.md in your planning.
+Query parsing mirrors the reference grammar already in use
+(`file#symbol::path` in `code_references`):
 
-Remember to update code_paths in the chunk's GOAL.md (e.g., docs/chunks/crossref_absence_evidence/GOAL.md)
-with references to the files that you expect to touch.
--->
+- `a/b.py#Sym` → path query `a/b.py` + symbol query `Sym` (last `::` part)
+- contains `/` or a dot in the last component → path query only
+- a bare identifier → symbol query *and* name-equality search (so artifact
+  directory names and module directories are findable)
+- anything else → literal content search
 
-## Subsystem Considerations
+Path matching reports two distinct classes because they answer different
+operator questions: **path matches** (relative path equals or ends with the
+query — "it still exists") and **basename matches** (same final name at a
+different path — "it moved"). That distinction is precisely what turned 18
+lost-or-moved judgment calls into one decision in the field. Path matching
+must see *all* files, not just source extensions (field cases were
+`requirements.txt` and `Dockerfile`), so a new `enumerate_all_files` helper
+lands in `src/source_files.py` beside `enumerate_source_files`, reusing the
+same git-aware enumeration with the extension filter removed. Symbol/content
+matching scans source files with the same conservative whole-word semantics as
+`workspace_validation._symbol_is_absent`, so `ve exists` and the validator
+never disagree about what "present" means.
 
-<!--
-Before designing your implementation, check docs/subsystems/ for relevant
-cross-cutting patterns.
+Exit code is grep-shaped: 0 when anything matched, 1 when absent — so skills
+and scripts can branch on it. `--format json` emits the full report for the
+fix-loop skills.
 
-QUESTIONS TO CONSIDER:
-- Does this chunk touch any existing subsystem's scope?
-- Will this chunk implement part of a subsystem (contribute code) or use it
-  (depend on it)?
-- Did you discover code during exploration that should be part of a subsystem
-  but doesn't follow its patterns?
+**(b) Operator-authorized deletion disposition — `ve deletion record`/`list`.**
+A new `src/deletions.py` module owning an append-only ledger at
+`docs/trunk/DELETIONS.md` (created on first record — command-created, per the
+"never manually create artifact files" rule), modeled on the friction ledger
+(`src/friction.py`) but simpler: no themes, just numbered entries. Each grant
+records the reference as written, the location it was deleted from, who
+authorized it, why, and optional absence evidence (typically the `ve exists`
+summary line). The validators do not read the ledger — once the reference is
+deleted there is nothing left to validate; the ledger is the audit trail that
+makes the deletion reviewable in the same diff that removes the reference.
 
-If no subsystems are relevant, delete this section.
+**Skill vocabulary.** Both fix-loop skills gain the disposition:
 
-WHEN SUBSYSTEMS ARE RELEVANT:
-List each relevant subsystem with its status and your relationship:
-- **docs/subsystems/validation** (DOCUMENTED): This chunk USES the validation
-  subsystem to check input
-- **docs/subsystems/error_handling** (REFACTORING): This chunk IMPLEMENTS a
-  new error type following the subsystem's patterns
+- `workspace-validate-fix.md.jinja2`: the "Never delete a reference" invariant
+  keeps its sentence verbatim (a contract test asserts it) and gains the one
+  blessed exception: an explicit operator grant, recorded with
+  `ve deletion record` *before* the reference is removed. Escalation guidance
+  for `unresolvable-bare`/`missing-target` tells the agent to attach
+  `ve exists` output as evidence, and the report format gains an
+  "Authorized deletions" section distinct from Fixed and Escalations.
+- `validate-fix.md.jinja2`: the classification table gains the third
+  disposition (neither auto-fixable nor merely unfixable) with the same
+  evidence → operator grant → record → delete → report sequence.
 
-HOW SUBSYSTEM STATUS AFFECTS YOUR WORK:
+Both templates get `Bash(ve exists:*)` and `Bash(ve deletion:*)` in
+allowed-tools, and `uv run ve plugin render` regenerates
+`skills/*/SKILL.md`.
 
-DOCUMENTED subsystems: The subsystem's patterns are captured but deviations are not
-being actively fixed. If you discover code that deviates from the subsystem's
-patterns, add it to the subsystem's Known Deviations section. Do NOT prioritize
-fixing those deviations—your chunk has its own goals.
-
-REFACTORING subsystems: The subsystem is being actively consolidated. If your chunk
-work touches code that deviates from the subsystem's patterns, attempt to bring it
-into compliance as part of your work. This is "opportunistic improvement"—improve
-what you touch, but don't expand scope to fix unrelated deviations.
-
-WHEN YOU DISCOVER DEVIATING CODE:
-- Add it to the subsystem's Known Deviations section
-- Note whether you will address it (REFACTORING status + relevant to your work)
-  or leave it for future work (DOCUMENTED status or outside your chunk's scope)
-
-Example:
-- **Discovered deviation**: src/legacy/parser.py#validate_input does its own
-  validation instead of using the validation subsystem
-  - Added to docs/subsystems/validation Known Deviations
-  - Action: Will not address (subsystem is DOCUMENTED; deviation outside chunk scope)
--->
+Constraints honored: DEC-005 (no git operations prescribed — the commands
+write files only), DEC-002 (git not assumed — file enumeration falls back to
+rglob), TDD per docs/trunk/TESTING_PHILOSOPHY.md (behavioral tests first for
+the query semantics and ledger append).
 
 ## Sequence
 
-<!--
-Ordered steps to implement this chunk. Each step should be:
-- Small enough to reason about in isolation
-- Large enough to be meaningful
-- Clear about its inputs and outputs
+### Step 1: Failing tests for the existence query
 
-This sequence is your contract with yourself (and with agents).
-Work through it in order. Don't skip ahead.
+New `tests/test_absence_evidence.py`. Using `conftest.make_ve_tree` /
+`make_workspace` fixtures (as `tests/test_workspace_validation.py` does),
+assert:
 
-Example:
+- a file present in a member tree is reported as a path match; exit 0
+- a file that exists nowhere reports absence, names the scan scope
+  (workspace root + members) and a nonzero files-scanned count; exit 1
+- a moved file (same basename, different directory) is reported as a
+  basename match, distinct from path matches
+- a symbol defined in a source file is found with `file:line`; a symbol
+  appearing nowhere is absent (whole-word: `foo_bar` does not match `foo`)
+- `file#symbol` queries check both parts
+- directory names match identifier queries (e.g. an artifact directory)
+- no manifest → falls back to the enclosing tree and says so
+- `--format json` carries `query`, `found`, match lists, and `scope`/counts
 
-### Step 1: Define the SegmentHeader struct
+### Step 2: Implement `src/absence.py` and `enumerate_all_files`
 
-Create the struct that represents a segment's header with fields for:
-- magic number (4 bytes)
-- version (2 bytes)
-- segment_id (8 bytes)
-- message_count (4 bytes)
-- checksum (4 bytes)
+- `src/source_files.py`: add `enumerate_all_files(project_dir)` — same
+  git-ls-files-or-rglob strategy as `enumerate_source_files`, no extension
+  filter (still excludes `FALLBACK_EXCLUDE_DIRS` in the fallback).
+- `src/absence.py`: `ExistenceQuery.parse(raw)`, `ExistenceReport`
+  (dataclass with `found`, `path_matches`, `basename_matches`,
+  `symbol_matches`, `scope`, counts, `to_dict()`), and
+  `search_existence(roots, query)`. Directory matching walks the roots for
+  dir-name/dir-path hits; content matching reuses the whole-word regex
+  semantics of `_symbol_is_absent`.
 
-Location: src/segment/format.rs
+### Step 3: CLI — `ve exists`
 
-### Step 2: Implement header serialization
+New `src/cli/exists_cmd.py`: `exists` command with `NAME` argument,
+`--dir` (default `.`), `--format text|json`. Scope resolution:
+`workspace.find_workspace_root` upward, else `project.find_enclosing_tree`,
+else the directory itself. Text output prints match sections (capped per
+section with a "… and N more" line; JSON is complete), then the scope line:
+`Scanned N files across M trees rooted at <root>`. Register in
+`src/cli/__init__.py` above the `install_tree_discovery` call.
 
-Add `to_bytes()` and `from_bytes()` methods to SegmentHeader.
-Use little-endian encoding per SPEC.md Section 3.1.
+### Step 4: Failing tests for the deletion ledger
 
-### Step 3: ...
+In the same test module (or `tests/test_deletion_ledger.py` if it grows):
 
----
+- `ve deletion record` with `--reference`, `--location`, `--by`, `--reason`
+  (and optional `--evidence`) creates `docs/trunk/DELETIONS.md` on first use
+  with a guidance header, appends `D001`, and echoes the id
+- a second record appends `D002` without disturbing `D001`
+- `ve deletion list` shows both; `--format json` round-trips every field
+- recording outside a VE tree fails with an actionable error
 
-**BACKREFERENCE COMMENTS**
+### Step 5: Implement `src/deletions.py` and `ve deletion` CLI
 
-When implementing code, add backreference comments to help future agents trace
-code back to its governing documentation.
+- `DeletionLedger(project_dir)`: `record(...) -> str` (creates the file if
+  missing, computes next `D###` id, appends the entry), `entries() ->
+  list[DeletionGrant]` (regex parse, mirroring `friction.parse_entries`'
+  style). Entry format:
 
-**Valid backreference types:**
-- `# Subsystem: docs/subsystems/<name>` - For architectural patterns
-- `# Chunk: docs/chunks/<name>` - For implementation work
+  ```
+  ### D001: 2026-07-31 — `docs/chunks/foo` deleted from `src/bar.py:12`
 
-Place comments at the appropriate level:
-- **Module-level**: If this code implements the subsystem/chunk's core functionality
-- **Class-level**: If this class is part of the pattern
-- **Method-level**: If this method implements a specific behavior
+  - **Authorized by**: <operator>
+  - **Reason**: <why the deletion is correct>
+  - **Evidence**: <e.g. `ve exists` summary — absent across 4212 files>
+  ```
 
-Format (place immediately before the symbol):
-```
-# Subsystem: docs/subsystems/workflow_artifacts - Workflow artifact manager pattern
-# Chunk: docs/chunks/auth_refactor - Authentication system redesign
-```
+- `src/cli/deletion.py`: `deletion` group with `record` and `list`,
+  `--project-dir` option consistent with other groups so tree discovery
+  applies. Register in `src/cli/__init__.py`.
 
-Do NOT add narrative backreferences. Narratives decompose into chunks; reference
-the implementing chunk instead.
+### Step 6: Skill templates and re-render
 
-**Task context note**: In multi-project tasks, always use local paths (e.g.,
-`docs/chunks/chunk_name`) for chunk backreferences, not paths to the external
-artifact repo. Each project has `external.yaml` pointers that resolve to the
-actual chunk content.
--->
+- Edit `src/templates/plugin/skills/workspace-validate-fix.md.jinja2` and
+  `src/templates/plugin/skills/validate-fix.md.jinja2` as described in
+  Approach. Keep the literal sentence "Never delete a reference." intact —
+  `tests/test_workspace_validate_fix_skill.py::test_document_states_the_three_invariants`
+  pins it.
+- Add contract assertions to `tests/test_absence_evidence.py`: both rendered
+  skills mention `ve exists`, `ve deletion record`, and an
+  "Authorized deletions" report section; the workspace skill still states all
+  three invariants.
+- Run `uv run ve plugin render`; commit the regenerated
+  `skills/validate-fix/SKILL.md` and `skills/workspace-validate-fix/SKILL.md`.
+
+### Step 7: Document the ledger in ARTIFACTS.md
+
+Add a short "Deletion grants" note to `src/templates/trunk/ARTIFACTS.md.jinja2`
+(near the friction-log section): what `docs/trunk/DELETIONS.md` is, that it is
+created by `ve deletion record`, and that reference deletion without a
+recorded grant is out of vocabulary. Apply the same edit to the rendered
+`docs/trunk/ARTIFACTS.md` (this repo's instance).
+
+### Step 8: Backreferences, validation, full test run
+
+- Add `# Chunk: docs/chunks/crossref_absence_evidence` backreferences to the
+  new modules and CLI commands.
+- Update this chunk's GOAL.md `code_references`.
+- `uv run pytest tests/` and `uv run ve validate` both clean.
 
 ## Dependencies
 
-<!--
-What must exist before this chunk can be implemented?
-- Other chunks that must be complete
-- External libraries to add
-- Infrastructure or configuration
-
-If there are no dependencies, delete this section.
--->
+None on other narrative chunks — `depends_on: []` is deliberate; this chunk
+touches no validator internals the parallel chunks are editing.
+`crossref_refactor_move` (a later wave) consumes this chunk's absence query
+for its never-existed disposition, so the JSON report shape is a contract.
 
 ## Risks and Open Questions
 
-<!--
-What might go wrong? What are you unsure about?
-Being explicit about uncertainty helps you (and agents) know where to
-be careful and when to stop and ask questions.
-
-Example:
-- fsync behavior may differ across filesystems; need to verify on ext4 and APFS
-- Unclear whether concurrent reads during write are safe; may need mutex
-- Performance target is aggressive; may need to iterate on buffer sizes
--->
+- **Scan cost on large workspaces.** The query reads every source file once
+  for symbol search. That is the same cost profile as one validator pass,
+  which the 4000-file field workspace already tolerates; no index is built.
+- **Name collisions in text output.** A short identifier can match thousands
+  of lines; text output caps each section and points at `--format json`.
+- **Ledger placement in workspaces.** A grant is recorded in the tree named
+  by `--project-dir` (the tree that governed the deleted reference). The
+  command does not guess across trees; the skill text says to record in the
+  governing tree.
+- **`ve exists` vs future `ve refactor move`.** The move tool (later chunk)
+  will want richer git-history evidence; this chunk deliberately scopes
+  visibility to the current working copy — "anywhere I can see" now, not
+  "anywhere that ever existed".
 
 ## Deviations
 
 <!--
 POPULATE DURING IMPLEMENTATION, not at planning time.
-
-When reality diverges from the plan, document it here:
-- What changed?
-- Why?
-- What was the impact?
-
-Minor deviations (renamed a function, used a different helper) don't need
-documentation. Significant deviations (changed the approach, skipped a step,
-added steps) do.
-
-Example:
-- Step 4: Originally planned to use std::fs::rename for atomic swap.
-  Testing revealed this isn't atomic across filesystems. Changed to
-  write-fsync-rename-fsync sequence per platform best practices.
 -->

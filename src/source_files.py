@@ -208,3 +208,27 @@ def enumerate_source_files(
 
     # Filter by extension
     return _filter_by_extension(paths, extensions)
+
+
+# Chunk: docs/chunks/crossref_absence_evidence - All-files enumeration for path existence
+def enumerate_all_files(project_dir: pathlib.Path) -> list[pathlib.Path]:
+    """Enumerate every file in a project directory, regardless of extension.
+
+    The evidence-of-absence query needs this: a path question about
+    `requirements.txt` or `Dockerfile` must see those files, which the
+    source-extension filter of :func:`enumerate_source_files` would hide.
+    Uses the same git-aware strategy (respecting .gitignore) with the same
+    fallback exclusions when git is unavailable.
+
+    Args:
+        project_dir: Path to the project root.
+
+    Returns:
+        List of absolute paths to all files.
+    """
+    project_dir = pathlib.Path(project_dir).resolve()
+
+    if _is_git_repository(project_dir):
+        relative_paths = _enumerate_git_files(project_dir)
+        return [project_dir / p for p in relative_paths]
+    return _enumerate_fallback_files(project_dir, FALLBACK_EXCLUDE_DIRS)
