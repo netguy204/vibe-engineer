@@ -1,17 +1,58 @@
 ---
-status: FUTURE
+status: ACTIVE
 ticket: null
 parent_chunk: null
-code_paths: []
-code_references: []
+code_paths:
+- src/models/shared.py
+- src/models/references.py
+- src/backreferences.py
+- src/workspace_validation.py
+- src/integrity.py
+- docs/trunk/SPEC.md
+- tests/test_models.py
+- tests/test_backreferences.py
+- tests/test_workspace_validation.py
+- tests/test_integrity.py
+- tests/test_chunks.py
+code_references:
+- ref: src/models/shared.py#classify_qualifier_shape
+  implements: The single qualifier shape rule shared by comments and frontmatter -
+    no slash is a workspace member, one slash is org/repo, anything else is invalid
+- ref: src/backreferences.py#_classify_qualifier
+  implements: Comment-grammar classification delegating its shape rules to the shared
+    function instead of mirroring them
+- ref: src/models/references.py#SymbolicReference
+  implements: Frontmatter refs accept member-qualified forms under the shared shape
+    rule, rejecting invalid qualifiers with both accepted forms named
+- ref: src/workspace_validation.py#_Validator::check_code_references
+  implements: Member-qualified file parts resolve through the workspace manifest and
+    are verified in the target tree - existence, glob expansion, and symbol anchors
+    - while org/repo stays unverified and malformed qualifiers become defects
+- ref: src/integrity.py#IntegrityValidator::_validate_chunk_file_paths
+  implements: Single-tree deferral of qualified declared-path entries to workspace
+    validation, so cross-tree refs are not misresolved locally
+- ref: tests/test_workspace_validation.py#test_member_qualified_code_reference_is_verified_clean
+  implements: The headline behavior - a resolving member ref appears in neither defects
+    nor unverified
+- ref: tests/test_models.py#TestSymbolicReferenceMemberQualifiers
+  implements: Member-qualified frontmatter acceptance and comment/frontmatter shape-rule
+    parity
+- ref: tests/test_integrity.py#TestIntegrityValidatorFilePaths::test_qualified_entries_are_deferred_to_workspace_validation
+  implements: Qualified entries produce no single-tree chunk-to-file errors
+- ref: tests/test_chunks.py#TestParseChunkFrontmatterWithErrors::test_invalid_code_reference_format_returns_error
+  implements: Invalid-ref fixtures use a multi-slash qualifier now that the member
+    form is valid
 narrative: reference_integrity
 investigation: null
 subsystems: []
 friction_entries: []
-depends_on: ["crossref_workspace_parity", "crossref_glob_refs"]
-created_after: ["crossref_rename_integrity", "validation_backref_allowlist"]
+depends_on:
+- crossref_workspace_parity
+- crossref_glob_refs
+created_after:
+- crossref_rename_integrity
+- validation_backref_allowlist
 ---
-
 <!--
 ╔══════════════════════════════════════════════════════════════════════════════╗
 ║  DO NOT DELETE THIS COMMENT BLOCK until the chunk complete command is run.   ║
@@ -249,50 +290,37 @@ describing multiple independent states, split into separate chunks.
 
 ## Success Criteria
 
-<!--
-How will you know this chunk is done? Be specific and verifiable.
-Reference relevant sections of docs/trunk/SPEC.md where applicable.
-
-Example:
-- SegmentWriter correctly encodes messages per SPEC.md Section 3.2
-- fsync is called after each write, satisfying durability guarantee
-- Write throughput meets SPEC.md performance requirements (>50K msg/sec)
-- All tests in TESTS.md pass
--->
-
-## Relationship to Parent
-
-<!--
-DELETE THIS SECTION if parent_chunk is null.
-
-If this chunk modifies work from a previous chunk, explain:
-- What deficiency or change prompted this work?
-- What from the parent chunk remains valid?
-- What is being changed and why?
-
-This context helps agents understand the delta and avoid breaking
-invariants established by the parent.
--->
+- `SymbolicReference` accepts `member::path` and `member::path#symbol`
+  frontmatter refs under the same shape rules the comment grammar's
+  `_classify_qualifier` enforces (no `/`, identifier with dots, no length
+  cap), and the two share one rule in code rather than two mirrors.
+- `ve workspace validate` *verifies* a member-qualified `code_paths` or
+  `code_references` entry against the named member's tree: existence, glob
+  expansion, and symbol anchors all resolve through the workspace manifest,
+  and a resolving member ref appears in neither `defects` nor `unverified`.
+- Failure routing is honest and manifest-aware: an unknown member qualifier
+  is an `UNKNOWN_QUALIFIER` defect with registration guidance; a missing
+  target in a known member's tree is an `UNRESOLVABLE_FRONTMATTER` defect
+  naming that tree; a malformed qualifier is a `MALFORMED_QUALIFIER` defect
+  — none of them a fake "cross-repository" unverified.
+- `org/repo::` refs keep their existing disposition: collected in
+  `unverified` with the cross-repository reason, never defects.
+- All new finding sites anchor lines via `_find_field_entry_line` on the
+  owning field's entry.
+- Single-tree validation (`IntegrityValidator._validate_chunk_file_paths`)
+  defers qualified entries to workspace validation instead of checking them
+  as literal local paths.
+- SPEC.md's Code Reference Format documents both qualified forms and which
+  validator verifies each.
 
 ## Rejected Ideas
 
-<!-- DELETE THIS SECTION when the goal is confirmed if there were no rejected
-ideas.
+### Require the member target to be a VE tree for file-part resolution
 
-This is where the back-and-forth between the agent and the operator is recorded
-so that future agents understand why we didn't do something.
-
-If there were rejected ideas in the development of this GOAL with the operator,
-list them here with the reason they were rejected.
-
-Example:
-
-### Store the queue in redis
-
-We could store the queue in redis instead of a file. This would allow us to scale the queue to multiple nodes.
-
-Rejected because: The queue has no meaning outside the current session.
-
----
-
--->
+Backreference resolution (`check_member_reference`) requires the member root
+to be a VE tree, because it addresses artifacts under `docs/`. Applying the
+same gate to file parts was rejected: a plain file target does not live
+under `docs/`, and `resolve_peer_pointer` already established that peer
+resolution gates on manifest registration plus a filesystem read. Requiring
+`is_member_tree` here would make a legitimate `root::.github/workflows/ci.yml`
+reference fail for a reason unrelated to whether the file exists.

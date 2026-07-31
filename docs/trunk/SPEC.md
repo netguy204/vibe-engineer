@@ -245,6 +245,23 @@ Code references use symbolic paths rather than line numbers for stability as cod
 - `src/ve.py#validate_short_name` - a standalone function
 - `src/models.py#Outer::Inner::method` - deeply nested symbol
 - `packages/tasks/*/Dockerfile` - a glob pattern covering every match
+- `engine::src/foo.py#Bar` - a member-qualified reference into a sibling
+  tree of the same workspace
+- `acme/project::src/foo.py#Bar` - a repo-qualified reference into another
+  repository
+
+**Qualified references**: A file path (in `code_paths` or the file part of a
+`code_references` ref) may carry a `::` qualifier, under the same shape rule
+the comment backreference grammar uses. A qualifier with no `/` names a
+**workspace member**: the reference resolves through `.ve-workspace.yaml`
+against that member's root, and `ve workspace validate` fully verifies it —
+existence, glob expansion, and symbol anchors are all checked in the target
+tree. A qualifier with exactly one `/` is a GitHub-style **org/repo**
+reference into another repository; those legitimately cannot be checked
+offline and are reported as *unverified*, never as defects. Any other shape
+is a malformed qualifier and is reported as a defect. Single-tree validation
+(`ve validate`) defers all qualified entries to workspace validation rather
+than misresolving them against the local tree.
 
 **Glob patterns**: A file path (in `code_paths` or the file part of a
 `code_references` ref) containing glob magic (`*`, `?`, `[`) is a pattern,

@@ -884,6 +884,24 @@ class TestIntegrityValidatorFilePaths:
         assert errors == []
         assert result.success is True
 
+    # Chunk: docs/chunks/federation_member_refs - Qualified entries defer to workspace validation
+    def test_qualified_entries_are_deferred_to_workspace_validation(self, temp_project):
+        """Member- and repo-qualified entries name another tree or repository;
+        checking them against this project root would invent errors for
+        references that point elsewhere on purpose."""
+        make_ve_initialized_git_repo(temp_project)
+        self._make_chunk(
+            temp_project,
+            "federated",
+            status="ACTIVE",
+            code_paths=["engine::src/foo.py"],
+            code_references=[{"ref": "acme/hub::src/w.py#Widget"}],
+        )
+
+        result, errors = self._file_path_errors(temp_project)
+        assert errors == []
+        assert result.success is True
+
     def test_directory_code_path_exists_clean(self, temp_project):
         """A code_paths entry naming an existing directory is valid."""
         make_ve_initialized_git_repo(temp_project)

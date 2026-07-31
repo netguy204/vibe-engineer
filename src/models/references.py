@@ -9,7 +9,11 @@ from typing import Literal
 
 from pydantic import BaseModel, field_validator, model_validator
 
-from models.shared import _require_valid_dir_name, _require_valid_repo_ref
+from models.shared import (
+    _require_valid_dir_name,
+    _require_valid_repo_ref,
+    classify_qualifier_shape,
+)
 
 # Chunk: docs/chunks/federation_peer_refs - Member names in external.yaml obey the manifest grammar
 # `models.workspace` depends on nothing in `models`, so importing it here keeps
@@ -217,14 +221,21 @@ class ComplianceLevel(StrEnum):
 class SymbolicReference(BaseModel):
     """A symbolic reference to code that implements a requirement.
 
-    Format: {file_path}, {file_path}#{symbol_path}, or {org/repo::file_path}#{symbol_path}
+    Format: {file_path}, {file_path}#{symbol_path}, or a qualified form
+    {qualifier}::{file_path}#{symbol_path} where the qualifier is either a
+    workspace member name (no '/') or a GitHub-style org/repo (exactly one
+    '/'). The qualifier shape rule is shared with the comment backreference
+    grammar (`models.shared.classify_qualifier_shape`).
+
+    # Chunk: docs/chunks/federation_member_refs - Member-qualified frontmatter refs
 
     Examples:
         - src/chunks.py (entire module)
         - src/chunks.py#Chunks (class)
         - src/chunks.py#Chunks::create_chunk (method)
         - src/ve.py#validate_short_name (standalone function)
-        - acme/project::src/foo.py#Bar (class in another project)
+        - engine::src/foo.py#Bar (class in a sibling tree of this workspace)
+        - acme/project::src/foo.py#Bar (class in another repository)
 
     For subsystem documentation, the optional compliance field indicates how well
     the referenced code follows the subsystem's patterns:
@@ -242,9 +253,10 @@ class SymbolicReference(BaseModel):
     def validate_ref(cls, v: str) -> str:
         """Validate ref field format.
 
-        Supports both local references and project-qualified references:
+        Supports local and qualified references:
         - Local: file_path or file_path#symbol_path
-        - Qualified: org/repo::file_path or org/repo::file_path#symbol_path
+        - Member-qualified: member::file_path[#symbol_path] (same workspace)
+        - Repo-qualified: org/repo::file_path[#symbol_path] (another repository)
         """
         if not v:
             raise ValueError("ref cannot be empty")
@@ -276,14 +288,15 @@ class SymbolicReference(BaseModel):
             if not project:
                 raise ValueError("project qualifier cannot be empty before ::")
 
-            # Validate project is in org/repo format using existing validator
-            # Wrap with contextual error message that includes the invalid value
-            try:
-                _require_valid_repo_ref(project, "project qualifier")
-            except ValueError:
+            # Chunk: docs/chunks/federation_member_refs - Member qualifiers are valid frontmatter refs
+            # The shape rule is shared with the comment grammar: a member name
+            # (no '/') or an org/repo reference (exactly one '/').
+            kind, reason = classify_qualifier_shape(project)
+            if kind == "invalid":
                 raise ValueError(
-                    f"project qualifier must be in 'org/repo' format "
-                    f"(e.g., 'acme/project::path'), got '{project}'"
+                    f"project qualifier must be a workspace member name "
+                    f"(e.g., 'engine::path') or in 'org/repo' format "
+                    f"(e.g., 'acme/project::path'), got '{project}': {reason}"
                 )
 
             # Check that file path portion is not empty

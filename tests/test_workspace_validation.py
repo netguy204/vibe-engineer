@@ -840,6 +840,150 @@ def test_symbol_anchor_on_glob_pattern_is_unverified(tmp_path):
     assert "glob" in unverified.reason
 
 
+# ---------------------------------------------------------------------------
+# Member-qualified frontmatter refs: verified through the workspace manifest
+# # Chunk: docs/chunks/federation_member_refs - member::path is resolved, not silenced
+# ---------------------------------------------------------------------------
+
+
+def two_member_workspace(tmp_path):
+    """A workspace with two sibling member trees, `lib` and `web`."""
+    make_workspace(tmp_path, {"lib": "packages/lib", "web": "packages/web"})
+    return tmp_path / "packages" / "lib", tmp_path / "packages" / "web"
+
+
+def test_member_qualified_code_reference_is_verified_clean(tmp_path):
+    """The headline: a resolving member ref is verified — in neither defects
+    nor unverified. Before this chunk it could only be written in a form that
+    silenced the check while looking resolved."""
+    lib, web = two_member_workspace(tmp_path)
+    source(web / "src" / "app.py", "class Widget:", "    pass")
+    code_ref_chunk(lib, "widget", "web::src/app.py#Widget")
+
+    report = validate(tmp_path)
+
+    assert report.defects == ()
+    assert report.unverified == ()
+
+
+def test_member_qualified_symbol_is_checked_in_the_target_tree(tmp_path):
+    """Verification is real: a stale symbol anchor in the sibling tree defects."""
+    lib, web = two_member_workspace(tmp_path)
+    source(web / "src" / "app.py", "class Gadget:", "    pass")
+    code_ref_chunk(lib, "widget", "web::src/app.py#Widget")
+
+    report = validate(tmp_path)
+
+    (defect,) = of_class(report, FixClass.UNRESOLVABLE_FRONTMATTER)
+    assert "Widget" in defect.message
+    assert report.unverified == ()
+
+
+def test_member_qualified_missing_path_names_the_target_tree(tmp_path):
+    lib, web = two_member_workspace(tmp_path)
+    code_ref_chunk(lib, "widget", "web::src/gone.py")
+
+    report = validate(tmp_path)
+
+    (defect,) = of_class(report, FixClass.UNRESOLVABLE_FRONTMATTER)
+    assert defect.reference == "web::src/gone.py"
+    assert "tree 'web'" in defect.message
+    assert defect.member == "lib"
+    assert defect.line == entry_line(lib, "widget", "web::src/gone.py")
+
+
+def test_member_qualified_code_paths_entry_is_verified(tmp_path):
+    """code_paths gets the same member routing: the field case is a chunk whose
+    CI gate lives in the root tree's .github/workflows/."""
+    lib, web = two_member_workspace(tmp_path)
+    source(web / ".github" / "workflows" / "ci.yml", "on: push")
+    declared_paths_chunk(
+        lib, "widget", code_paths=("web::.github/workflows/ci.yml",)
+    )
+
+    report = validate(tmp_path)
+
+    assert report.defects == ()
+    assert report.unverified == ()
+
+
+def test_member_qualified_stale_code_paths_entry_defects(tmp_path):
+    lib, web = two_member_workspace(tmp_path)
+    declared_paths_chunk(lib, "widget", code_paths=("web::src/gone.py",))
+
+    report = validate(tmp_path)
+
+    (defect,) = of_class(report, FixClass.UNRESOLVABLE_FRONTMATTER)
+    assert defect.reference == "web::src/gone.py"
+    assert "tree 'web'" in defect.message
+
+
+def test_unknown_member_qualifier_in_frontmatter_is_unknown_qualifier(tmp_path):
+    lib, _ = two_member_workspace(tmp_path)
+    code_ref_chunk(lib, "widget", "engine::src/app.py")
+
+    report = validate(tmp_path)
+
+    (defect,) = of_class(report, FixClass.UNKNOWN_QUALIFIER)
+    assert "'engine' is not a workspace member" in defect.message
+    assert "ve workspace add engine" in defect.message
+    assert defect.line == entry_line(lib, "widget", "engine::src/app.py")
+
+
+def test_malformed_qualifier_in_code_paths_is_a_defect_not_unverified(tmp_path):
+    """A qualifier that is neither member nor org/repo must not hide behind
+    the cross-repository unverified disposition."""
+    lib, _ = two_member_workspace(tmp_path)
+    declared_paths_chunk(lib, "widget", code_paths=("a/b/c::src/app.py",))
+
+    report = validate(tmp_path)
+
+    (defect,) = of_class(report, FixClass.MALFORMED_QUALIFIER)
+    assert defect.reference == "a/b/c::src/app.py"
+    assert "workspace member name" in defect.message
+    assert report.unverified == ()
+
+
+def test_member_qualified_glob_expands_in_the_target_tree(tmp_path):
+    lib, web = two_member_workspace(tmp_path)
+    source(web / "tasks" / "alpha" / "Dockerfile", "FROM scratch")
+    declared_paths_chunk(lib, "widget", code_paths=("web::tasks/*/Dockerfile",))
+
+    report = validate(tmp_path)
+
+    assert report.defects == ()
+
+
+def test_member_qualified_empty_glob_names_the_target_tree(tmp_path):
+    lib, web = two_member_workspace(tmp_path)
+    declared_paths_chunk(lib, "widget", code_paths=("web::tasks/*/Dockerfile",))
+
+    report = validate(tmp_path)
+
+    (defect,) = of_class(report, FixClass.UNRESOLVABLE_FRONTMATTER)
+    assert "tree 'web'" in defect.message
+    assert "matches nothing" in defect.message
+
+
+def test_repo_qualified_refs_remain_unverified_alongside_member_refs(tmp_path):
+    """The two qualified forms stay distinct: same chunk, one verified member
+    ref and one unverified org/repo ref."""
+    lib, web = two_member_workspace(tmp_path)
+    source(web / "src" / "app.py", "class Widget:", "    pass")
+    declared_paths_chunk(
+        lib,
+        "widget",
+        code_references=("web::src/app.py#Widget", "acme/hub::src/w.py#Widget"),
+    )
+
+    report = validate(tmp_path)
+
+    assert report.defects == ()
+    (unverified,) = report.unverified
+    assert unverified.reference == "acme/hub::src/w.py#Widget"
+    assert "cross-repository" in unverified.reason
+
+
 @pytest.mark.parametrize("status", ["FUTURE", "IMPLEMENTING", "HISTORICAL", "SUPERSEDED"])
 def test_non_owning_chunk_statuses_are_exempt_from_path_checks(tmp_path, status):
     """Parity with the single-tree check: FUTURE/IMPLEMENTING chunks list files

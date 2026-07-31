@@ -400,6 +400,14 @@ class IntegrityValidator:
             if key in seen:
                 return
             seen.add(key)
+            # Chunk: docs/chunks/federation_member_refs - Qualified entries defer to workspace validation
+            # A qualified file part (`member::path` or `org/repo::path`) names
+            # another tree or repository; checking it against this project root
+            # would invent a "does not exist" error for a reference that points
+            # elsewhere on purpose — the same deferral
+            # _validate_code_backreferences applies to qualified comments.
+            if "::" in path:
+                return
             if is_glob_pattern(path):
                 if not expand_glob(self.project_dir, path):
                     errors.append(

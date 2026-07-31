@@ -35,11 +35,11 @@ from enum import StrEnum
 
 from external_refs import ARTIFACT_DIR_NAME
 from models import ArtifactType
-# Qualifier shape is validated with the same helpers frontmatter validation uses,
+# Qualifier shape is classified by the same rule frontmatter validation uses,
 # so comment refs and `SymbolicReference` refs cannot drift apart.
-from models.shared import _require_valid_repo_ref
+# Chunk: docs/chunks/federation_member_refs - Shared qualifier shape rule
+from models.shared import classify_qualifier_shape
 from source_files import enumerate_source_files
-from validation import validate_identifier
 
 
 # Chunk: docs/chunks/federation_qualified_refs - Qualifier classification
@@ -211,10 +211,11 @@ def _classify_qualifier(
 ) -> tuple[QualifierKind, str | None]:
     """Classify a qualifier by shape alone, returning (kind, malformed_reason).
 
-    Mirrors the rules `models.references.SymbolicReference` enforces for
-    frontmatter refs. Existence is not checked here: a well-formed qualifier
-    naming a tree that does not exist is MEMBER, and reporting that is the
-    workspace validator's job.
+    Shares `models.shared.classify_qualifier_shape` with the frontmatter model
+    (`models.references.SymbolicReference`), so the two grammars cannot drift.
+    Existence is not checked here: a well-formed qualifier naming a tree that
+    does not exist is MEMBER, and reporting that is the workspace validator's
+    job.
     """
     if separator is None:
         return QualifierKind.BARE, None
@@ -234,29 +235,13 @@ def _classify_qualifier(
             f"qualifier '{qualifier}' cannot contain multiple '::' delimiters"
         )
 
-    slash_count = qualifier.count("/")
-    if slash_count == 0:
-        # Character shape only, with no length limit: how long a member name may
-        # be is the workspace manifest's rule, and a too-long name should be
-        # reported as an unknown member rather than as bad syntax.
-        errors = validate_identifier(
-            qualifier, "member qualifier", allow_dot=True, max_length=None
-        )
-        if errors:
-            return QualifierKind.MALFORMED, "; ".join(errors)
+    # Chunk: docs/chunks/federation_member_refs - Shape rule shared with frontmatter
+    kind, reason = classify_qualifier_shape(qualifier)
+    if kind == "member":
         return QualifierKind.MEMBER, None
-
-    if slash_count == 1:
-        try:
-            _require_valid_repo_ref(qualifier, "repo qualifier")
-        except ValueError as exc:
-            return QualifierKind.MALFORMED, str(exc)
+    if kind == "repo":
         return QualifierKind.REPO, None
-
-    return QualifierKind.MALFORMED, (
-        f"qualifier '{qualifier}' must be a workspace member name (no '/') or an "
-        "'org/repo' reference (exactly one '/')"
-    )
+    return QualifierKind.MALFORMED, reason
 
 
 # Chunk: docs/chunks/federation_qualified_refs - Shared single-line parser

@@ -511,11 +511,11 @@ class TestSymbolicReferenceWithProjectQualification:
             SymbolicReference(ref="::src/foo.py", implements="Something")
         assert "project qualifier cannot be empty" in str(exc_info.value).lower()
 
-    def test_invalid_project_format_no_slash(self):
-        """Project qualifier without org/repo format is rejected."""
-        with pytest.raises(ValidationError) as exc_info:
-            SymbolicReference(ref="justproject::src/foo.py", implements="Something")
-        assert "org/repo" in str(exc_info.value).lower()
+    # Chunk: docs/chunks/federation_member_refs - Member qualifiers are valid frontmatter refs
+    def test_member_qualifier_without_slash_is_accepted(self):
+        """A slash-free qualifier is a workspace member reference, not an error."""
+        ref = SymbolicReference(ref="justproject::src/foo.py", implements="Something")
+        assert ref.ref == "justproject::src/foo.py"
 
     def test_invalid_project_format_multiple_slashes(self):
         """Project qualifier with multiple slashes is rejected."""
@@ -550,30 +550,31 @@ class TestSymbolicReferenceWithProjectQualification:
         assert ref.ref == "my-org/my.project::src/foo.py#Bar"
 
 
-class TestSymbolicReferenceOrgRepoErrorMessages:
-    """Tests for improved error messages when project qualifier is not in org/repo format."""
+# Chunk: docs/chunks/federation_member_refs - Member-qualified frontmatter refs
+class TestSymbolicReferenceMemberQualifiers:
+    """Member-qualified refs are valid frontmatter under the comment grammar's
+    shape rule: no '/' means a workspace member, one '/' means org/repo.
 
-    def test_short_project_name_shows_helpful_error(self):
-        """Short project name like 'pybusiness' produces error mentioning org/repo format."""
-        with pytest.raises(ValidationError) as exc_info:
-            SymbolicReference(ref="pybusiness::src/foo.py", implements="Something")
-        error_str = str(exc_info.value)
-        # Should mention org/repo format
-        assert "org/repo" in error_str
-        # Should include the actual invalid value
-        assert "pybusiness" in error_str
-        # Should provide an example
-        assert "acme/project" in error_str or "e.g." in error_str
+    This class replaces TestSymbolicReferenceOrgRepoErrorMessages, whose
+    premise — that a slash-free qualifier is a mistake needing a helpful
+    org/repo hint — is inverted by the member form. The Cloud Capital field
+    case ('pybusiness::src/foo.py') is now the intended spelling.
+    """
 
-    def test_short_project_name_with_symbol_shows_helpful_error(self):
-        """Short project name with symbol path produces descriptive error."""
-        with pytest.raises(ValidationError) as exc_info:
-            SymbolicReference(ref="vibe-engineer::src/chunks.py#Chunks", implements="Something")
-        error_str = str(exc_info.value)
-        # Should mention org/repo format
-        assert "org/repo" in error_str
-        # Should include the actual invalid value
-        assert "vibe-engineer" in error_str
+    def test_member_qualified_file_reference_is_accepted(self):
+        ref = SymbolicReference(ref="pybusiness::src/foo.py", implements="Something")
+        assert ref.ref == "pybusiness::src/foo.py"
+
+    def test_member_qualified_symbol_reference_is_accepted(self):
+        ref = SymbolicReference(
+            ref="vibe-engineer::src/chunks.py#Chunks", implements="Something"
+        )
+        assert ref.ref == "vibe-engineer::src/chunks.py#Chunks"
+
+    def test_member_name_with_dots_is_accepted(self):
+        """Member names follow the identifier-with-dots shape, like org/repo parts."""
+        ref = SymbolicReference(ref="backend.api::src/foo.py", implements="Something")
+        assert ref.ref == "backend.api::src/foo.py"
 
     def test_valid_full_org_repo_format_works(self):
         """Full org/repo format still validates successfully."""
@@ -583,12 +584,38 @@ class TestSymbolicReferenceOrgRepoErrorMessages:
         )
         assert ref.ref == "cloudcapitalco/pybusiness::src/foo.py#Bar"
 
-    def test_error_message_includes_got_prefix(self):
-        """Error message includes 'got' to show what was received."""
+    def test_invalid_qualifier_names_both_accepted_forms(self):
+        """A qualifier that is neither shape is rejected naming both options."""
         with pytest.raises(ValidationError) as exc_info:
-            SymbolicReference(ref="justproject::src/foo.py", implements="Something")
+            SymbolicReference(ref="a/b/c::src/foo.py", implements="Something")
         error_str = str(exc_info.value)
-        assert "got" in error_str.lower() or "justproject" in error_str
+        assert "member" in error_str.lower()
+        assert "org/repo" in error_str
+        assert "a/b/c" in error_str
+
+    def test_qualifier_with_illegal_characters_is_rejected(self):
+        with pytest.raises(ValidationError):
+            SymbolicReference(ref="bad name::src/foo.py", implements="Something")
+
+    def test_member_and_comment_grammar_agree(self):
+        """Frontmatter accepts a slash-free qualifier exactly when the comment
+        grammar classifies it MEMBER — one shape rule, not two mirrors."""
+        from backreferences import QualifierKind, parse_backreference
+
+        for qualifier in ["engine", "backend.api", "my-tree", "a b", "tree!"]:
+            try:
+                SymbolicReference(ref=f"{qualifier}::src/x.py", implements="probe")
+                frontmatter_accepts = True
+            except ValidationError:
+                frontmatter_accepts = False
+
+            parsed = parse_backreference(f"# Chunk: {qualifier}::docs/chunks/x - X")
+            comment_is_member = (
+                parsed is not None and parsed.qualifier_kind == QualifierKind.MEMBER
+            )
+            assert frontmatter_accepts == comment_is_member, (
+                f"comment grammar and SymbolicReference disagree about '{qualifier}'"
+            )
 
 
 # Subsystem: docs/subsystems/friction_tracking - Friction log management

@@ -61,7 +61,10 @@ Two limits this validator states rather than hides
 2. **``org/repo`` targets are unverified.** Resolving them needs network access
    or a warm repo cache, so they are collected in ``ValidationReport.unverified``
    and never reported as defects. A gate whose verdict depends on whether a
-   cache happened to be warm is not a gate.
+   cache happened to be warm is not a gate. ``member::`` targets are the
+   deliberate contrast: they live in this same working copy, so they resolve
+   through the manifest and *are* verified — in comments and in frontmatter
+   declared-path fields alike (``federation_member_refs``).
 """
 
 from __future__ import annotations
@@ -81,6 +84,9 @@ from external_refs import (
 from external_resolve import resolve_peer_pointer
 from frontmatter import parse_frontmatter
 from models import ArtifactType, ChunkFrontmatter, ChunkStatus, SubsystemFrontmatter
+
+# Chunk: docs/chunks/federation_member_refs - Shared qualifier shape rule
+from models.shared import classify_qualifier_shape
 from project import find_enclosing_tree as find_governing_tree
 from source_files import enumerate_source_files
 from symbols import expand_glob, is_glob_pattern, name_is_reexport_only
@@ -841,6 +847,7 @@ class _Validator:
 
     # Chunk: docs/chunks/crossref_workspace_parity - Directory targets, code_paths, status gating
     # Chunk: docs/chunks/crossref_glob_refs - Glob file parts error only on empty expansion
+    # Chunk: docs/chunks/federation_member_refs - Member-qualified file parts resolve and verify
     def check_code_references(
         self, member: str, artifact_type: ArtifactType, artifact_dir: Path
     ) -> None:
@@ -863,6 +870,11 @@ class _Validator:
           IMPLEMENTING chunks legitimately list files they expect to create,
           and HISTORICAL/SUPERSEDED chunks keep archaeological references to
           code that may be gone.
+        - Qualified file parts follow federation addressing: ``member::path``
+          resolves through the workspace manifest against the named member's
+          root and is verified like a local path; ``org/repo::path`` is
+          unverified (offline); a malformed qualifier is a defect, not a fake
+          cross-repository unverified.
 
         Symbol-anchor checking is a workspace-mode extra on top of that shared
         contract, and applies only to file targets — a symbol cannot be looked
@@ -896,37 +908,97 @@ class _Validator:
             path, every match for a glob pattern), or an empty list after
             recording the unverified/defect disposition — so both fields get
             identical qualified-reference routing and existence semantics.
+
+            # Chunk: docs/chunks/federation_member_refs - Member-qualified refs are verified
+            A qualified file part is routed by the shared qualifier shape
+            rule: `member::path` names a sibling tree of this same working
+            copy, so it resolves through the workspace manifest and IS
+            verified — existence, glob expansion, and symbol anchors all run
+            against the named member's root. Only `org/repo::` targets stay
+            unverified, because resolving another repository needs network
+            access. Resolution gates on manifest registration plus the
+            filesystem, matching `resolve_peer_pointer`; it does not require
+            the member to be a governing tree, because a file target does
+            not live under `docs/`.
             """
+            target_root = member_root
+            tree_name = member
+            path_part = file_part
             if "::" in file_part:
-                self.unverified.append(
-                    UnverifiedReference(
+                qualifier, _, remainder = file_part.partition("::")
+                if not qualifier or "::" in remainder:
+                    kind = "invalid"
+                    reason: str | None = (
+                        "qualifier cannot be empty before '::'"
+                        if not qualifier
+                        else f"'{file_part}' cannot contain multiple '::' delimiters"
+                    )
+                else:
+                    kind, reason = classify_qualifier_shape(qualifier)
+                if kind == "repo":
+                    self.unverified.append(
+                        UnverifiedReference(
+                            path=rel_path,
+                            # Chunk: docs/chunks/crossref_defect_line_anchor - Anchor on the owning field's entry
+                            line=_find_field_entry_line(content, field_name, reference),
+                            reference=reference,
+                            reason=(
+                                "code reference is qualified with another repository; "
+                                "cross-repository targets are not resolved offline"
+                            ),
+                        )
+                    )
+                    return []
+                if kind == "invalid":
+                    self.report_defect(
+                        fix_class=FixClass.MALFORMED_QUALIFIER,
                         path=rel_path,
-                        # Chunk: docs/chunks/crossref_defect_line_anchor - Anchor on the owning field's entry
                         line=_find_field_entry_line(content, field_name, reference),
                         reference=reference,
-                        reason=(
-                            "code reference is qualified with another repository; "
-                            "cross-repository targets are not resolved offline"
+                        message=(
+                            f"{field_name} entry has a malformed qualifier: "
+                            f"{reason}. Qualify it as '<member>::<path>' or "
+                            f"'<org>/<repo>::<path>'"
                         ),
+                        member=member,
                     )
-                )
-                return []
-            if is_glob_pattern(file_part):
-                matches = expand_glob(member_root, file_part)
+                    return []
+                if qualifier not in self.member_roots:
+                    known = ", ".join(self.workspace.manifest.names()) or "(none)"
+                    self.report_defect(
+                        fix_class=FixClass.UNKNOWN_QUALIFIER,
+                        path=rel_path,
+                        line=_find_field_entry_line(content, field_name, reference),
+                        reference=reference,
+                        message=(
+                            f"'{qualifier}' is not a workspace member. Registered "
+                            f"members: {known}. Register the tree with "
+                            f"`ve workspace add {qualifier} <path>`, or correct "
+                            f"the qualifier"
+                        ),
+                        member=member,
+                    )
+                    return []
+                target_root = self.member_roots[qualifier]
+                tree_name = qualifier
+                path_part = remainder
+            if is_glob_pattern(path_part):
+                matches = expand_glob(target_root, path_part)
                 if not matches:
                     self.report_defect(
                         fix_class=FixClass.UNRESOLVABLE_FRONTMATTER,
                         path=rel_path,
-                        line=_find_line(content, reference),
+                        # Chunk: docs/chunks/crossref_defect_line_anchor - Anchor on the owning field's entry
+                        line=_find_field_entry_line(content, field_name, reference),
                         reference=reference,
                         message=(
-                            f"{field_name} glob pattern '{file_part}' matches "
-                            f"nothing in tree '{member}'"
+                            f"{field_name} glob pattern '{path_part}' matches "
+                            f"nothing in tree '{tree_name}'"
                         ),
                         member=member,
                     )
                 return matches
-            target = member_root / file_part
+            target = target_root / path_part
             if not target.exists():
                 self.report_defect(
                     fix_class=FixClass.UNRESOLVABLE_FRONTMATTER,
@@ -934,8 +1006,8 @@ class _Validator:
                     line=_find_field_entry_line(content, field_name, reference),
                     reference=reference,
                     message=(
-                        f"{field_name} entry points at '{file_part}', which does "
-                        f"not exist in tree '{member}'"
+                        f"{field_name} entry points at '{path_part}', which does "
+                        f"not exist in tree '{tree_name}'"
                     ),
                     member=member,
                 )

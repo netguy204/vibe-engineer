@@ -502,10 +502,12 @@ class TestRepoQualifierParityWithFrontmatter:
 
     The goal's point is that "comments can finally express what frontmatter
     already can", so the org/repo rule must be one rule, not two that drift.
-    Parity is claimed only for slash-containing, whitespace-free qualifiers: a
-    bare member name is valid in a comment and meaningless to
-    SymbolicReference, and a qualifier containing whitespace is not a single
-    comment token at all. Those are the two intended asymmetries.
+    Parity is claimed for whitespace-free qualifiers: a qualifier containing
+    whitespace is not a single comment token at all, and that is the one
+    intended asymmetry. Member qualifiers gained the same parity when
+    frontmatter learned to accept them
+    (# Chunk: docs/chunks/federation_member_refs — see
+    TestSymbolicReferenceMemberQualifiers in test_models.py).
     """
 
     @pytest.mark.parametrize(

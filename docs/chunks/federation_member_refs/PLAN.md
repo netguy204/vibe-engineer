@@ -10,170 +10,224 @@ to hand to an agent.
 
 ## Approach
 
-<!--
-How will you build this? Describe the strategy at a high level.
-What patterns or techniques will you use?
-What existing code will you build on?
+Workspace validation (`src/workspace_validation.py#check_code_references`)
+currently routes *any* frontmatter file part containing `::` to
+`ValidationReport.unverified` with the reason "cross-repository targets are
+not resolved offline". That is correct for `org/repo::` refs and wrong for
+`member::` refs: a sibling tree of the same working copy is fully resolvable
+offline through the workspace manifest. Meanwhile the frontmatter model
+(`src/models/references.py#SymbolicReference`) rejects member qualifiers
+outright (`_require_valid_repo_ref`), so the member form is not even
+*writable* in `code_references` — only in the unvalidated `code_paths` list,
+where it silently lands in unverified with a misleading reason.
 
-Reference docs/trunk/DECISIONS.md entries where relevant.
-If this approach represents a new significant decision, ask the user
-if we should add it to DECISIONS.md and reference it here.
+The federation addressing semantics already exist and must not be forked:
 
-Always include tests in your implementation plan and adhere to
-docs/trunk/TESTING_PHILOSOPHY.md in your planning.
+- `src/backreferences.py#_classify_qualifier` (chunk
+  `federation_qualified_refs`) defines the shape rule — a member qualifier
+  contains no `/` (identifier with dots allowed, no length cap); an
+  `org/repo` qualifier contains exactly one `/`; everything else is
+  malformed.
+- `src/workspace_validation.py#_Validator::check_member_reference` defines
+  member *resolution* for comments: unknown member → `UNKNOWN_QUALIFIER`,
+  registered-but-no-tree → `UNKNOWN_QUALIFIER`, member found but target
+  missing → defect naming the tree looked in.
+- `resolve_peer_pointer` (chunk `federation_peer_refs`) establishes that
+  peer resolution gates on manifest registration plus a filesystem read.
 
-Remember to update code_paths in the chunk's GOAL.md (e.g., docs/chunks/federation_member_refs/GOAL.md)
-with references to the files that you expect to touch.
--->
+The plan is therefore extraction-plus-reuse, not invention:
+
+1. Extract the qualifier *shape* rule into one shared function
+   (`models/shared.py`), delegate to it from both
+   `backreferences._classify_qualifier` and
+   `SymbolicReference.validate_ref`, so frontmatter finally accepts
+   `member::path` under exactly the comment grammar's rules.
+2. In `check_code_references.resolve_path`, replace the blanket
+   `"::" in file_part` → unverified with qualifier classification:
+   `org/repo::` stays unverified (unchanged reason); `member::` resolves
+   through the workspace manifest against the target member's root — glob
+   expansion, existence, and symbol checks all run against that tree, so the
+   reference IS verified; malformed qualifiers (possible in raw `code_paths`
+   strings) become `MALFORMED_QUALIFIER` defects instead of fake
+   cross-repository unverifieds.
+3. Teach the single-tree check
+   (`integrity.IntegrityValidator._validate_chunk_file_paths`) to skip
+   qualified entries, mirroring how `_validate_code_backreferences` already
+   defers qualified comment refs to workspace validation — today a qualified
+   frontmatter ref is checked as a literal path against the project root and
+   produces a false "does not exist" error.
+
+Per the wave-1/2 handoffs: `resolve_path` returns `list[Path]` (glob
+expansion), and every new finding site anchors its line via
+`_find_field_entry_line(content, field_name, needle)`. Both are honored —
+the member branch returns target lists through the same contract, and the
+new `UNKNOWN_QUALIFIER` / `MALFORMED_QUALIFIER` / missing-target sites all
+anchor on the owning field's entry.
+
+Testing follows docs/trunk/TESTING_PHILOSOPHY.md: behavior-level tests
+through `validate_workspace` / model construction, no mocking of internals,
+one intent per test.
 
 ## Subsystem Considerations
 
-<!--
-Before designing your implementation, check docs/subsystems/ for relevant
-cross-cutting patterns.
-
-QUESTIONS TO CONSIDER:
-- Does this chunk touch any existing subsystem's scope?
-- Will this chunk implement part of a subsystem (contribute code) or use it
-  (depend on it)?
-- Did you discover code during exploration that should be part of a subsystem
-  but doesn't follow its patterns?
-
-If no subsystems are relevant, delete this section.
-
-WHEN SUBSYSTEMS ARE RELEVANT:
-List each relevant subsystem with its status and your relationship:
-- **docs/subsystems/validation** (DOCUMENTED): This chunk USES the validation
-  subsystem to check input
-- **docs/subsystems/error_handling** (REFACTORING): This chunk IMPLEMENTS a
-  new error type following the subsystem's patterns
-
-HOW SUBSYSTEM STATUS AFFECTS YOUR WORK:
-
-DOCUMENTED subsystems: The subsystem's patterns are captured but deviations are not
-being actively fixed. If you discover code that deviates from the subsystem's
-patterns, add it to the subsystem's Known Deviations section. Do NOT prioritize
-fixing those deviations—your chunk has its own goals.
-
-REFACTORING subsystems: The subsystem is being actively consolidated. If your chunk
-work touches code that deviates from the subsystem's patterns, attempt to bring it
-into compliance as part of your work. This is "opportunistic improvement"—improve
-what you touch, but don't expand scope to fix unrelated deviations.
-
-WHEN YOU DISCOVER DEVIATING CODE:
-- Add it to the subsystem's Known Deviations section
-- Note whether you will address it (REFACTORING status + relevant to your work)
-  or leave it for future work (DOCUMENTED status or outside your chunk's scope)
-
-Example:
-- **Discovered deviation**: src/legacy/parser.py#validate_input does its own
-  validation instead of using the validation subsystem
-  - Added to docs/subsystems/validation Known Deviations
-  - Action: Will not address (subsystem is DOCUMENTED; deviation outside chunk scope)
--->
+No `docs/subsystems/` entry covers reference validation or federation
+addressing; the governing artifacts are the federation chunk cluster and the
+`reference_integrity` narrative. No subsystem work needed.
 
 ## Sequence
 
-<!--
-Ordered steps to implement this chunk. Each step should be:
-- Small enough to reason about in isolation
-- Large enough to be meaningful
-- Clear about its inputs and outputs
+### Step 1: Shared qualifier shape rule in `models/shared.py`
 
-This sequence is your contract with yourself (and with agents).
-Work through it in order. Don't skip ahead.
+Add `classify_qualifier_shape(qualifier: str) -> tuple[str, str | None]`
+returning `("member" | "repo" | "invalid", reason)`. Precondition: the
+caller has already split on `::` and passes a non-empty qualifier containing
+no `::`. Rules (verbatim from `backreferences._classify_qualifier` so its
+tests keep passing):
 
-Example:
+- no `/`: member iff `validate_identifier(qualifier, "member qualifier",
+  allow_dot=True, max_length=None)` passes; otherwise invalid with the
+  joined errors.
+- exactly one `/`: repo iff `_require_valid_repo_ref(qualifier,
+  "repo qualifier")` passes; otherwise invalid with its message.
+- two or more `/`: invalid with the existing "must be a workspace member
+  name (no '/') or an 'org/repo' reference (exactly one '/')" message.
 
-### Step 1: Define the SegmentHeader struct
+Rewrite the slash-count logic in `backreferences._classify_qualifier` to
+delegate to it (mapping member/repo/invalid → `QualifierKind`), keeping the
+bare/legacy-slash/empty/multi-`::` branches local. Existing
+`tests/test_backreferences.py` must pass unchanged.
 
-Create the struct that represents a segment's header with fields for:
-- magic number (4 bytes)
-- version (2 bytes)
-- segment_id (8 bytes)
-- message_count (4 bytes)
-- checksum (4 bytes)
+### Step 2: `SymbolicReference` accepts member qualifiers
 
-Location: src/segment/format.rs
+In `models/references.py#SymbolicReference::validate_ref`, keep the existing
+empty-qualifier and multi-`::` checks, then replace the
+`_require_valid_repo_ref` branch with `classify_qualifier_shape`. Invalid →
+`ValueError` naming both accepted forms and the got-value. Update the class
+docstring/examples to include `engine::src/foo.py#Bar`.
 
-### Step 2: Implement header serialization
+Update `tests/test_models.py`: the member-rejection tests
+(`test_invalid_project_format_no_slash`, all of
+`TestSymbolicReferenceOrgRepoErrorMessages`'s rejection cases) invert into
+member-acceptance tests; multi-slash/empty-part rejections stay. Extend
+`tests/test_backreferences.py#TestRepoQualifierParityWithFrontmatter` (and
+fix its now-stale "intended asymmetry" docstring): member qualifiers are now
+parity-checked too — a qualifier is MEMBER for the comment grammar exactly
+when `SymbolicReference` accepts its `::` form.
 
-Add `to_bytes()` and `from_bytes()` methods to SegmentHeader.
-Use little-endian encoding per SPEC.md Section 3.1.
+### Step 3: Member-qualified resolution in `check_code_references`
 
-### Step 3: ...
+Rework `resolve_path` in `workspace_validation.py`:
 
----
+- Initialize `target_root = member_root`, `tree_name = member`,
+  `path_part = file_part`.
+- If `"::" in file_part`: partition into qualifier and remainder. An empty
+  qualifier or a remainder still containing `::` is malformed; otherwise
+  classify with `classify_qualifier_shape`:
+  - `repo` → append to unverified exactly as today (anchored with
+    `_find_field_entry_line`) and return `[]`.
+  - `invalid` → `MALFORMED_QUALIFIER` defect carrying the reason, anchored
+    on the field entry; return `[]`.
+  - `member` → unknown member (not in `self.member_roots`) is an
+    `UNKNOWN_QUALIFIER` defect with the same "Registered members: … /
+    `ve workspace add`" guidance `check_member_reference` gives; otherwise
+    set `target_root = self.member_roots[qualifier]`,
+    `tree_name = qualifier`, `path_part = remainder` and fall through.
+- The existing glob/existence logic runs against
+  `target_root` / `tree_name` / `path_part` (messages keep their current
+  shape, now naming the target tree), returning matches so downstream
+  symbol checks verify the anchor in the *target* tree's file.
 
-**BACKREFERENCE COMMENTS**
+Update the `check_code_references` docstring and the module-docstring "two
+limits" text so limit 2 stays precise: `org/repo` targets are unverified;
+`member::` targets are verified through the manifest.
 
-When implementing code, add backreference comments to help future agents trace
-code back to its governing documentation.
+### Step 4: Single-tree check defers qualified entries
 
-**Valid backreference types:**
-- `# Subsystem: docs/subsystems/<name>` - For architectural patterns
-- `# Chunk: docs/chunks/<name>` - For implementation work
+In `integrity.py#IntegrityValidator::_validate_chunk_file_paths`'s `check`,
+return early when `"::" in path`, with a comment mirroring the
+`_validate_code_backreferences` deferral rationale and a
+`# Chunk: docs/chunks/federation_member_refs` backreference. A qualified
+path names another tree or repository; checking it against this project root
+invents errors.
 
-Place comments at the appropriate level:
-- **Module-level**: If this code implements the subsystem/chunk's core functionality
-- **Class-level**: If this class is part of the pattern
-- **Method-level**: If this method implements a specific behavior
+### Step 5: Workspace validation tests
 
-Format (place immediately before the symbol):
-```
-# Subsystem: docs/subsystems/workflow_artifacts - Workflow artifact manager pattern
-# Chunk: docs/chunks/auth_refactor - Authentication system redesign
-```
+New section in `tests/test_workspace_validation.py` (chunk-backreferenced):
 
-Do NOT add narrative backreferences. Narratives decompose into chunks; reference
-the implementing chunk instead.
+- member-qualified `code_references` entry to an existing file in a sibling
+  member → clean AND not in `unverified` (the verified-form headline).
+- member-qualified ref with a symbol anchor absent in the target tree's
+  file → `UNRESOLVABLE_FRONTMATTER` (symbols are checked cross-tree).
+- member-qualified ref whose path is missing in the target tree →
+  `UNRESOLVABLE_FRONTMATTER`, message names the target tree, line anchors on
+  the `code_references` entry (use the `entry_line` helper).
+- unknown member qualifier → `UNKNOWN_QUALIFIER` with registration guidance.
+- malformed qualifier in `code_paths` (e.g. `a/b/c::x`) →
+  `MALFORMED_QUALIFIER`, not unverified.
+- member-qualified `code_paths` entry to an existing target → clean;
+  missing → defect.
+- member-qualified glob (`web::src/*.py`) expanding non-empty in the target
+  tree → clean; empty → defect naming the target tree.
+- `org/repo::` refs in both fields remain unverified (existing tests at
+  lines ~533, ~628, ~755 already pin this; keep them green).
 
-**Task context note**: In multi-project tasks, always use local paths (e.g.,
-`docs/chunks/chunk_name`) for chunk backreferences, not paths to the external
-artifact repo. Each project has `external.yaml` pointers that resolve to the
-actual chunk content.
--->
+### Step 6: Single-tree integrity tests
+
+In `tests/test_integrity.py`: an ACTIVE chunk declaring
+`engine::src/foo.py` in `code_paths` and `acme/hub::src/w.py#X` in
+`code_references` produces no chunk→file errors from single-tree
+validation.
+
+### Step 7: Documentation and completion metadata
+
+- SPEC.md "Code Reference Format": document the two qualified forms —
+  `member::path` (same-workspace tree, resolved through
+  `.ve-workspace.yaml`, verified by `ve workspace validate`) and
+  `org/repo::path` (cross-repository, unverified offline) — alongside the
+  glob paragraph.
+- Update `code_paths` and `code_references` in this chunk's GOAL.md; run the
+  full test suite and `uv run ve validate`.
 
 ## Dependencies
 
-<!--
-What must exist before this chunk can be implemented?
-- Other chunks that must be complete
-- External libraries to add
-- Infrastructure or configuration
-
-If there are no dependencies, delete this section.
--->
+- `crossref_workspace_parity` and `crossref_glob_refs` (both ACTIVE, merged):
+  this plan builds directly on the `resolve_path` closure they shaped.
+- `federation_qualified_refs`, `federation_global_validator`,
+  `federation_workspace_manifest` (all ACTIVE): supply the qualifier
+  grammar, fix classes, and manifest resolution this chunk reuses.
 
 ## Risks and Open Questions
 
-<!--
-What might go wrong? What are you unsure about?
-Being explicit about uncertainty helps you (and agents) know where to
-be careful and when to stop and ask questions.
-
-Example:
-- fsync behavior may differ across filesystems; need to verify on ext4 and APFS
-- Unclear whether concurrent reads during write are safe; may need mutex
-- Performance target is aggressive; may need to iterate on buffer sizes
--->
+- **Task-context `::` collision.** `chunk_validation.py` treats
+  `project::path` refs as *task* cross-project references (resolved via
+  `resolve_repo_directory`). A member-qualified ref outside task context
+  already degrades to a "skipped cross-project reference" warning at the
+  completion gate, which is honest; unifying task and workspace qualifier
+  resolution is out of scope here and left to the federation initiative.
+- **Semantics choice, recorded:** member file-part resolution requires
+  manifest registration plus the member root on disk — matching
+  `resolve_peer_pointer`'s registration gate — but does not additionally
+  require `is_member_tree`, because a plain file target does not live under
+  `docs/`. Backreference resolution (`check_member_reference`) keeps its
+  stricter tree requirement since it addresses artifacts.
+- **Error-message churn in `test_models.py`:** the
+  `TestSymbolicReferenceOrgRepoErrorMessages` class exists to reject the
+  member form with a helpful message; this chunk inverts that premise by
+  design. The tests are rewritten to pin the new semantics, not deleted.
 
 ## Deviations
 
-<!--
-POPULATE DURING IMPLEMENTATION, not at planning time.
-
-When reality diverges from the plan, document it here:
-- What changed?
-- Why?
-- What was the impact?
-
-Minor deviations (renamed a function, used a different helper) don't need
-documentation. Significant deviations (changed the approach, skipped a step,
-added steps) do.
-
-Example:
-- Step 4: Originally planned to use std::fs::rename for atomic swap.
-  Testing revealed this isn't atomic across filesystems. Changed to
-  write-fsync-rename-fsync sequence per platform best practices.
--->
+- The empty-glob-expansion defect site (shared by local and member-qualified
+  entries) was upgraded from whole-document `_find_line` anchoring to
+  `_find_field_entry_line`, slightly beyond the plan's letter: once
+  member-qualified refs flow through that site, the wave-2 handoff ("route
+  new member-qualified finding sites through the field-entry anchor")
+  applies to it, and the change only improves the anchor for the existing
+  local case (`_find_field_entry_line` falls back to the whole-document
+  scan).
+- Three tests in `tests/test_chunks.py`
+  (`TestParseChunkFrontmatterWithErrors`) used the member form
+  (`pybusiness::…`, `shortname::…`) as their canonical *invalid* ref
+  fixture. Their intent — error propagation from invalid `code_references` —
+  is preserved by swapping the fixture to a multi-slash qualifier
+  (`a/b/c::…`), which remains invalid under the new grammar.
