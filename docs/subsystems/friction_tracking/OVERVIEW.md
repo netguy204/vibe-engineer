@@ -13,13 +13,13 @@ code_references:
 - ref: src/friction.py#get_external_friction_sources
   implements: Retrieve external friction sources from log
   compliance: COMPLIANT
-- ref: src/models.py#FrictionTheme
+- ref: src/models/friction.py#FrictionTheme
   implements: Pydantic model for friction theme/category
   compliance: COMPLIANT
-- ref: src/models.py#FrictionProposedChunk
+- ref: src/models/friction.py#FrictionProposedChunk
   implements: Proposed chunk with addresses linking to entry IDs
   compliance: COMPLIANT
-- ref: src/models.py#FrictionFrontmatter
+- ref: src/models/friction.py#FrictionFrontmatter
   implements: FRICTION.md frontmatter schema
   compliance: COMPLIANT
 - ref: src/templates/trunk/FRICTION.md.jinja2

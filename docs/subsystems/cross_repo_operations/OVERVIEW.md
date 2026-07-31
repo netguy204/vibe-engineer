@@ -120,10 +120,10 @@ code_references:
 - ref: src/repo_cache.py#list_directory_at_ref
   implements: List directory contents at a specific git ref
   compliance: COMPLIANT
-- ref: src/models.py#TaskConfig
+- ref: src/models/shared.py#TaskConfig
   implements: .ve-task.yaml configuration model
   compliance: COMPLIANT
-- ref: src/models.py#ExternalArtifactRef
+- ref: src/models/references.py#ExternalArtifactRef
   implements: Generic external reference model
   compliance: COMPLIANT
 created_after:
