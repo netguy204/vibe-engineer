@@ -42,7 +42,8 @@ code_references:
   implements: Class 3/4 for external.yaml pointers, reusing resolve_peer_pointer as
     the resolution authority
 - ref: src/workspace_validation.py#_Validator::check_code_references
-  implements: 'Class 6: frontmatter code_references whose file or symbol is gone'
+  implements: 'Class 6: frontmatter code_paths/code_references whose file or symbol
+    is gone (single-tree parity semantics owned by crossref_workspace_parity)'
 - ref: src/workspace_validation.py#validate_workspace
   implements: Validation entry point returning a deterministic report
 - ref: src/cli/workspace.py#validate
