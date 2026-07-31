@@ -10,170 +10,118 @@ to hand to an agent.
 
 ## Approach
 
-<!--
-How will you build this? Describe the strategy at a high level.
-What patterns or techniques will you use?
-What existing code will you build on?
+The bug lives entirely in `src/workspace_validation.py`'s
+`check_code_references`. Its `resolve_path` closure (and the symbol-absence
+defect after it) anchor every finding with `_find_line(content, reference)`,
+which returns the **first textual occurrence** of the reference string anywhere
+in GOAL.md. Because `code_paths` precedes `code_references` in frontmatter, a
+path that appears in both fields anchors on the `code_paths` line — and a fix
+loop that trusts `line` edits the wrong entry, watches the anchor move, and
+makes no progress.
 
-Reference docs/trunk/DECISIONS.md entries where relevant.
-If this approach represents a new significant decision, ask the user
-if we should add it to DECISIONS.md and reference it here.
+The fix: introduce a field-aware line finder,
+`_find_field_entry_line(content, field_name, needle)`, that
 
-Always include tests in your implementation plan and adhere to
-docs/trunk/TESTING_PHILOSOPHY.md in your planning.
+1. locates the top-level frontmatter key line (`code_paths:` or
+   `code_references:`),
+2. scans only the lines belonging to that field's YAML block (indented lines
+   and zero-indent `- ` list items, stopping at the next top-level key or the
+   closing `---` fence), and
+3. returns the first line **within that block** containing the needle,
+   falling back to `_find_line(content, needle)` when the field block cannot
+   be found (defensive: unusual YAML styles must degrade to today's behavior,
+   never to `None`-when-present).
 
-Remember to update code_paths in the chunk's GOAL.md (e.g., docs/chunks/crossref_defect_line_anchor/GOAL.md)
-with references to the files that you expect to touch.
--->
+`resolve_path` already receives `field_name` for its messages, so it passes
+that same name to the finder for both the unverified and the defect
+dispositions. The symbol-absence defect passes `"code_references"` explicitly.
 
-## Subsystem Considerations
+Both list-item styles must be handled because real frontmatter in this repo
+uses zero-indent items (`code_references:\n- ref: ...`) while the test helper
+writes two-space-indented items — YAML permits both.
 
-<!--
-Before designing your implementation, check docs/subsystems/ for relevant
-cross-cutting patterns.
+The pointer checks (`repo:`, `tree:`, `artifact_id:`) keep plain `_find_line`;
+those needles are field names themselves and are not the reported bug.
 
-QUESTIONS TO CONSIDER:
-- Does this chunk touch any existing subsystem's scope?
-- Will this chunk implement part of a subsystem (contribute code) or use it
-  (depend on it)?
-- Did you discover code during exploration that should be part of a subsystem
-  but doesn't follow its patterns?
+The single-tree validator (`integrity.IntegrityValidator
+._validate_chunk_file_paths`) reports no line numbers at all, so no parity
+change is needed there — /validate-fix is affected only insofar as it consumes
+workspace reports.
 
-If no subsystems are relevant, delete this section.
-
-WHEN SUBSYSTEMS ARE RELEVANT:
-List each relevant subsystem with its status and your relationship:
-- **docs/subsystems/validation** (DOCUMENTED): This chunk USES the validation
-  subsystem to check input
-- **docs/subsystems/error_handling** (REFACTORING): This chunk IMPLEMENTS a
-  new error type following the subsystem's patterns
-
-HOW SUBSYSTEM STATUS AFFECTS YOUR WORK:
-
-DOCUMENTED subsystems: The subsystem's patterns are captured but deviations are not
-being actively fixed. If you discover code that deviates from the subsystem's
-patterns, add it to the subsystem's Known Deviations section. Do NOT prioritize
-fixing those deviations—your chunk has its own goals.
-
-REFACTORING subsystems: The subsystem is being actively consolidated. If your chunk
-work touches code that deviates from the subsystem's patterns, attempt to bring it
-into compliance as part of your work. This is "opportunistic improvement"—improve
-what you touch, but don't expand scope to fix unrelated deviations.
-
-WHEN YOU DISCOVER DEVIATING CODE:
-- Add it to the subsystem's Known Deviations section
-- Note whether you will address it (REFACTORING status + relevant to your work)
-  or leave it for future work (DOCUMENTED status or outside your chunk's scope)
-
-Example:
-- **Discovered deviation**: src/legacy/parser.py#validate_input does its own
-  validation instead of using the validation subsystem
-  - Added to docs/subsystems/validation Known Deviations
-  - Action: Will not address (subsystem is DOCUMENTED; deviation outside chunk scope)
--->
+Tests follow docs/trunk/TESTING_PHILOSOPHY.md: behavioral tests through
+`validate_workspace` asserting the reported `line` lands on the offending
+entry, including the regression case where the same path appears in both
+fields.
 
 ## Sequence
 
-<!--
-Ordered steps to implement this chunk. Each step should be:
-- Small enough to reason about in isolation
-- Large enough to be meaningful
-- Clear about its inputs and outputs
+### Step 1: Add `_find_field_entry_line` helper
 
-This sequence is your contract with yourself (and with agents).
-Work through it in order. Don't skip ahead.
+In `src/workspace_validation.py`, next to `_find_line`, add
+`_find_field_entry_line(content: str, field_name: str, needle: str) -> int | None`:
 
-Example:
+- Iterate lines with 1-indexed numbers.
+- On finding the line whose stripped form starts the field
+  (`line.startswith(f"{field_name}:")` at zero indentation), enter the block.
+- While in the block, a line belongs to the field if it starts with whitespace
+  or is a list item (`- ` prefix, but not the `---` fence). The first
+  in-block line containing `needle` is the answer.
+- Leaving the block (next top-level key or `---`) or exhausting the file
+  without a hit falls back to `_find_line(content, needle)`.
+- Backreference comment: `# Chunk: docs/chunks/crossref_defect_line_anchor`.
 
-### Step 1: Define the SegmentHeader struct
+### Step 2: Anchor `check_code_references` findings on the owning field
 
-Create the struct that represents a segment's header with fields for:
-- magic number (4 bytes)
-- version (2 bytes)
-- segment_id (8 bytes)
-- message_count (4 bytes)
-- checksum (4 bytes)
+- In `resolve_path`, replace both `_find_line(content, reference)` calls
+  (unverified disposition and missing-target defect) with
+  `_find_field_entry_line(content, reference, field_name)` — the closure
+  already receives `field_name`.
+- In the symbol-absence defect at the bottom of `check_code_references`,
+  replace `_find_line(content, ref)` with
+  `_find_field_entry_line(content, ref, "code_references")`.
 
-Location: src/segment/format.rs
+### Step 3: Tests
 
-### Step 2: Implement header serialization
+In `tests/test_workspace_validation.py`, in the frontmatter section:
 
-Add `to_bytes()` and `from_bytes()` methods to SegmentHeader.
-Use little-endian encoding per SPEC.md Section 3.1.
+1. **The regression:** a chunk listing the same missing path in `code_paths`
+   and in `code_references` (`src/gone.py` and `src/gone.py#Widget`) produces
+   two `UNRESOLVABLE_FRONTMATTER` defects, and each `line` points at its own
+   field's entry — the `code_references` defect's line is the `- ref:` line,
+   not the `code_paths` line.
+2. **Symbol-absence anchoring:** an existing file whose symbol is gone, with
+   the same file path also present in `code_paths`, anchors the defect on the
+   `code_references` entry line.
+3. **Unverified anchoring:** a qualified ref present in both fields anchors
+   each unverified entry on its own field's line.
+4. **Zero-indent YAML list style:** a chunk written with
+   `code_references:\n- ref: src/gone.py` (no indentation, the style `ve`
+   itself emits) still gets the correct line.
+5. Existing tests (`defect.line == 4` in
+   `test_code_reference_to_a_missing_file_is_unresolvable_frontmatter`)
+   continue to pass unchanged.
 
-### Step 3: ...
+### Step 4: Full test run and validation
 
----
-
-**BACKREFERENCE COMMENTS**
-
-When implementing code, add backreference comments to help future agents trace
-code back to its governing documentation.
-
-**Valid backreference types:**
-- `# Subsystem: docs/subsystems/<name>` - For architectural patterns
-- `# Chunk: docs/chunks/<name>` - For implementation work
-
-Place comments at the appropriate level:
-- **Module-level**: If this code implements the subsystem/chunk's core functionality
-- **Class-level**: If this class is part of the pattern
-- **Method-level**: If this method implements a specific behavior
-
-Format (place immediately before the symbol):
-```
-# Subsystem: docs/subsystems/workflow_artifacts - Workflow artifact manager pattern
-# Chunk: docs/chunks/auth_refactor - Authentication system redesign
-```
-
-Do NOT add narrative backreferences. Narratives decompose into chunks; reference
-the implementing chunk instead.
-
-**Task context note**: In multi-project tasks, always use local paths (e.g.,
-`docs/chunks/chunk_name`) for chunk backreferences, not paths to the external
-artifact repo. Each project has `external.yaml` pointers that resolve to the
-actual chunk content.
--->
-
-## Dependencies
-
-<!--
-What must exist before this chunk can be implemented?
-- Other chunks that must be complete
-- External libraries to add
-- Infrastructure or configuration
-
-If there are no dependencies, delete this section.
--->
+- `uv run pytest tests/` — no new failures against the inherited baseline.
+- `uv run ve validate` — clean.
+- Update GOAL.md `code_references` at completion time.
 
 ## Risks and Open Questions
 
-<!--
-What might go wrong? What are you unsure about?
-Being explicit about uncertainty helps you (and agents) know where to
-be careful and when to stop and ask questions.
-
-Example:
-- fsync behavior may differ across filesystems; need to verify on ext4 and APFS
-- Unclear whether concurrent reads during write are safe; may need mutex
-- Performance target is aggressive; may need to iterate on buffer sizes
--->
+- YAML flow-style lists (`code_paths: [a, b]`) would not match the block
+  scanner's line shapes; the fallback to `_find_line` preserves today's
+  behavior for such exotic frontmatter rather than regressing to no line.
+- Duplicate identical entries *within one field* anchor on the first — both
+  are the same defect and `run()` deduplicates on
+  `(fix_class, path, line, reference)` anyway.
+- A needle quoted inside an *earlier* entry's `implements:` string in the same
+  field would attract the anchor one entry early. Still inside the right
+  field, and the defect's `reference` remains the authoritative key for fix
+  loops; a token-boundary match is not worth its complexity here.
 
 ## Deviations
 
 <!--
 POPULATE DURING IMPLEMENTATION, not at planning time.
-
-When reality diverges from the plan, document it here:
-- What changed?
-- Why?
-- What was the impact?
-
-Minor deviations (renamed a function, used a different helper) don't need
-documentation. Significant deviations (changed the approach, skipped a step,
-added steps) do.
-
-Example:
-- Step 4: Originally planned to use std::fs::rename for atomic swap.
-  Testing revealed this isn't atomic across filesystems. Changed to
-  write-fsync-rename-fsync sequence per platform best practices.
 -->

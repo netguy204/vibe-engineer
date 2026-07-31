@@ -561,6 +561,118 @@ def test_subsystem_code_references_are_validated(tmp_path):
 
 
 # ---------------------------------------------------------------------------
+# Defect line anchoring: findings point at the owning field's entry
+# # Chunk: docs/chunks/crossref_defect_line_anchor - Anchor on the offending entry, not the first occurrence
+# ---------------------------------------------------------------------------
+
+
+def entry_line(tree: pathlib.Path, chunk: str, needle: str, *, occurrence: int = 1) -> int:
+    """1-indexed line of the Nth line containing `needle` in a chunk's GOAL.md."""
+    content = (tree / "docs" / "chunks" / chunk / "GOAL.md").read_text()
+    seen = 0
+    for line_number, line in enumerate(content.splitlines(), start=1):
+        if needle in line:
+            seen += 1
+            if seen == occurrence:
+                return line_number
+    raise AssertionError(f"occurrence {occurrence} of {needle!r} not found")
+
+
+def test_code_references_defect_anchors_past_an_identical_code_paths_entry(tmp_path):
+    """The field-report regression: a path in both fields must yield two
+    defects anchored on their own entries — a fix loop trusting `line` edited
+    the code_paths entry, watched the anchor move, and made no progress."""
+    make_workspace(tmp_path, {"lib": "packages/lib"})
+    lib = tmp_path / "packages" / "lib"
+    declared_paths_chunk(
+        lib,
+        "widget",
+        code_paths=("src/gone.py",),
+        code_references=("src/gone.py",),
+    )
+
+    report = validate(tmp_path)
+
+    defects = of_class(report, FixClass.UNRESOLVABLE_FRONTMATTER)
+    assert len(defects) == 2
+    by_field = {
+        ("code_paths" if "code_paths" in d.message else "code_references"): d
+        for d in defects
+    }
+    assert by_field["code_paths"].line == entry_line(lib, "widget", "src/gone.py", occurrence=1)
+    assert by_field["code_references"].line == entry_line(
+        lib, "widget", "src/gone.py", occurrence=2
+    )
+    assert by_field["code_paths"].line != by_field["code_references"].line
+
+
+def test_symbol_absence_defect_anchors_on_the_code_references_entry(tmp_path):
+    """A gone symbol anchors on the `- ref:` line even when the same file path
+    appears earlier in code_paths."""
+    make_workspace(tmp_path, {"lib": "packages/lib"})
+    lib = tmp_path / "packages" / "lib"
+    source(lib / "src" / "widget.py", "class Gadget:", "    pass")
+    declared_paths_chunk(
+        lib,
+        "widget",
+        code_paths=("src/widget.py",),
+        code_references=("src/widget.py#Widget",),
+    )
+
+    report = validate(tmp_path)
+
+    (defect,) = of_class(report, FixClass.UNRESOLVABLE_FRONTMATTER)
+    assert defect.line == entry_line(lib, "widget", "ref: src/widget.py#Widget")
+
+
+def test_unverified_qualified_refs_anchor_on_their_own_fields(tmp_path):
+    """The unverified disposition gets the same per-field anchoring."""
+    make_workspace(tmp_path, {"lib": "packages/lib"})
+    lib = tmp_path / "packages" / "lib"
+    declared_paths_chunk(
+        lib,
+        "widget",
+        code_paths=("acme/hub::src/w.py",),
+        code_references=("acme/hub::src/w.py",),
+    )
+
+    report = validate(tmp_path)
+
+    assert report.defects == ()
+    lines = sorted(entry.line for entry in report.unverified)
+    assert lines == [
+        entry_line(lib, "widget", "acme/hub::src/w.py", occurrence=1),
+        entry_line(lib, "widget", "acme/hub::src/w.py", occurrence=2),
+    ]
+
+
+def test_zero_indent_list_style_anchors_correctly(tmp_path):
+    """`ve` itself emits zero-indent list items; the block scanner must not
+    treat them as the end of the field."""
+    make_workspace(tmp_path, {"lib": "packages/lib"})
+    lib = tmp_path / "packages" / "lib"
+    directory = lib / "docs" / "chunks" / "widget"
+    directory.mkdir(parents=True)
+    (directory / "GOAL.md").write_text(
+        "---\n"
+        "status: ACTIVE\n"
+        "code_paths:\n"
+        "- src/gone.py\n"
+        "code_references:\n"
+        "- ref: src/gone.py\n"
+        '  implements: "the thing"\n'
+        "---\n\n# Goal\n"
+        "Prose mentioning src/gone.py must not attract the anchor.\n"
+    )
+
+    report = validate(tmp_path)
+
+    defects = of_class(report, FixClass.UNRESOLVABLE_FRONTMATTER)
+    lines = sorted(d.line for d in defects)
+    assert lines == [4, 6]
+
+
+# ---------------------------------------------------------------------------
 # Single-tree parity: directories, code_paths, chunk-status gating
 # # Chunk: docs/chunks/crossref_workspace_parity - Workspace/single-tree semantics agree
 # ---------------------------------------------------------------------------

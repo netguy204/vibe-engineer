@@ -334,6 +334,38 @@ def _find_line(content: str, needle: str) -> int | None:
     return None
 
 
+# Chunk: docs/chunks/crossref_defect_line_anchor - Anchor findings on the owning field's entry
+def _find_field_entry_line(content: str, field_name: str, needle: str) -> int | None:
+    """1-indexed line of the first line containing `needle` *inside* one
+    frontmatter field's block.
+
+    A whole-document search cannot anchor a `code_references` defect: the same
+    path routinely appears earlier in `code_paths`, so the first textual
+    occurrence points a fix loop at the wrong entry. This scanner confines the
+    search to the lines that belong to `field_name`'s YAML block — the lines
+    after the top-level `field_name:` key that are indented or are list items
+    (both the zero-indent `- ref:` style `ve` emits and the indented
+    `  - ref:` style hand-written frontmatter uses), stopping at the next
+    top-level key or the closing `---` fence.
+
+    Frontmatter shapes this scanner cannot follow (e.g. flow-style lists) fall
+    back to the whole-document first occurrence: a degraded anchor beats a
+    lost one.
+    """
+    in_block = False
+    for line_number, line in enumerate(content.splitlines(), start=1):
+        if not in_block:
+            if line.startswith(f"{field_name}:"):
+                in_block = True
+            continue
+        is_list_item = line.startswith("- ") or line.rstrip() == "-"
+        if not (line[:1].isspace() or is_list_item):
+            break  # next top-level key, or the closing --- fence
+        if needle in line:
+            return line_number
+    return _find_line(content, needle)
+
+
 # Chunk: docs/chunks/federation_global_validator - Conservative symbol existence check
 def _symbol_is_absent(content: str, symbol_path: str) -> str | None:
     """Return the missing symbol name, or None if it may still exist.
@@ -842,7 +874,8 @@ class _Validator:
                 self.unverified.append(
                     UnverifiedReference(
                         path=rel_path,
-                        line=_find_line(content, reference),
+                        # Chunk: docs/chunks/crossref_defect_line_anchor - Anchor on the owning field's entry
+                        line=_find_field_entry_line(content, field_name, reference),
                         reference=reference,
                         reason=(
                             "code reference is qualified with another repository; "
@@ -856,7 +889,7 @@ class _Validator:
                 self.report_defect(
                     fix_class=FixClass.UNRESOLVABLE_FRONTMATTER,
                     path=rel_path,
-                    line=_find_line(content, reference),
+                    line=_find_field_entry_line(content, field_name, reference),
                     reference=reference,
                     message=(
                         f"{field_name} entry points at '{file_part}', which does "
@@ -885,7 +918,7 @@ class _Validator:
                 self.report_defect(
                     fix_class=FixClass.UNRESOLVABLE_FRONTMATTER,
                     path=rel_path,
-                    line=_find_line(content, ref),
+                    line=_find_field_entry_line(content, "code_references", ref),
                     reference=ref,
                     message=(
                         f"'{file_part}' exists but the name '{missing}' appears "
