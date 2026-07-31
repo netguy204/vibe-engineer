@@ -10,170 +10,113 @@ to hand to an agent.
 
 ## Approach
 
-<!--
-How will you build this? Describe the strategy at a high level.
-What patterns or techniques will you use?
-What existing code will you build on?
+This is a prose-guidance change to the workspace-validate-fix skill, delivered
+through the build-time plugin template collection: edit
+`src/templates/plugin/skills/workspace-validate-fix.md.jinja2`, re-render with
+`uv run ve plugin render`, and commit both the template and the regenerated
+`skills/workspace-validate-fix/SKILL.md`. The drift test
+(`tests/test_plugin_render.py`) enforces that the committed render stays in
+lockstep with the template, so no new test code is needed — per
+docs/trunk/TESTING_PHILOSOPHY.md, a string-presence assertion on skill prose
+would be a trivial test with no behavioral signal.
 
-Reference docs/trunk/DECISIONS.md entries where relevant.
-If this approach represents a new significant decision, ask the user
-if we should add it to DECISIONS.md and reference it here.
+**The trap being closed.** The skill's Invariants already say "Never delete a
+reference," but the field failure (4 rows in the Cloud Capital archaeology)
+shows agents route around that invariant with a specific rationalization:
+"this tree already holds an `external.yaml` peer pointer covering the chunk,
+so this backreference is redundant — removing it is deduplication, not
+deletion." That reasoning is wrong because the pointer and the backreference
+record different facts. The pointer records a tree-level interest edge, and a
+chunk's own `code_references` typically name only its public surface. A
+backreference on a private helper is frequently the *only* record anywhere
+binding that helper to its governing intent. Deleting it because the pointer
+"covers" the chunk silently drops that intent, and no validator ever reports
+the loss — a resolving reference that gets deleted was never a defect row.
 
-Always include tests in your implementation plan and adhere to
-docs/trunk/TESTING_PHILOSOPHY.md in your planning.
+**The fix.** Two edits to the skill template, both prose:
 
-Remember to update code_paths in the chunk's GOAL.md (e.g., docs/chunks/crossref_pointer_guard/GOAL.md)
-with references to the files that you expect to touch.
--->
+1. Extend the **"Never delete a reference"** invariant bullet to name the
+   pointer-coverage rationalization explicitly: pointer coverage is never
+   grounds for deletion, and "redundant with the pointer" is not a fix class.
+2. Add a short named callout in the `misrouted-bare` section (immediately
+   after the "Two or more → create the interest edge... leave the references
+   bare" branch, where an agent is most likely to be holding both the pointer
+   and the references in mind) explaining what the pointer does and does not
+   replace, and saying what to do instead: a peer pointer is what makes bare
+   references *resolve*; the references themselves stay. A reference that
+   resolves through a pointer is correct and finished — not a cleanup
+   candidate. If a reference is broken, work its fix class; if the only
+   remaining move appears to be deletion, that is an escalation.
 
-## Subsystem Considerations
-
-<!--
-Before designing your implementation, check docs/subsystems/ for relevant
-cross-cutting patterns.
-
-QUESTIONS TO CONSIDER:
-- Does this chunk touch any existing subsystem's scope?
-- Will this chunk implement part of a subsystem (contribute code) or use it
-  (depend on it)?
-- Did you discover code during exploration that should be part of a subsystem
-  but doesn't follow its patterns?
-
-If no subsystems are relevant, delete this section.
-
-WHEN SUBSYSTEMS ARE RELEVANT:
-List each relevant subsystem with its status and your relationship:
-- **docs/subsystems/validation** (DOCUMENTED): This chunk USES the validation
-  subsystem to check input
-- **docs/subsystems/error_handling** (REFACTORING): This chunk IMPLEMENTS a
-  new error type following the subsystem's patterns
-
-HOW SUBSYSTEM STATUS AFFECTS YOUR WORK:
-
-DOCUMENTED subsystems: The subsystem's patterns are captured but deviations are not
-being actively fixed. If you discover code that deviates from the subsystem's
-patterns, add it to the subsystem's Known Deviations section. Do NOT prioritize
-fixing those deviations—your chunk has its own goals.
-
-REFACTORING subsystems: The subsystem is being actively consolidated. If your chunk
-work touches code that deviates from the subsystem's patterns, attempt to bring it
-into compliance as part of your work. This is "opportunistic improvement"—improve
-what you touch, but don't expand scope to fix unrelated deviations.
-
-WHEN YOU DISCOVER DEVIATING CODE:
-- Add it to the subsystem's Known Deviations section
-- Note whether you will address it (REFACTORING status + relevant to your work)
-  or leave it for future work (DOCUMENTED status or outside your chunk's scope)
-
-Example:
-- **Discovered deviation**: src/legacy/parser.py#validate_input does its own
-  validation instead of using the validation subsystem
-  - Added to docs/subsystems/validation Known Deviations
-  - Action: Will not address (subsystem is DOCUMENTED; deviation outside chunk scope)
--->
+The deletion-disposition machinery (an operator-authorized way to *record* a
+sanctioned deletion) belongs to the sibling chunk `crossref_absence_evidence`
+and is out of scope here; this chunk only closes the rationalization that
+bypasses escalation.
 
 ## Sequence
 
-<!--
-Ordered steps to implement this chunk. Each step should be:
-- Small enough to reason about in isolation
-- Large enough to be meaningful
-- Clear about its inputs and outputs
+### Step 1: Extend the "Never delete a reference" invariant
 
-This sequence is your contract with yourself (and with agents).
-Work through it in order. Don't skip ahead.
+In `src/templates/plugin/skills/workspace-validate-fix.md.jinja2`, expand the
+first Invariants bullet so it explicitly forecloses pointer coverage as a
+deletion license. Keep the existing sentence structure; append the guard:
+peer-pointer coverage of the artifact is never grounds for removing a
+reference — the pointer records the tree's dependency and the chunk's
+`code_references` typically name only its public surface, so a backreference
+on a private helper may be the only record tying that code to its intent.
 
-Example:
+### Step 2: Add the pointer-coverage callout in `misrouted-bare`
 
-### Step 1: Define the SegmentHeader struct
+In the same template's `misrouted-bare` section, after the qualify-or-point
+decision (and near the existing "Is the candidate the owner, or another
+reader?" callout style), add a bolded callout — **"Does the pointer make the
+references redundant?"** — stating:
 
-Create the struct that represents a segment's header with fields for:
-- magic number (4 bytes)
-- version (2 bytes)
-- segment_id (8 bytes)
-- message_count (4 bytes)
-- checksum (4 bytes)
+- No. The pointer is the resolution mechanism for bare references, not a
+  replacement for them. Creating a pointer and deleting the references it
+  serves would defeat the fix just applied.
+- What the two records mean: pointer = tree-level interest edge over the
+  chunk's public surface; per-symbol backreference = which code the intent
+  governs, and for private helpers usually the only such record.
+- What to do instead: leave resolving references alone (they are finished,
+  not redundant); work broken references through their fix class; escalate
+  when deletion seems like the only remaining move.
 
-Location: src/segment/format.rs
+### Step 3: Re-render the plugin collection
 
-### Step 2: Implement header serialization
+Run `uv run ve plugin render` and verify `skills/workspace-validate-fix/SKILL.md`
+picked up the new prose and nothing else changed.
 
-Add `to_bytes()` and `from_bytes()` methods to SegmentHeader.
-Use little-endian encoding per SPEC.md Section 3.1.
+### Step 4: Verify
 
-### Step 3: ...
+- `uv run pytest tests/test_plugin_render.py -q` — drift test green.
+- `uv run pytest tests/ -q` — full suite matches the pre-change baseline.
+- `uv run ve validate` — clean.
 
----
+### Step 5: Update chunk metadata
 
-**BACKREFERENCE COMMENTS**
-
-When implementing code, add backreference comments to help future agents trace
-code back to its governing documentation.
-
-**Valid backreference types:**
-- `# Subsystem: docs/subsystems/<name>` - For architectural patterns
-- `# Chunk: docs/chunks/<name>` - For implementation work
-
-Place comments at the appropriate level:
-- **Module-level**: If this code implements the subsystem/chunk's core functionality
-- **Class-level**: If this class is part of the pattern
-- **Method-level**: If this method implements a specific behavior
-
-Format (place immediately before the symbol):
-```
-# Subsystem: docs/subsystems/workflow_artifacts - Workflow artifact manager pattern
-# Chunk: docs/chunks/auth_refactor - Authentication system redesign
-```
-
-Do NOT add narrative backreferences. Narratives decompose into chunks; reference
-the implementing chunk instead.
-
-**Task context note**: In multi-project tasks, always use local paths (e.g.,
-`docs/chunks/chunk_name`) for chunk backreferences, not paths to the external
-artifact repo. Each project has `external.yaml` pointers that resolve to the
-actual chunk content.
--->
-
-## Dependencies
-
-<!--
-What must exist before this chunk can be implemented?
-- Other chunks that must be complete
-- External libraries to add
-- Infrastructure or configuration
-
-If there are no dependencies, delete this section.
--->
+Fill `code_paths` in this chunk's GOAL.md (done at planning time) and, at
+completion, `code_references` for the template file.
 
 ## Risks and Open Questions
 
-<!--
-What might go wrong? What are you unsure about?
-Being explicit about uncertainty helps you (and agents) know where to
-be careful and when to stop and ask questions.
-
-Example:
-- fsync behavior may differ across filesystems; need to verify on ext4 and APFS
-- Unclear whether concurrent reads during write are safe; may need mutex
-- Performance target is aggressive; may need to iterate on buffer sizes
--->
+- The guidance must not overcorrect into "references may never be touched":
+  the skill's edit vocabulary (qualify, normalize, retarget, register,
+  correct a path) still applies. The callout is scoped to *deletion* only.
+- Wording must not collide with `crossref_absence_evidence`'s future
+  operator-authorized deletion disposition; phrasing deletion as "an
+  escalation, not a fix" (the invariant's existing frame) keeps the seam
+  clean — that chunk can later define what an *authorized* deletion looks
+  like without contradicting this text.
 
 ## Deviations
 
-<!--
-POPULATE DURING IMPLEMENTATION, not at planning time.
-
-When reality diverges from the plan, document it here:
-- What changed?
-- Why?
-- What was the impact?
-
-Minor deviations (renamed a function, used a different helper) don't need
-documentation. Significant deviations (changed the approach, skipped a step,
-added steps) do.
-
-Example:
-- Step 4: Originally planned to use std::fs::rename for atomic swap.
-  Testing revealed this isn't atomic across filesystems. Changed to
-  write-fsync-rename-fsync sequence per platform best practices.
--->
+- The plan said no new test ("a string-presence assertion on skill prose
+  would be a trivial test"). During completion, discovery of
+  `tests/test_workspace_validate_fix_skill.py` showed the repository already
+  treats this skill as a document contract, machine-checking that it states
+  its invariants (`test_document_states_the_three_invariants`). Following
+  that established convention, added
+  `test_document_forecloses_pointer_coverage_as_deletion_grounds` so a future
+  template edit cannot silently drop the guard. This is a contract test in
+  the file's own idiom, not a trivial test.

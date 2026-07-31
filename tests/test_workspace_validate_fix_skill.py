@@ -94,6 +94,24 @@ def test_document_states_the_three_invariants(body):
         assert invariant in body, f"{SKILL.name} does not state: {invariant}"
 
 
+def test_document_forecloses_pointer_coverage_as_deletion_grounds(body):
+    """A peer pointer resolves bare references; it never licenses deleting them.
+
+    The trap: a pointer covers a chunk's public surface, so "this ref is
+    covered by the pointer" reads like deduplication — but a backreference on
+    a private helper is often the only record tying that code to its intent.
+
+    # Chunk: docs/chunks/crossref_pointer_guard - Pointer coverage is never grounds for reference deletion
+    """
+    assert "Peer-pointer coverage is never grounds for deletion" in body, (
+        f"{SKILL.name} lost the pointer-coverage guard on the deletion invariant"
+    )
+    assert "Does the pointer make the references redundant?" in body, (
+        f"{SKILL.name} lost the misrouted-bare callout that answers the "
+        "redundancy rationalization where the pointer is created"
+    )
+
+
 def test_document_prescribes_fix_class_grouped_batches(body):
     """An operator audits all qualifications apart from all new pointers."""
     assert "one commit per fix class" in body
