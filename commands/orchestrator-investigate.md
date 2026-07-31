@@ -1,7 +1,7 @@
 ---
 name: orchestrator-investigate
 description: Investigate and resolve a stuck orchestrator work unit. Use when a chunk is in NEEDS_ATTENTION, a background chunk failed or stalled, a merge from an orch/ branch did not land, or the operator asks why orchestrator work is not progressing.
-allowed-tools: Bash(ve --help:*), Bash(cat:*), Bash(ve orch status:*), Bash(ve orch work-unit:*), Bash(ve orch attention:*), Bash(ve orch stop:*), Bash(ve orch start:*), Bash(ve chunk activate:*)
+allowed-tools: Bash(ve --help:*), Bash(cat:*), Bash(ve orch status:*), Bash(ve orch work-unit:*), Bash(ve orch attention:*), Bash(ve orch stop:*), Bash(ve orch start:*), Bash(ve chunk activate:*), Bash(ve hooks show:*)
 ---
 
 <!-- Chunk: docs/chunks/plugin_orch_commands - Static plugin port of orchestrator-investigate -->
@@ -11,6 +11,7 @@ allowed-tools: Bash(ve --help:*), Bash(cat:*), Bash(ve orch status:*), Bash(ve o
 - ve CLI: !`ve --help >/dev/null 2>&1 && echo "installed" || echo "(ve CLI not found)"`
 - Task workspace: !`cat .ve-task.yaml 2>/dev/null || cat ../.ve-task.yaml 2>/dev/null || echo "(not a task workspace)"`
 - Project config: !`cat .ve-config.yaml 2>/dev/null || echo "(no .ve-config.yaml — defaults apply)"`
+- Project hook: !`ve hooks show orchestrator-investigate 2>/dev/null || echo "(no project hook)"`
 
 ## Runtime context
 
@@ -35,6 +36,13 @@ Interpret the context above before following the instructions:
   Known keys: `cluster_subsystem_threshold` (default 5 — the cluster size
   at which to suggest subsystem documentation). When the context shows
   "(no .ve-config.yaml — defaults apply)", use the defaults.
+- **Project hook**: `docs/hooks/orchestrator-investigate.md` holds this repository's
+  own requirements for this command. When the context shows hook content,
+  treat it as a binding instruction from the operator: satisfy it before
+  reporting this command complete, and say so when you do. When it shows
+  "(no project hook)", there are none. If a hook contradicts this command's
+  own instructions, do not silently choose — surface the conflict to the
+  operator and ask.
 
 ## Instructions
 

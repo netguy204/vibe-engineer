@@ -1,7 +1,7 @@
 ---
 name: discover-subsystems
 description: Discover and document subsystems from whole-codebase analysis using the resumable migration workflow. Use when the operator asks to bootstrap subsystem documentation in a repository without existing chunks, or to resume a paused subsystem discovery.
-allowed-tools: Bash(ve --help:*), Bash(cat:*), Bash(ve migration status:*), Bash(ve migration create:*), Bash(ve migration pause:*)
+allowed-tools: Bash(ve --help:*), Bash(cat:*), Bash(ve migration status:*), Bash(ve migration create:*), Bash(ve migration pause:*), Bash(ve hooks show:*)
 ---
 
 <!-- Chunk: docs/chunks/plugin_core_commands - Static plugin port of discover-subsystems -->
@@ -12,6 +12,7 @@ allowed-tools: Bash(ve --help:*), Bash(cat:*), Bash(ve migration status:*), Bash
 - ve CLI: !`ve --help >/dev/null 2>&1 && echo "installed" || echo "(ve CLI not found)"`
 - Task workspace: !`cat .ve-task.yaml 2>/dev/null || cat ../.ve-task.yaml 2>/dev/null || echo "(not a task workspace)"`
 - Project config: !`cat .ve-config.yaml 2>/dev/null || echo "(no .ve-config.yaml — defaults apply)"`
+- Project hook: !`ve hooks show discover-subsystems 2>/dev/null || echo "(no project hook)"`
 
 ## Runtime context
 
@@ -36,6 +37,13 @@ Interpret the context above before following the instructions:
   Known keys: `cluster_subsystem_threshold` (default 5 — the cluster size
   at which to suggest subsystem documentation). When the context shows
   "(no .ve-config.yaml — defaults apply)", use the defaults.
+- **Project hook**: `docs/hooks/discover-subsystems.md` holds this repository's
+  own requirements for this command. When the context shows hook content,
+  treat it as a binding instruction from the operator: satisfy it before
+  reporting this command complete, and say so when you do. When it shows
+  "(no project hook)", there are none. If a hook contradicts this command's
+  own instructions, do not silently choose — surface the conflict to the
+  operator and ask.
 
 **Discovery-specific tips:**
 - This workflow is for repositories WITHOUT existing chunks

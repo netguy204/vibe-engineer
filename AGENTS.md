@@ -45,52 +45,15 @@ See: `docs/trunk/ARTIFACTS.md` for details on each artifact type.
 
 ## Extended Artifacts
 
-VE supports additional artifact types for different scenarios. When you encounter these situations, read the linked documentation:
+VE supports additional artifact types. When you encounter these situations, read the linked documentation:
 
-### Narratives (`docs/narratives/`)
-
-Multi-chunk initiatives with upfront decomposition. **Read when**: planning large features, working on chunks that reference a narrative, or decomposing big ambitions.
-
-See: `docs/trunk/ARTIFACTS.md#narratives`
-
-### Investigations (`docs/investigations/`)
-
-Exploratory documents for understanding before acting. **Read when**: diagnosing issues, exploring unfamiliar code, or validating hypotheses before committing to implementation.
-
-See: `docs/trunk/ARTIFACTS.md#investigations`
-
-
-### Subsystems (`docs/subsystems/`)
-
-Emergent architectural patterns. **Read when**: implementing patterns that might already exist, or when code backreferences mention a subsystem.
-
-See: `docs/trunk/ARTIFACTS.md#subsystems`
-
-### Friction Log (`docs/trunk/FRICTION.md`)
-
-Accumulative ledger for pain points. **Read when**: capturing friction, or when friction patterns suggest work.
-
-See: `docs/trunk/ARTIFACTS.md#friction-log`
-
-
-
-### External Artifacts
-
-Cross-repository artifact pointers (`external.yaml` files). **Read when**: encountering `external.yaml` files or working in multi-repo contexts.
-
-See: `docs/trunk/EXTERNAL.md`
-
-
-## Orchestrator (`ve orch`)
-
-Manages parallel chunk execution across worktrees. **Read when**:
-- User mentions "background", "parallel", or "orchestrator"
-- Working with FUTURE chunks
-- Managing concurrent workstreams
-
-See: `docs/trunk/ORCHESTRATOR.md`
-
-Commands: `/orchestrator-inject`, `/orchestrator-submit-future`, `/orchestrator-investigate`, `/orchestrator-monitor`
+- **Narratives** (`docs/narratives/`) - Multi-chunk initiatives with upfront decomposition. See: `docs/trunk/ARTIFACTS.md#narratives`
+- **Investigations** (`docs/investigations/`) - Exploratory documents for understanding before acting. See: `docs/trunk/ARTIFACTS.md#investigations`
+- **Subsystems** (`docs/subsystems/`) - Emergent architectural patterns. See: `docs/trunk/ARTIFACTS.md#subsystems`
+- **Friction Log** (`docs/trunk/FRICTION.md`) - Accumulative ledger for pain points. See: `docs/trunk/ARTIFACTS.md#friction-log`
+- **VE Hooks** (`docs/hooks/`) - This project's own requirements for a specific lifecycle command, named `docs/hooks/<command-name>.md` and loaded into that command's context when it runs. If the directory exists, read the file matching the command you are running and treat its content as binding. See: `docs/trunk/ARTIFACTS.md#hooks`
+- **External Artifacts** (`external.yaml` files) - Cross-repository artifact pointers. See: `docs/trunk/EXTERNAL.md`
+- **Orchestrator** (`ve orch`) - Parallel chunk execution across worktrees. See: `docs/trunk/ORCHESTRATOR.md`
 
 ## Code Backreferences
 
@@ -105,96 +68,30 @@ When you see these, read the referenced artifact to understand context.
 
 See: `docs/trunk/ARTIFACTS.md#code-backreferences` for valid types and usage.
 
-## Available Commands
-
-Use these slash commands for artifact management:
-
-- `/chunk-create` - Create a new chunk for intent-bearing work and refine its goal
-- `/chunk-plan` - Create a technical plan for the current chunk
-- `/chunk-implement` - Implement the current chunk
-
-- `/chunk-execute` - Run a chunk's full lifecycle (plan → implement → complete) in the current session
-
-- `/chunk-review` - Review chunk implementation for alignment with documented intent
-- `/chunk-complete` - Mark a chunk complete and update references
-
-- `/cluster-rename` - Batch-rename chunks matching a prefix
-- `/narrative-create` - Create a new narrative for multi-chunk initiatives
-- `/narrative-compact` - Consolidate multiple chunks into a narrative
-
-- `/narrative-execute` - Execute a narrative's chunks in dependency order with parallel agents
-- `/subsystem-discover` - Document an emergent architectural pattern
-- `/investigation-create` - Start a new investigation
-- `/friction-log` - Capture a friction point
-
-- `/validate-fix` - Iteratively fix validation errors until clean
-
-
-### Steward
-
-- `/steward-setup` - Set up a project steward via interactive interview
-- `/steward-watch` - Run the steward watch-respond-rewatch loop
-- `/steward-send` - Send a message to a project's steward
-- `/steward-changelog` - Watch a project's changelog channel
-
-- `/swarm-monitor` - Monitor all changelog channels in a swarm
-
-- `/swarm-request-response` - Send a request and wait for the response on a channel pair
-
-
-#### Cross-project messaging
-
-To send a message to another project's steward, use the channel naming convention `<target-project>-steward`, where `<target-project>` is the project whose steward you're addressing — **not** the project you're sending from.
-
-```
-ve board send <target-project>-steward "<message>" --swarm <swarm_id>
-```
-
-For example, to tell the `vibe-engineer` steward something from any project in the swarm, send to `vibe-engineer-steward`:
-
-```
-ve board send vibe-engineer-steward "Requested API change is ready" --swarm my_swarm
-```
-
-**Common mistake:** Agents often find their local `STEWARD.md`, read its `channel` field, and send to their *own* project's steward channel instead of the target project's channel. Always derive the channel name from the **target** project, not from your local steward configuration.
-
 
 ## Creating Artifacts
 
-**CRITICAL: Never manually create artifact files.** Do not use `mkdir` or write files directly to create GOAL.md, PLAN.md, or OVERVIEW.md files. Always use the appropriate creation command.
+**CRITICAL: Never manually create artifact files.** Do not use `mkdir` or write files directly to create GOAL.md, PLAN.md, or OVERVIEW.md files. Always use the appropriate creation command:
 
-| Artifact Type | Creation Command | Slash Command |
-|---------------|------------------|---------------|
-| Chunk | `ve chunk create <name>` | `/chunk-create` |
-| Investigation | `ve investigation create <name>` | `/investigation-create` |
-| Narrative | `ve narrative create <name>` | `/narrative-create` |
-| Subsystem | `ve subsystem create <name>` | `/subsystem-discover` |
+| Artifact Type | Creation Command |
+|---------------|------------------|
+| Chunk | `ve chunk create <name>` |
+| Investigation | `ve investigation create <name>` |
+| Narrative | `ve narrative create <name>` |
+| Subsystem | `ve subsystem create <name>` |
 
-**Why this matters:**
+Templates contain required frontmatter and structure; manually created files cause validation errors and broken workflows. If no creation command exists for an artifact type you need, ask the operator rather than creating files manually.
 
-- Templates contain required YAML frontmatter with correct schema fields
-- Templates include structural guidance and placeholder content
-- Manually created files often miss required fields, causing validation errors and broken workflows
-- The creation commands handle directory structure, initial status, and cross-references
+## Workflow Commands (Claude Code Plugin)
 
-If you encounter a situation where no creation command exists for an artifact type you need, ask the operator rather than creating files manually.
+The workflow slash commands (`/chunk-create`, `/chunk-plan`, `/chunk-implement`, `/chunk-complete`, and the rest) are distributed via the **vibe-engineer Claude Code plugin** — they are not stored in this repository. Install them in Claude Code:
 
-## Getting Started
+```
+/plugin marketplace add netguy204/vibe-engineer
+/plugin install vibe-engineer
+```
 
-1. Read `docs/trunk/GOAL.md` to understand the project
-2. Check `docs/chunks/` for recent and in-progress work
-3. Use `/chunk-create` to start new intent-bearing work (see `docs/trunk/CHUNKS.md` principle 2)
-
-
-## Learning Philosophy
-
-You don't need to learn everything upfront. Vibe engineering is designed to meet you where you are:
-
-1. **Start with chunks** - The create → plan → implement → complete cycle gives immediate, tangible progress.
-2. **Discover larger artifacts when needed** - Narratives emerge when work is too big for one chunk. Subsystems emerge when you keep touching the same patterns.
-3. **Graduate to orchestration** - When managing parallel workflows, the orchestrator automates scheduling and conflict detection.
-
-The documentation teaches itself: follow backreferences in code to discover the subsystems that govern it.
+Command documentation and updates travel with the plugin (`/plugin update vibe-engineer`). The `ve` CLI is installed separately (via uv/pip) and is the workflow engine the commands shell out to.
 
 <!-- VE:MANAGED:END -->
 

@@ -644,6 +644,47 @@ List existing investigations with their status.
 - **Errors**: None
 - **Exit codes**: 0 on success (including "no investigations found")
 
+#### ve hooks show COMMAND_NAME [--project-dir PATH]
+
+Print the project's hook fragment for a lifecycle command. Invoked from the
+context block of every plugin command, so it is designed never to fail the
+command it is embedded in.
+
+- **Arguments**:
+  - `COMMAND_NAME`: The lifecycle command whose hook to show (e.g. `chunk-complete`)
+- **Options**:
+  - `--project-dir PATH`: Target directory (default: current working directory)
+- **Preconditions**: None
+- **Postconditions**: None (read-only operation)
+- **Output**:
+  - When `docs/hooks/{COMMAND_NAME}.md` exists: the fragment body prefixed with a
+    `## Project hook: {COMMAND_NAME}` header and a `Source:` line naming the file;
+    YAML frontmatter, if any, is stripped
+  - Otherwise: `(no project hook)`
+- **Errors**: None surfaced. Absent files, unreadable files, malformed
+  frontmatter, and unknown command names all yield the `(no project hook)`
+  fallback, never a non-zero exit
+- **Exit codes**: 0 always — a non-zero exit inside a command's context block
+  would degrade a command unrelated to hooks
+
+#### ve hooks list [--project-dir PATH] [--json]
+
+List the hook fragments a project defines, flagging any whose filename matches
+no lifecycle command (a well-formed hook that will silently never fire).
+
+- **Arguments**: None
+- **Options**:
+  - `--project-dir PATH`: Target directory (default: current working directory)
+  - `--json`: Emit the listing as JSON (`event`, `path`, `known` per entry)
+- **Preconditions**: None
+- **Postconditions**: None (read-only operation)
+- **Output**:
+  - One line per `docs/hooks/*.md` fragment; fragments whose stem is not a known
+    command are marked `UNKNOWN EVENT - matches no command, will never fire`
+  - `No hooks defined ...` when the directory is empty or absent
+- **Errors**: None
+- **Exit codes**: 0 always
+
 ## Guarantees
 
 - **Idempotency**: Running `ve init` multiple times produces the same result as running it once. Existing files are never overwritten or modified.

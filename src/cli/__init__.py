@@ -40,6 +40,8 @@ from cli.entity import entity
 from cli.wiki import wiki
 # Chunk: docs/chunks/entity_config_toml - Operator-level `~/.ve-config.toml` and `ve config show`
 from cli.config import config
+# Chunk: docs/chunks/hooks_lifecycle_fragments - `ve hooks show|list` for docs/hooks/ fragments
+from cli.hooks import hooks
 
 # Add top-level commands
 cli.add_command(init)
@@ -61,3 +63,4 @@ cli.add_command(board)
 cli.add_command(entity)
 cli.add_command(wiki)
 cli.add_command(config)
+cli.add_command(hooks)

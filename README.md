@@ -223,7 +223,24 @@ ve chunk list --latest
 # Validate a chunk is ready for completion
 ve chunk validate 0001-my-feature
 
+# Preview the project's own instructions for a lifecycle command
+# (authored in docs/hooks/<command-name>.md; see "Project Hooks" below)
+ve hooks show chunk-complete
+
+# List the project's hooks, flagging any that match no command
+ve hooks list
+
 ```
+
+#### Project Hooks
+
+A repository can attach its own requirements to a lifecycle command by writing
+`docs/hooks/<command-name>.md` — for example, `docs/hooks/chunk-complete.md`
+saying "if this chunk changed public-facing docs, update them." The matching
+command loads that file into its context when it runs, so the instruction
+arrives exactly at the inflection point it governs. Hooks are advisory prompt
+content (see [DEC-014](docs/trunk/DECISIONS.md)), not enforced checks. See
+`docs/trunk/ARTIFACTS.md#hooks`.
 
 ### Cross-Repository Work
 

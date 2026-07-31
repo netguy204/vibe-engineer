@@ -64,6 +64,63 @@ class TestCommandInvariants:
             f"{command_file.name}: carries the obsolete auto-generated header"
         )
 
+    # Chunk: docs/chunks/hooks_lifecycle_fragments - Universal VE hook wiring
+    def test_context_block_loads_the_project_hook(self, command_file):
+        """Every command exposes docs/hooks/<name>.md at its inflection point.
+
+        Universal wiring is what removes the need for a hand-maintained
+        allowlist: the set of valid hook events is exactly the set of commands.
+        A new command added without this line silently has no hook support.
+        """
+        text = command_file.read_text()
+        expected = (
+            f'!`ve hooks show {command_file.stem} 2>/dev/null '
+            '|| echo "(no project hook)"`'
+        )
+        assert expected in text, (
+            f"{command_file.name}: missing the guarded hook context line {expected!r}"
+        )
+
+    # Chunk: docs/chunks/hooks_lifecycle_fragments - Universal VE hook wiring
+    def test_hook_command_is_permitted(self, command_file):
+        """Without the allowed-tools entry the context line prompts or fails
+        rather than resolving — a silent failure of the whole mechanism."""
+        allowed = _parse_frontmatter(command_file).get("allowed-tools", "")
+        assert "Bash(ve hooks show:*)" in allowed, (
+            f"{command_file.name}: allowed-tools must permit Bash(ve hooks show:*)"
+        )
+
+    # Chunk: docs/chunks/hooks_lifecycle_fragments - Universal VE hook wiring
+    def test_runtime_context_explains_the_hook(self, command_file):
+        """The context line alone doesn't tell the agent what to do with the
+        content; the interpretation bullet carries the binding-instruction and
+        conflict-surfacing rules."""
+        text = command_file.read_text()
+        assert "**Project hook**" in text, (
+            f"{command_file.name}: missing the Project hook runtime-context bullet"
+        )
+
+
+# Chunk: docs/chunks/hooks_lifecycle_fragments - Known-event vocabulary pinned to disk
+class TestHookEventVocabulary:
+    """hooks.KNOWN_EVENTS must equal the plugin's command names.
+
+    The constant is a literal because the ve CLI is installed separately from
+    the plugin (DEC-010) and cannot reliably read commands/ at runtime. Exact
+    equality in both directions is what keeps that literal honest.
+    """
+
+    def test_known_events_matches_command_files_exactly(self):
+        from hooks import KNOWN_EVENTS
+
+        on_disk = {path.stem for path in _command_files()}
+
+        assert KNOWN_EVENTS == on_disk, (
+            "hooks.KNOWN_EVENTS is out of sync with commands/*.md. "
+            f"Missing from KNOWN_EVENTS: {sorted(on_disk - KNOWN_EVENTS)}. "
+            f"Stale entries in KNOWN_EVENTS: {sorted(KNOWN_EVENTS - on_disk)}."
+        )
+
 
 class TestChunkCreateCommand:
     """The chunk-create pilot port (plugin_runtime_context success criteria)."""
@@ -129,6 +186,66 @@ def _run_context_lines(lines: list[str], cwd) -> str:
         )
         output.append(result.stdout)
     return "\n".join(output)
+
+
+# Chunk: docs/chunks/hooks_lifecycle_fragments - Hook context line survives an older CLI
+class TestHookContextLineIsGuarded:
+    """The hook context line runs inside every command's context block, so it
+    must stay clean even when the installed CLI predates the `hooks` command
+    (DEC-011 lets the plugin and CLI version independently)."""
+
+    def _stub_old_ve(self, tmp_path):
+        """A `ve` that rejects `hooks` the way real Click does: usage error to
+        stderr, exit 2."""
+        bin_dir = tmp_path / "bin"
+        bin_dir.mkdir()
+        stub = bin_dir / "ve"
+        stub.write_text(
+            "#!/bin/sh\n"
+            'if [ "$1" = "hooks" ]; then\n'
+            '  echo "Usage: ve [OPTIONS] COMMAND [ARGS]..." >&2\n'
+            "  echo \"Error: No such command 'hooks'.\" >&2\n"
+            "  exit 2\n"
+            "fi\n"
+            "exit 0\n"
+        )
+        stub.chmod(0o755)
+        return bin_dir
+
+    def _hook_line(self, path):
+        lines = [
+            line for line in _extract_context_shell_lines(path) if "ve hooks show" in line
+        ]
+        assert len(lines) == 1, f"{path.name}: expected exactly one hook context line"
+        return lines[0]
+
+    def test_older_cli_yields_the_absent_hook_fallback_not_an_error(self, tmp_path):
+        bin_dir = self._stub_old_ve(tmp_path)
+        line = self._hook_line(CHUNK_CREATE)
+
+        result = subprocess.run(
+            ["bash", "-c", line],
+            cwd=tmp_path,
+            capture_output=True,
+            text=True,
+            env={"PATH": f"{bin_dir}:/usr/bin:/bin"},
+        )
+
+        # What the agent sees is stdout; it must be the benign fallback...
+        assert result.stdout.strip() == "(no project hook)"
+        # ...and the Click usage error must not surface anywhere.
+        assert "No such command" not in result.stdout
+        assert "No such command" not in result.stderr
+        assert result.returncode == 0
+
+    def test_every_command_hook_line_carries_the_guard(self):
+        """The behavioral check above runs one command; this pins the guard on
+        all of them so a future port cannot drop it."""
+        for path in _command_files():
+            line = self._hook_line(path)
+            assert '2>/dev/null || echo "(no project hook)"' in line, (
+                f"{path.name}: hook context line is missing the older-CLI guard"
+            )
 
 
 class TestRuntimeDetection:

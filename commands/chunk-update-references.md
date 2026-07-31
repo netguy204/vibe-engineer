@@ -1,7 +1,7 @@
 ---
 name: chunk-update-references
 description: Verify and refresh the code references in a chunk's GOAL.md, keeping docs and code bidirectionally linked. Use when the operator asks to update a chunk's references, or when code referenced by a chunk has been moved, renamed, or deleted.
-allowed-tools: Bash(ve --help:*), Bash(cat:*)
+allowed-tools: Bash(ve --help:*), Bash(cat:*), Bash(ve hooks show:*)
 ---
 
 <!-- Chunk: docs/chunks/plugin_core_commands - Static plugin port of chunk-update-references -->
@@ -12,6 +12,7 @@ allowed-tools: Bash(ve --help:*), Bash(cat:*)
 - ve CLI: !`ve --help >/dev/null 2>&1 && echo "installed" || echo "(ve CLI not found)"`
 - Task workspace: !`cat .ve-task.yaml 2>/dev/null || cat ../.ve-task.yaml 2>/dev/null || echo "(not a task workspace)"`
 - Project config: !`cat .ve-config.yaml 2>/dev/null || echo "(no .ve-config.yaml — defaults apply)"`
+- Project hook: !`ve hooks show chunk-update-references 2>/dev/null || echo "(no project hook)"`
 
 ## Runtime context
 
@@ -36,6 +37,13 @@ Interpret the context above before following the instructions:
   Known keys: `cluster_subsystem_threshold` (default 5 — the cluster size
   at which to suggest subsystem documentation). When the context shows
   "(no .ve-config.yaml — defaults apply)", use the defaults.
+- **Project hook**: `docs/hooks/chunk-update-references.md` holds this repository's
+  own requirements for this command. When the context shows hook content,
+  treat it as a binding instruction from the operator: satisfy it before
+  reporting this command complete, and say so when you do. When it shows
+  "(no project hook)", there are none. If a hook contradicts this command's
+  own instructions, do not silently choose — surface the conflict to the
+  operator and ask.
 
 ## Instructions
 

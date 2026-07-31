@@ -1591,3 +1591,67 @@ class TestIntegrityValidatorMultiLanguage:
         assert result.success
         assert result.files_scanned >= 3
         assert result.chunk_backrefs_found == 3
+
+
+# Chunk: docs/chunks/hooks_lifecycle_fragments - Unrecognised hook filenames surface as warnings
+class TestIntegrityValidatorHooks:
+    """docs/hooks/<name>.md whose name matches no command will never fire.
+
+    Reported as a warning, never an error: the ve CLI and the plugin version
+    independently (DEC-011), so a hook for a command the installed CLI has not
+    heard of is version skew, not a broken repository, and must not fail
+    anyone's build.
+    """
+
+    def _write_hook(self, temp_project: pathlib.Path, name: str) -> None:
+        hooks_dir = temp_project / "docs" / "hooks"
+        hooks_dir.mkdir(parents=True, exist_ok=True)
+        (hooks_dir / f"{name}.md").write_text("Check the public docs.\n")
+
+    def test_recognised_hook_produces_no_diagnostic(self, temp_project):
+        make_ve_initialized_git_repo(temp_project)
+        self._write_hook(temp_project, "chunk-complete")
+
+        result = validate_integrity(temp_project)
+
+        assert result.success
+        assert not [w for w in result.warnings if w.link_type == "hook→command"]
+
+    def test_misspelled_hook_produces_a_warning(self, temp_project):
+        make_ve_initialized_git_repo(temp_project)
+        self._write_hook(temp_project, "chunk-completed")
+
+        result = validate_integrity(temp_project)
+
+        hook_warnings = [w for w in result.warnings if w.link_type == "hook→command"]
+        assert len(hook_warnings) == 1
+        assert "docs/hooks/chunk-completed.md" in hook_warnings[0].source
+        assert "chunk-completed" in hook_warnings[0].target
+
+    def test_misspelled_hook_does_not_fail_validation(self, temp_project):
+        """A typo in docs/hooks/ must not break the build."""
+        make_ve_initialized_git_repo(temp_project)
+        self._write_hook(temp_project, "chunk-completed")
+
+        result = validate_integrity(temp_project)
+
+        assert result.success
+        assert not [e for e in result.errors if e.link_type == "hook→command"]
+
+    def test_near_miss_suggests_the_intended_command(self, temp_project):
+        """The warning is only useful if it points at the fix."""
+        make_ve_initialized_git_repo(temp_project)
+        self._write_hook(temp_project, "chunk-completed")
+
+        result = validate_integrity(temp_project)
+
+        hook_warnings = [w for w in result.warnings if w.link_type == "hook→command"]
+        assert "chunk-complete" in hook_warnings[0].message
+
+    def test_absent_hooks_directory_produces_no_diagnostic(self, temp_project):
+        make_ve_initialized_git_repo(temp_project)
+
+        result = validate_integrity(temp_project)
+
+        assert result.success
+        assert not [w for w in result.warnings if w.link_type == "hook→command"]

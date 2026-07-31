@@ -1,7 +1,7 @@
 ---
 name: orchestrator-submit-future
 description: Batch-submit all FUTURE chunks to the orchestrator. Use when the operator wants to queue every pending FUTURE chunk for background execution at once, or asks to submit the backlog to the orchestrator.
-allowed-tools: Bash(ve --help:*), Bash(cat:*), Bash(ve orch status:*), Bash(ve orch start:*), Bash(ve chunk list:*), Bash(ve orch ps:*), Bash(ve orch inject:*)
+allowed-tools: Bash(ve --help:*), Bash(cat:*), Bash(ve orch status:*), Bash(ve orch start:*), Bash(ve chunk list:*), Bash(ve orch ps:*), Bash(ve orch inject:*), Bash(ve hooks show:*)
 ---
 
 <!-- Chunk: docs/chunks/plugin_orch_commands - Static plugin port of orchestrator-submit-future -->
@@ -11,6 +11,7 @@ allowed-tools: Bash(ve --help:*), Bash(cat:*), Bash(ve orch status:*), Bash(ve o
 - ve CLI: !`ve --help >/dev/null 2>&1 && echo "installed" || echo "(ve CLI not found)"`
 - Task workspace: !`cat .ve-task.yaml 2>/dev/null || cat ../.ve-task.yaml 2>/dev/null || echo "(not a task workspace)"`
 - Project config: !`cat .ve-config.yaml 2>/dev/null || echo "(no .ve-config.yaml — defaults apply)"`
+- Project hook: !`ve hooks show orchestrator-submit-future 2>/dev/null || echo "(no project hook)"`
 
 ## Runtime context
 
@@ -35,6 +36,13 @@ Interpret the context above before following the instructions:
   Known keys: `cluster_subsystem_threshold` (default 5 — the cluster size
   at which to suggest subsystem documentation). When the context shows
   "(no .ve-config.yaml — defaults apply)", use the defaults.
+- **Project hook**: `docs/hooks/orchestrator-submit-future.md` holds this repository's
+  own requirements for this command. When the context shows hook content,
+  treat it as a binding instruction from the operator: satisfy it before
+  reporting this command complete, and say so when you do. When it shows
+  "(no project hook)", there are none. If a hook contradicts this command's
+  own instructions, do not silently choose — surface the conflict to the
+  operator and ask.
 
 ## Instructions
 

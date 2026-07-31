@@ -345,6 +345,87 @@ dependencies. No chunk must complete first.
 
 ## Deviations
 
+- **Step 1 needed its own regex.** The plan assumed `split_frontmatter_and_body`
+  could reuse `_FRONTMATTER_WITH_BODY_PATTERN`. That pattern requires at least
+  one line between the markers and a newline after the closing one, so an empty
+  `---\n---` block and a closing marker at EOF both fell through to "no
+  frontmatter" and leaked the marker text into the body — straight into an agent
+  prompt. Added `_OPTIONAL_FRONTMATTER_PATTERN` alongside it rather than changing
+  the shared one, since `workflow_artifacts` is STABLE.
+
+- **Step 7 ran `ve init`; the "drift" was a stale rendered file, not authored
+  content.** Investigating before regenerating showed the checked-in `AGENTS.md`
+  managed block (199 lines) was stale relative to the template (renders to ~96):
+  commit `402e2803` (the `plugin_init_slimdown` chunk) deliberately slimmed the
+  template — dropping the Available Commands list, Orchestrator section, expanded
+  artifact subsections, and Learning Philosophy once commands moved to the plugin
+  (DEC-010) — but never regenerated this repo's `AGENTS.md`. Regenerating is
+  therefore the correct completion of that work, not collateral damage; the
+  ~100 removed lines are obsolete, not lost. The regenerated managed block
+  carries the VE Hooks bullet, and the hand-authored unmanaged sections after
+  the END marker (Development, Template Editing Workflow, Design System) are
+  preserved.
+
+  `ve init` also removed 69 legacy `.agents/skills/*/SKILL.md` files — the old
+  render channel that DEC-010 replaced. That cleanup is real but belongs to the
+  plugin-migration work, not this chunk, so it was reverted
+  (`git checkout -- .agents/skills/`). The managed-block slim was kept because it
+  is inseparable from the regeneration criterion 9 requires (a rendered file
+  cannot be hand-edited to add the bullet); the skill deletions were reverted
+  because they are a separate mechanism. Net non-hooks change from this step:
+  `AGENTS.md` only.
+
+- **Abandoned: renaming `src/hooks.py` to `src/ve_hooks.py`.** Pyright flagged
+  `from hooks import Hooks` as unresolvable, and the hypothesis was that the
+  repository-root `hooks/` directory was shadowing the module as a namespace
+  package. The rename was made, then reverted: Pyright reports the same class of
+  error for every `src/`-internal import in the repository (e.g. `from chunks
+  import Chunks` in `src/cli/chunk.py`), because there is no `pyrightconfig.json`
+  or `.vscode/settings.json` putting `src/` on its path. The diagnostics are
+  pre-existing repository-wide editor noise, not a defect this chunk introduced,
+  and the rename fixed nothing. `src/hooks.py` + `src/cli/hooks.py` also matches
+  the established `src/friction.py` + `src/cli/friction.py` pairing. Runtime
+  resolution was verified correct throughout (`import hooks` →
+  `src/hooks.py`).
+
+- **`KNOWN_EVENTS` rationale corrected.** The plan justified the literal as
+  "the plugin's `commands/` directory is not reachable from the CLI". That
+  overstates it: `pyproject.toml` force-includes `commands/` into the wheel as
+  `orchestrator/skills`, so it *is* reachable from an installed wheel — but not
+  from a source checkout, where that directory does not exist. The honest reason
+  is that no single path works across install layouts, making a literal plus one
+  equality test cheaper than a three-way fallback. The comment in `src/hooks.py`
+  says this rather than the original claim.
+
+- **DEC-014 landed as `Status: PROPOSED`.** The plan required operator approval
+  before it lands; writing it as PROPOSED records the reasoning while the
+  approval is outstanding. It must move to ACCEPTED or be removed before this
+  chunk completes.
+
+- **Review fix: the hook context line was unguarded.** First-pass review
+  (docs/reviewers/baseline/decisions/hooks_lifecycle_fragments_1.md, Issue 1)
+  found that `!`ve hooks show <name>`` carried no shell fallback — the only
+  unguarded `!` line in the canonical preamble. `ve hooks show` exits 0 on a
+  CLI that has the command, but DEC-011 lets the plugin and CLI version
+  independently, and on an older CLI the subcommand is a Click usage error to
+  stderr with exit 2, which would land in every command's context block.
+  Guarded all 38 command lines and the PORTING_GUIDE preamble as
+  `!`ve hooks show <name> 2>/dev/null || echo "(no project hook)"``. Added
+  `tests/test_plugin_commands.py::TestHookContextLineIsGuarded`, which runs the
+  real context line against a stubbed older `ve` and asserts the usage error
+  never surfaces, plus a per-command guard invariant. The GOAL success
+  criterion "prints `(no project hook)` with exit 0 when the file is absent" is
+  a property of `ve hooks show`; the guard extends the same guarantee to the
+  case where the subcommand does not exist at all.
+
+- **Discovered during review: `ve validate` fails with ~50 pre-existing
+  errors** unrelated to this chunk — the code-backreference scanner
+  (`src/backreferences.py`) matches `# Chunk:`/`# Subsystem:` text inside Python
+  string literals under `re.MULTILINE`. Confirmed pre-existing by stashing the
+  tree (identical count on clean `main`). Filed as the FUTURE chunk
+  `validate_backref_literals` rather than fixed here. Consequence: `ve validate`
+  cannot serve as this chunk's completion gate; the test suite does.
+
 <!--
 POPULATE DURING IMPLEMENTATION, not at planning time.
 

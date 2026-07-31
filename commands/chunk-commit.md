@@ -1,7 +1,7 @@
 ---
 name: chunk-commit
 description: Create a single conventional-format git commit that includes chunk documentation and source changes while excluding ephemeral files. Use when the operator asks to commit chunk work or commit changes in a ve project.
-allowed-tools: Bash(ve --help:*), Bash(cat:*), Bash(git add:*), Bash(git status:*), Bash(git commit:*), Bash(git diff:*), Bash(git branch:*), Bash(git log:*), Bash(ve chunk list:*)
+allowed-tools: Bash(ve --help:*), Bash(cat:*), Bash(git add:*), Bash(git status:*), Bash(git commit:*), Bash(git diff:*), Bash(git branch:*), Bash(git log:*), Bash(ve chunk list:*), Bash(ve hooks show:*)
 ---
 
 <!-- Chunk: docs/chunks/plugin_core_commands - Static plugin port of chunk-commit -->
@@ -11,6 +11,7 @@ allowed-tools: Bash(ve --help:*), Bash(cat:*), Bash(git add:*), Bash(git status:
 - ve CLI: !`ve --help >/dev/null 2>&1 && echo "installed" || echo "(ve CLI not found)"`
 - Task workspace: !`cat .ve-task.yaml 2>/dev/null || cat ../.ve-task.yaml 2>/dev/null || echo "(not a task workspace)"`
 - Project config: !`cat .ve-config.yaml 2>/dev/null || echo "(no .ve-config.yaml — defaults apply)"`
+- Project hook: !`ve hooks show chunk-commit 2>/dev/null || echo "(no project hook)"`
 - Current git status: !`git status`
 - Current git diff (staged and unstaged changes): !`git diff HEAD`
 - Current branch: !`git branch --show-current`
@@ -40,6 +41,13 @@ Interpret the context above before following the instructions:
   Known keys: `cluster_subsystem_threshold` (default 5 — the cluster size
   at which to suggest subsystem documentation). When the context shows
   "(no .ve-config.yaml — defaults apply)", use the defaults.
+- **Project hook**: `docs/hooks/chunk-commit.md` holds this repository's
+  own requirements for this command. When the context shows hook content,
+  treat it as a binding instruction from the operator: satisfy it before
+  reporting this command complete, and say so when you do. When it shows
+  "(no project hook)", there are none. If a hook contradicts this command's
+  own instructions, do not silently choose — surface the conflict to the
+  operator and ask.
 
 ## Your task
 

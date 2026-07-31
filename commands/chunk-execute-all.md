@@ -1,7 +1,7 @@
 ---
 name: chunk-execute-all
 description: Execute a batch of chunks (all FUTURE chunks, a narrative's chunks, or a named list) through the full lifecycle in dependency-ordered waves of parallel sub-agents, using git-worktree isolation for parallel chunks and merging each wave back before the next. Session-local alternative to orchestrator background execution. Use when the operator asks to execute all chunks, run every future chunk, or drive a batch of chunks to completion in this session.
-allowed-tools: Bash(ve --help:*), Bash(cat:*), Bash(ve chunk list:*), Bash(ve chunk activate:*), Bash(git status:*), Bash(git log:*), Bash(git branch:*), Bash(git merge:*), Bash(git worktree:*)
+allowed-tools: Bash(ve --help:*), Bash(cat:*), Bash(ve chunk list:*), Bash(ve chunk activate:*), Bash(git status:*), Bash(git log:*), Bash(git branch:*), Bash(git merge:*), Bash(git worktree:*), Bash(ve hooks show:*)
 ---
 
 <!-- Chunk: docs/chunks/localexec_chunk_execute_all - Session-local parallel chunk execution command -->
@@ -11,6 +11,7 @@ allowed-tools: Bash(ve --help:*), Bash(cat:*), Bash(ve chunk list:*), Bash(ve ch
 - ve CLI: !`ve --help >/dev/null 2>&1 && echo "installed" || echo "(ve CLI not found)"`
 - Task workspace: !`cat .ve-task.yaml 2>/dev/null || cat ../.ve-task.yaml 2>/dev/null || echo "(not a task workspace)"`
 - Project config: !`cat .ve-config.yaml 2>/dev/null || echo "(no .ve-config.yaml — defaults apply)"`
+- Project hook: !`ve hooks show chunk-execute-all 2>/dev/null || echo "(no project hook)"`
 - Pending chunks: !`ve chunk list 2>/dev/null | grep -E "FUTURE|IMPLEMENTING" || echo "(no FUTURE or IMPLEMENTING chunks)"`
 - Working tree: !`git status --porcelain 2>/dev/null | head -20 || echo "(not a git repository)"`
 
@@ -39,6 +40,13 @@ Interpret the context above before following the instructions:
   Known keys: `cluster_subsystem_threshold` (default 5 — the cluster size
   at which to suggest subsystem documentation). When the context shows
   "(no .ve-config.yaml — defaults apply)", use the defaults.
+- **Project hook**: `docs/hooks/chunk-execute-all.md` holds this repository's
+  own requirements for this command. When the context shows hook content,
+  treat it as a binding instruction from the operator: satisfy it before
+  reporting this command complete, and say so when you do. When it shows
+  "(no project hook)", there are none. If a hook contradicts this command's
+  own instructions, do not silently choose — surface the conflict to the
+  operator and ask.
 
 ## Why this command exists
 
