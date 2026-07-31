@@ -1,147 +1,129 @@
 ---
-status: DRAFTING
-advances_trunk_goal: "Required Properties: 'Maintaining the referential integrity of documents is an agent problem' and 'Following the workflow must maintain the health of documents over time and should not grow more difficult over time.'"
+status: ACTIVE
+advances_trunk_goal: 'Required Properties: ''Maintaining the referential integrity
+  of documents is an agent problem'' and ''Following the workflow must maintain the
+  health of documents over time and should not grow more difficult over time.'''
 proposed_chunks:
-  - prompt: >-
-      Bring ve workspace validate's code-reference checking to parity with the
-      single-tree chunk→file check (src/integrity.py#IntegrityValidator::_validate_chunk_file_paths):
-      WorkspaceValidator.check_code_references (src/workspace_validation.py:790-858)
-      must accept directory entries (use .exists(), not .is_file() — 'this chunk
-      governs that package directory' is legitimate; field evidence: 7 unfixable
-      defects in the Cloud Capital platform workspace for existing directories
-      like packages/libs/env-config) and must validate code_paths entries, which
-      today rot invisibly in workspace mode. The two validators must agree on
-      semantics so agents can't learn the wrong lesson from either.
-    depends_on: []
-    chunk_directory: null
-  - prompt: >-
-      Fix the frontmatter defect line anchor in workspace validation: the
-      reported `line` for a broken code_references entry is currently the first
-      textual occurrence of the path in GOAL.md — usually the code_paths entry —
-      so a fix loop that trusts `line` edits the wrong entry, watches the anchor
-      move to the real one, and reports progress while the defect count holds
-      (field report: cost a full validate pass on a 4000-file workspace). Anchor
-      the defect on the offending code_references entry itself. This is a
-      fix-loop correctness bug affecting /validate-fix and
-      /workspace-validate-fix.
-    depends_on: []
-    chunk_directory: null
-  - prompt: >-
-      Lift the 31-character artifact_id cap in ExternalArtifactRef
-      (src/models/references.py): ordinary descriptive artifact names like
-      database_and_sagemaker_savings_plans (36 chars) are currently
-      unrepresentable, so external pointers to real, locally-present artifacts
-      resolve to nothing (3 field defects). Validate against real constraints
-      (identifier charset, path legality) rather than an arbitrary length.
-      Check for other length caps with the same origin while there.
-    depends_on: []
-    chunk_directory: null
-  - prompt: >-
-      Support glob patterns in chunk code_paths and code_references file parts
-      (e.g. packages/tasks/*/Dockerfile): validators expand the pattern and
-      error only when the expansion is empty, so 'this change applies uniformly
-      across N packages' is expressible without enumerating N paths that rot
-      independently (field evidence: 5 unfixable defects where rewriting to ~20
-      concrete paths would be wrong and unmaintainable). Applies to both
-      IntegrityValidator._validate_chunk_file_paths and
-      WorkspaceValidator.check_code_references.
-    depends_on: []
-    chunk_directory: null
-  - prompt: >-
-      Add a verified member-qualified reference form for intra-workspace
-      cross-tree references. Today workspace validation routes any ref whose
-      file part contains '::' to unverified with reason 'cross-repository
-      targets are not resolved offline' (src/workspace_validation.py ~line 810),
-      so a path that genuinely lives in a sibling tree of the same working copy
-      (e.g. a chunk's CI gate now in the root tree's .github/workflows/) can
-      only be written in a form that silences the check while looking resolved.
-      Design a member::path form that resolves through the workspace manifest
-      and IS verified, kept distinct from repo-qualified org/repo refs which
-      legitimately cannot be checked offline. Read
-      docs/chunks/federation_qualified_refs and the federation cluster first;
-      this chunk belongs to that initiative and must not fork its addressing
-      semantics.
-    depends_on: []
-    chunk_directory: null
-  - prompt: >-
-      Treat a symbol name found only inside import/re-export statements or
-      __all__ string lists as absent in symbol-existence checking (cheap AST
-      check for Python files). The current whole-word substring scan
-      (_symbol_is_absent) lets a '# noqa: F401' re-export make a name 'present'
-      while the definition lives in another file — 7 confirmed silently-wrong
-      refs in one package in field testing, and the failure is biased: after a
-      relocation, private helpers surface as defects while their re-exported
-      public siblings pass while pointing at the wrong file, so teams
-      systematically fix the safe half of the damage. Killing the re-export
-      class is the highest-value tier; full symbol resolution stays out of
-      scope.
-    depends_on: []
-    chunk_directory: null
-  - prompt: >-
-      Report non-identifier symbol anchors as UNCHECKED instead of silently
-      passing: _symbol_is_absent only checks anchors whose last '::' component
-      passes str.isidentifier(), so dotted/bracketed anchors (e.g.
-      jobs.Checks.steps[Seed workspace .venv] for YAML workflows) have zero
-      symbol coverage and nothing says so. Surface an explicit UNCHECKED
-      disposition and coverage counts in validation output so operators can see
-      what the validator is not seeing. Honest reporting only — no new
-      resolution logic.
-    depends_on: []
-    chunk_directory: null
-  - prompt: >-
-      Add an evidence-of-absence affordance and an operator-authorized deletion
-      disposition. (a) A ve query answering 'does this name (path or symbol)
-      exist anywhere I can see' across the workspace — field experience: an
-      absence search turned 18 lost-or-moved judgment calls into one operator
-      decision backed by fact. (b) The validate-fix skills' vocabulary says
-      'never delete a reference' with no blessed way to record that an operator
-      authorized a deletion; add a disposition that is neither fix nor silence,
-      recorded so a reviewer can see the grant. Together these make 'reference
-      to deliberately deleted code' a decidable, auditable case.
-    depends_on: []
-    chunk_directory: null
-  - prompt: >-
-      Build ve refactor move <old> <new>: rewrite every chunk frontmatter
-      reference (code_paths, code_references file parts) naming the old path,
-      with field-tested guards baked in from day one. Any basename-based
-      inference MUST require the immediate parent directory name to match
-      (documented near-misses: a unique basename match resolving
-      update-potential-savings/requirements.txt to a different package's
-      requirements.txt); prefer git rename detection (git log --follow,
-      --diff-filter=D shas) as reviewable evidence over inference; surface each
-      entry's implements: prose at every ambiguous decision point (it
-      out-performs name similarity for module→package splits); and 'no
-      successor found' is a distinct never-existed/reconstruct-or-drop
-      disposition — 8 field refs named symbols that never existed in code, and
-      an existence checker that says 'renamed or removed' sends the fixer
-      hunting for a rename that does not exist. Depends on the
-      evidence-of-absence affordance for that disposition.
-    depends_on: [7]
-    chunk_directory: null
-  - prompt: >-
-      Make reference-emitting generators verify what they write. The
-      subsystem-discovery flow wrote plausible-but-nonexistent class names into
-      subsystem OVERVIEWs (field case: inventing OriginationSimulator alongside
-      the real OriginationRiskAnalyzer in the same file) — a generator that
-      emits unverified symbol names manufactures exactly the debt the validator
-      then finds. Verify symbols at write time in /subsystem-discover output
-      paths, and have chunk completion check code_references existence before
-      landing (one field ref was stale at birth: referenced by the very commit
-      that deleted it).
-    depends_on: []
-    chunk_directory: null
-  - prompt: >-
-      Close the peer-pointer deletion trap in workspace-validate-fix guidance:
-      a cross-tree external.yaml pointer typically covers a chunk's public
-      surface, so treating 'this ref is covered by the pointer' as license to
-      delete a reference silently drops intent for private helpers (4 field
-      rows). Update the skill template
-      (src/templates/plugin/skills/workspace-validate-fix.md.jinja2) so pointer
-      coverage is never grounds for reference deletion, and say what to do
-      instead.
-    depends_on: []
-    chunk_directory: null
-created_after: ["intent_ownership"]
+- prompt: 'Bring ve workspace validate''s code-reference checking to parity with the
+    single-tree chunk→file check (src/integrity.py#IntegrityValidator::_validate_chunk_file_paths):
+    WorkspaceValidator.check_code_references (src/workspace_validation.py:790-858)
+    must accept directory entries (use .exists(), not .is_file() — ''this chunk governs
+    that package directory'' is legitimate; field evidence: 7 unfixable defects in
+    the Cloud Capital platform workspace for existing directories like packages/libs/env-config)
+    and must validate code_paths entries, which today rot invisibly in workspace mode.
+    The two validators must agree on semantics so agents can''t learn the wrong lesson
+    from either.'
+  depends_on: []
+  chunk_directory: crossref_workspace_parity
+- prompt: 'Fix the frontmatter defect line anchor in workspace validation: the reported
+    `line` for a broken code_references entry is currently the first textual occurrence
+    of the path in GOAL.md — usually the code_paths entry — so a fix loop that trusts
+    `line` edits the wrong entry, watches the anchor move to the real one, and reports
+    progress while the defect count holds (field report: cost a full validate pass
+    on a 4000-file workspace). Anchor the defect on the offending code_references
+    entry itself. This is a fix-loop correctness bug affecting /validate-fix and /workspace-validate-fix.'
+  depends_on:
+  - 0
+  chunk_directory: crossref_defect_line_anchor
+- prompt: 'Lift the 31-character artifact_id cap in ExternalArtifactRef (src/models/references.py):
+    ordinary descriptive artifact names like database_and_sagemaker_savings_plans
+    (36 chars) are currently unrepresentable, so external pointers to real, locally-present
+    artifacts resolve to nothing (3 field defects). Validate against real constraints
+    (identifier charset, path legality) rather than an arbitrary length. Check for
+    other length caps with the same origin while there.'
+  depends_on: []
+  chunk_directory: crossref_artifact_id_cap
+- prompt: 'Support glob patterns in chunk code_paths and code_references file parts
+    (e.g. packages/tasks/*/Dockerfile): validators expand the pattern and error only
+    when the expansion is empty, so ''this change applies uniformly across N packages''
+    is expressible without enumerating N paths that rot independently (field evidence:
+    5 unfixable defects where rewriting to ~20 concrete paths would be wrong and unmaintainable).
+    Applies to both IntegrityValidator._validate_chunk_file_paths and WorkspaceValidator.check_code_references.'
+  depends_on:
+  - 0
+  chunk_directory: crossref_glob_refs
+- prompt: Add a verified member-qualified reference form for intra-workspace cross-tree
+    references. Today workspace validation routes any ref whose file part contains
+    '::' to unverified with reason 'cross-repository targets are not resolved offline'
+    (src/workspace_validation.py ~line 810), so a path that genuinely lives in a sibling
+    tree of the same working copy (e.g. a chunk's CI gate now in the root tree's .github/workflows/)
+    can only be written in a form that silences the check while looking resolved.
+    Design a member::path form that resolves through the workspace manifest and IS
+    verified, kept distinct from repo-qualified org/repo refs which legitimately cannot
+    be checked offline. Read docs/chunks/federation_qualified_refs and the federation
+    cluster first; this chunk belongs to that initiative and must not fork its addressing
+    semantics.
+  depends_on:
+  - 0
+  - 3
+  chunk_directory: federation_member_refs
+- prompt: 'Treat a symbol name found only inside import/re-export statements or __all__
+    string lists as absent in symbol-existence checking (cheap AST check for Python
+    files). The current whole-word substring scan (_symbol_is_absent) lets a ''# noqa:
+    F401'' re-export make a name ''present'' while the definition lives in another
+    file — 7 confirmed silently-wrong refs in one package in field testing, and the
+    failure is biased: after a relocation, private helpers surface as defects while
+    their re-exported public siblings pass while pointing at the wrong file, so teams
+    systematically fix the safe half of the damage. Killing the re-export class is
+    the highest-value tier; full symbol resolution stays out of scope.'
+  depends_on:
+  - 0
+  chunk_directory: crossref_reexport_absence
+- prompt: 'Report non-identifier symbol anchors as UNCHECKED instead of silently passing:
+    _symbol_is_absent only checks anchors whose last ''::'' component passes str.isidentifier(),
+    so dotted/bracketed anchors (e.g. jobs.Checks.steps[Seed workspace .venv] for
+    YAML workflows) have zero symbol coverage and nothing says so. Surface an explicit
+    UNCHECKED disposition and coverage counts in validation output so operators can
+    see what the validator is not seeing. Honest reporting only — no new resolution
+    logic.'
+  depends_on:
+  - 5
+  chunk_directory: crossref_unchecked_anchors
+- prompt: 'Add an evidence-of-absence affordance and an operator-authorized deletion
+    disposition. (a) A ve query answering ''does this name (path or symbol) exist
+    anywhere I can see'' across the workspace — field experience: an absence search
+    turned 18 lost-or-moved judgment calls into one operator decision backed by fact.
+    (b) The validate-fix skills'' vocabulary says ''never delete a reference'' with
+    no blessed way to record that an operator authorized a deletion; add a disposition
+    that is neither fix nor silence, recorded so a reviewer can see the grant. Together
+    these make ''reference to deliberately deleted code'' a decidable, auditable case.'
+  depends_on: []
+  chunk_directory: crossref_absence_evidence
+- prompt: 'Build ve refactor move <old> <new>: rewrite every chunk frontmatter reference
+    (code_paths, code_references file parts) naming the old path, with field-tested
+    guards baked in from day one. Any basename-based inference MUST require the immediate
+    parent directory name to match (documented near-misses: a unique basename match
+    resolving update-potential-savings/requirements.txt to a different package''s
+    requirements.txt); prefer git rename detection (git log --follow, --diff-filter=D
+    shas) as reviewable evidence over inference; surface each entry''s implements:
+    prose at every ambiguous decision point (it out-performs name similarity for module→package
+    splits); and ''no successor found'' is a distinct never-existed/reconstruct-or-drop
+    disposition — 8 field refs named symbols that never existed in code, and an existence
+    checker that says ''renamed or removed'' sends the fixer hunting for a rename
+    that does not exist. Depends on the evidence-of-absence affordance for that disposition.'
+  depends_on:
+  - 7
+  chunk_directory: crossref_refactor_move
+- prompt: 'Make reference-emitting generators verify what they write. The subsystem-discovery
+    flow wrote plausible-but-nonexistent class names into subsystem OVERVIEWs (field
+    case: inventing OriginationSimulator alongside the real OriginationRiskAnalyzer
+    in the same file) — a generator that emits unverified symbol names manufactures
+    exactly the debt the validator then finds. Verify symbols at write time in /subsystem-discover
+    output paths, and have chunk completion check code_references existence before
+    landing (one field ref was stale at birth: referenced by the very commit that
+    deleted it).'
+  depends_on: []
+  chunk_directory: crossref_generator_verify
+- prompt: 'Close the peer-pointer deletion trap in workspace-validate-fix guidance:
+    a cross-tree external.yaml pointer typically covers a chunk''s public surface,
+    so treating ''this ref is covered by the pointer'' as license to delete a reference
+    silently drops intent for private helpers (4 field rows). Update the skill template
+    (src/templates/plugin/skills/workspace-validate-fix.md.jinja2) so pointer coverage
+    is never grounds for reference deletion, and say what to do instead.'
+  depends_on: []
+  chunk_directory: crossref_pointer_guard
+created_after:
+- intent_ownership
 ---
 
 ## Advances Trunk Goal
