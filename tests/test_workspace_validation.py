@@ -452,18 +452,33 @@ def test_cross_repo_pointer_is_unverified(tmp_path):
 # ---------------------------------------------------------------------------
 
 
-def code_ref_chunk(tree: pathlib.Path, name: str, ref: str) -> None:
-    """Create a chunk whose frontmatter carries one code reference."""
+def declared_paths_chunk(
+    tree: pathlib.Path,
+    name: str,
+    *,
+    status: str = "ACTIVE",
+    code_paths: tuple[str, ...] = (),
+    code_references: tuple[str, ...] = (),
+) -> None:
+    """Create a chunk declaring code_paths and/or code_references entries."""
     directory = tree / "docs" / "chunks" / name
     directory.mkdir(parents=True, exist_ok=True)
-    (directory / "GOAL.md").write_text(
-        "---\n"
-        "status: ACTIVE\n"
-        "code_references:\n"
-        f"  - ref: {ref}\n"
-        '    implements: "the thing"\n'
-        "---\n\n# Goal\n"
-    )
+    lines = ["---", f"status: {status}"]
+    if code_paths:
+        lines.append("code_paths:")
+        lines.extend(f"  - {path}" for path in code_paths)
+    if code_references:
+        lines.append("code_references:")
+        for ref in code_references:
+            lines.append(f"  - ref: {ref}")
+            lines.append('    implements: "the thing"')
+    lines.extend(["---", "", "# Goal"])
+    (directory / "GOAL.md").write_text("".join(f"{line}\n" for line in lines))
+
+
+def code_ref_chunk(tree: pathlib.Path, name: str, ref: str) -> None:
+    """Create a chunk whose frontmatter carries one code reference."""
+    declared_paths_chunk(tree, name, code_references=(ref,))
 
 
 def test_code_reference_to_a_missing_file_is_unresolvable_frontmatter(tmp_path):
@@ -543,6 +558,155 @@ def test_subsystem_code_references_are_validated(tmp_path):
 
     (defect,) = of_class(report, FixClass.UNRESOLVABLE_FRONTMATTER)
     assert defect.path == "packages/lib/docs/subsystems/baseline/OVERVIEW.md"
+
+
+# ---------------------------------------------------------------------------
+# Single-tree parity: directories, code_paths, chunk-status gating
+# # Chunk: docs/chunks/crossref_workspace_parity - Workspace/single-tree semantics agree
+# ---------------------------------------------------------------------------
+
+
+def test_code_reference_to_an_existing_directory_is_clean(tmp_path):
+    """'This chunk governs that package directory' is a legitimate reference."""
+    make_workspace(tmp_path, {"lib": "packages/lib"})
+    lib = tmp_path / "packages" / "lib"
+    (lib / "src" / "env-config").mkdir(parents=True)
+    code_ref_chunk(lib, "widget", "src/env-config")
+
+    report = validate(tmp_path)
+
+    assert report.defects == ()
+
+
+def test_code_reference_to_a_missing_directory_still_defects(tmp_path):
+    """The exists() swap must not weaken detection of genuinely absent paths."""
+    make_workspace(tmp_path, {"lib": "packages/lib"})
+    code_ref_chunk(tmp_path / "packages" / "lib", "widget", "src/gone-dir")
+
+    report = validate(tmp_path)
+
+    (defect,) = of_class(report, FixClass.UNRESOLVABLE_FRONTMATTER)
+    assert defect.reference == "src/gone-dir"
+
+
+def test_symbol_anchor_on_a_directory_target_is_skipped(tmp_path):
+    """A symbol cannot be looked up in a directory; the anchor is not a defect."""
+    make_workspace(tmp_path, {"lib": "packages/lib"})
+    lib = tmp_path / "packages" / "lib"
+    (lib / "src" / "pkg").mkdir(parents=True)
+    code_ref_chunk(lib, "widget", "src/pkg#Widget")
+
+    report = validate(tmp_path)
+
+    assert report.defects == ()
+
+
+def test_stale_code_paths_entry_is_unresolvable_frontmatter(tmp_path):
+    """code_paths must not rot invisibly in workspace mode."""
+    make_workspace(tmp_path, {"lib": "packages/lib"})
+    declared_paths_chunk(
+        tmp_path / "packages" / "lib", "widget", code_paths=("src/gone.py",)
+    )
+
+    report = validate(tmp_path)
+
+    (defect,) = of_class(report, FixClass.UNRESOLVABLE_FRONTMATTER)
+    assert defect.path == "packages/lib/docs/chunks/widget/GOAL.md"
+    assert defect.reference == "src/gone.py"
+    assert "code_paths" in defect.message
+
+
+def test_code_paths_entry_naming_an_existing_directory_is_clean(tmp_path):
+    make_workspace(tmp_path, {"lib": "packages/lib"})
+    lib = tmp_path / "packages" / "lib"
+    (lib / "src" / "env-config").mkdir(parents=True)
+    declared_paths_chunk(lib, "widget", code_paths=("src/env-config",))
+
+    report = validate(tmp_path)
+
+    assert report.defects == ()
+
+
+def test_chunk_with_only_code_paths_is_still_scanned(tmp_path):
+    """An empty code_references list must not short-circuit code_paths checking."""
+    make_workspace(tmp_path, {"lib": "packages/lib"})
+    lib = tmp_path / "packages" / "lib"
+    source(lib / "src" / "widget.py", "class Widget:", "    pass")
+    declared_paths_chunk(lib, "widget", code_paths=("src/widget.py",))
+
+    report = validate(tmp_path)
+
+    assert report.defects == ()
+    assert report.artifacts_scanned == 1
+
+
+def test_qualified_code_paths_entry_is_unverified(tmp_path):
+    """code_paths entries get the same qualified-reference routing as code_references."""
+    make_workspace(tmp_path, {"lib": "packages/lib"})
+    declared_paths_chunk(
+        tmp_path / "packages" / "lib", "widget", code_paths=("acme/hub::src/w.py",)
+    )
+
+    report = validate(tmp_path)
+
+    assert report.defects == ()
+    (unverified,) = report.unverified
+    assert unverified.reference == "acme/hub::src/w.py"
+
+
+@pytest.mark.parametrize("status", ["FUTURE", "IMPLEMENTING", "HISTORICAL", "SUPERSEDED"])
+def test_non_owning_chunk_statuses_are_exempt_from_path_checks(tmp_path, status):
+    """Parity with the single-tree check: FUTURE/IMPLEMENTING chunks list files
+    they expect to create, and HISTORICAL/SUPERSEDED chunks keep archaeological
+    references. Only ACTIVE/COMPOSITE chunks are held to on-disk existence."""
+    make_workspace(tmp_path, {"lib": "packages/lib"})
+    declared_paths_chunk(
+        tmp_path / "packages" / "lib",
+        "widget",
+        status=status,
+        code_paths=("src/gone.py",),
+        code_references=("src/also_gone.py#Widget",),
+    )
+
+    report = validate(tmp_path)
+
+    assert report.defects == ()
+
+
+def test_composite_chunk_paths_are_checked(tmp_path):
+    """COMPOSITE shares intent ownership, so its declared paths are held to disk."""
+    make_workspace(tmp_path, {"lib": "packages/lib"})
+    declared_paths_chunk(
+        tmp_path / "packages" / "lib",
+        "widget",
+        status="COMPOSITE",
+        code_paths=("src/gone.py",),
+    )
+
+    report = validate(tmp_path)
+
+    (defect,) = of_class(report, FixClass.UNRESOLVABLE_FRONTMATTER)
+    assert defect.reference == "src/gone.py"
+
+
+def test_subsystem_code_references_are_checked_regardless_of_status(tmp_path):
+    """Subsystem refs document living patterns; no status exemption applies."""
+    make_workspace(tmp_path, {"lib": "packages/lib"})
+    directory = tmp_path / "packages" / "lib" / "docs" / "subsystems" / "baseline"
+    directory.mkdir(parents=True)
+    (directory / "OVERVIEW.md").write_text(
+        "---\n"
+        "status: REFACTORING\n"
+        "code_references:\n"
+        "  - ref: src/gone.py\n"
+        '    implements: "the pattern"\n'
+        "---\n\n# Baseline\n"
+    )
+
+    report = validate(tmp_path)
+
+    (defect,) = of_class(report, FixClass.UNRESOLVABLE_FRONTMATTER)
+    assert defect.reference == "src/gone.py"
 
 
 # ---------------------------------------------------------------------------

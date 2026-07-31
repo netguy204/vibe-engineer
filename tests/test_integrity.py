@@ -895,6 +895,25 @@ class TestIntegrityValidatorFilePaths:
         _, errors = self._file_path_errors(temp_project)
         assert errors == []
 
+    # Chunk: docs/chunks/crossref_workspace_parity - Directory semantics workspace mode matches
+    def test_directory_code_reference_exists_clean(self, temp_project):
+        """A code_references file part naming an existing directory is valid.
+
+        This is the semantics `ve workspace validate` is aligned with:
+        'this chunk governs that package directory' is legitimate.
+        """
+        make_ve_initialized_git_repo(temp_project)
+        (temp_project / "src").mkdir()
+        self._make_chunk(
+            temp_project,
+            "dir_ref",
+            status="ACTIVE",
+            code_references=[{"ref": "src"}],
+        )
+
+        _, errors = self._file_path_errors(temp_project)
+        assert errors == []
+
     @pytest.mark.parametrize(
         "status", ["IMPLEMENTING", "FUTURE", "HISTORICAL", "SUPERSEDED"]
     )

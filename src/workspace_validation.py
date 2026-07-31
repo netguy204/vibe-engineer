@@ -80,7 +80,7 @@ from external_refs import (
 )
 from external_resolve import resolve_peer_pointer
 from frontmatter import parse_frontmatter
-from models import ArtifactType, ChunkFrontmatter, SubsystemFrontmatter
+from models import ArtifactType, ChunkFrontmatter, ChunkStatus, SubsystemFrontmatter
 from project import find_enclosing_tree as find_governing_tree
 from source_files import enumerate_source_files
 from task import TaskChunkError
@@ -787,57 +787,94 @@ class _Validator:
                 member=member,
             )
 
+    # Chunk: docs/chunks/crossref_workspace_parity - Directory targets, code_paths, status gating
     def check_code_references(
         self, member: str, artifact_type: ArtifactType, artifact_dir: Path
     ) -> None:
-        """Validate `code_references` in one artifact's frontmatter."""
+        """Validate `code_paths` and `code_references` in one artifact's frontmatter.
+
+        Path-existence semantics deliberately mirror the single-tree check
+        (``integrity.IntegrityValidator._validate_chunk_file_paths``) so the
+        two validators cannot teach contradictory lessons:
+
+        - ``Path.exists()``, not ``is_file()`` — "this chunk governs that
+          package directory" is a legitimate reference.
+        - Both declared-path fields are checked; ``code_paths`` must not rot
+          invisibly in workspace mode.
+        - Chunks are checked only in ACTIVE/COMPOSITE status. FUTURE and
+          IMPLEMENTING chunks legitimately list files they expect to create,
+          and HISTORICAL/SUPERSEDED chunks keep archaeological references to
+          code that may be gone.
+
+        Symbol-anchor checking is a workspace-mode extra on top of that shared
+        contract, and applies only to file targets — a symbol cannot be looked
+        up in a directory.
+        """
         model = _FRONTMATTER_MODELS.get(artifact_type)
         if model is None:
             return
         main_file = artifact_dir / ARTIFACT_MAIN_FILE[artifact_type]
         frontmatter = parse_frontmatter(main_file, model)
-        if frontmatter is None or not frontmatter.code_references:
+        if frontmatter is None:
+            return
+        # Subsystems carry no code_paths field; chunks carry both.
+        code_paths: list[str] = getattr(frontmatter, "code_paths", []) or []
+        if not frontmatter.code_references and not code_paths:
+            return
+        if artifact_type is ArtifactType.CHUNK and frontmatter.status not in (
+            ChunkStatus.ACTIVE,
+            ChunkStatus.COMPOSITE,
+        ):
             return
 
         content = main_file.read_text()
         rel_path = self.relative(main_file)
         member_root = self.member_indexes[member].root
 
-        for symbolic in frontmatter.code_references:
-            ref = symbolic.ref
-            line = _find_line(content, ref)
+        def resolve_path(reference: str, file_part: str, field_name: str) -> Path | None:
+            """Shared path resolution for both declared-path fields.
 
-            if "::" in ref.split("#")[0]:
+            Returns the existing target path, or None after recording the
+            unverified/defect disposition — so both fields get identical
+            qualified-reference routing and existence semantics.
+            """
+            if "::" in file_part:
                 self.unverified.append(
                     UnverifiedReference(
                         path=rel_path,
-                        line=line,
-                        reference=ref,
+                        line=_find_line(content, reference),
+                        reference=reference,
                         reason=(
                             "code reference is qualified with another repository; "
                             "cross-repository targets are not resolved offline"
                         ),
                     )
                 )
-                continue
-
-            file_part, _, symbol_path = ref.partition("#")
+                return None
             target = member_root / file_part
-            if not target.is_file():
+            if not target.exists():
                 self.report_defect(
                     fix_class=FixClass.UNRESOLVABLE_FRONTMATTER,
                     path=rel_path,
-                    line=line,
-                    reference=ref,
+                    line=_find_line(content, reference),
+                    reference=reference,
                     message=(
-                        f"code_references entry points at '{file_part}', which does "
+                        f"{field_name} entry points at '{file_part}', which does "
                         f"not exist in tree '{member}'"
                     ),
                     member=member,
                 )
-                continue
+                return None
+            return target
 
-            if not symbol_path:
+        for path in code_paths:
+            resolve_path(path, path, "code_paths")
+
+        for symbolic in frontmatter.code_references:
+            ref = symbolic.ref
+            file_part, _, symbol_path = ref.partition("#")
+            target = resolve_path(ref, file_part, "code_references")
+            if target is None or not symbol_path or not target.is_file():
                 continue
             try:
                 target_content = target.read_text()
@@ -848,7 +885,7 @@ class _Validator:
                 self.report_defect(
                     fix_class=FixClass.UNRESOLVABLE_FRONTMATTER,
                     path=rel_path,
-                    line=line,
+                    line=_find_line(content, ref),
                     reference=ref,
                     message=(
                         f"'{file_part}' exists but the name '{missing}' appears "

@@ -1,179 +1,146 @@
 
 
-<!--
-This document captures HOW you'll achieve the chunk's GOAL.
-It should be specific enough that each step is a reasonable unit of work
-to hand to an agent.
--->
-
 # Implementation Plan
 
 ## Approach
 
-<!--
-How will you build this? Describe the strategy at a high level.
-What patterns or techniques will you use?
-What existing code will you build on?
+Two validators check chunk-declared file references today, and they disagree:
 
-Reference docs/trunk/DECISIONS.md entries where relevant.
-If this approach represents a new significant decision, ask the user
-if we should add it to DECISIONS.md and reference it here.
+- Single-tree: `src/integrity.py#IntegrityValidator::_validate_chunk_file_paths`
+  checks **both** `code_paths` and `code_references` file parts with
+  `Path.exists()` (directories accepted), gated on chunk status
+  ACTIVE/COMPOSITE (FUTURE/IMPLEMENTING legitimately list files they expect to
+  create; HISTORICAL/SUPERSEDED keep archaeological references).
+- Workspace: `src/workspace_validation.py#_Validator::check_code_references`
+  checks **only** `code_references`, with `Path.is_file()` (directories
+  rejected — the 7 unfixable Cloud Capital defects), and with **no status
+  gating** (so a HISTORICAL chunk's archaeological refs would defect in
+  workspace mode but pass single-tree).
 
-Always include tests in your implementation plan and adhere to
-docs/trunk/TESTING_PHILOSOPHY.md in your planning.
+The fix brings the workspace side to the single-tree semantics, changing only
+`check_code_references`:
 
-Remember to update code_paths in the chunk's GOAL.md (e.g., docs/chunks/crossref_workspace_parity/GOAL.md)
-with references to the files that you expect to touch.
--->
+1. **Directory acceptance**: replace `target.is_file()` with
+   `target.exists()`. When the target exists but is not a file (a directory),
+   skip the symbol-anchor check — a symbol cannot be looked up in a
+   directory, and the single-tree check never inspects symbols at all.
+2. **`code_paths` validation**: chunks (`ChunkFrontmatter`) carry
+   `code_paths`; subsystems (`SubsystemFrontmatter`) do not. Check each
+   `code_paths` entry through the same path-resolution logic as a
+   `code_references` file part (same `::`-qualified → unverified routing,
+   same `.exists()` test, same `UNRESOLVABLE_FRONTMATTER` fix class), so
+   the two fields cannot drift semantically inside the workspace validator
+   either.
+3. **Status gating for chunks**: when the artifact is a chunk, skip the
+   check unless status is ACTIVE or COMPOSITE — mirroring
+   `_validate_chunk_file_paths` and its rationale verbatim. Subsystem
+   references stay checked for every subsystem status: single-tree has no
+   competing subsystem file check, so there is no disagreement to
+   reconcile, and subsystem `code_references` document living patterns
+   regardless of documentation status.
 
-## Subsystem Considerations
+No change is needed on the single-tree side: it already accepts directories
+and already checks `code_paths`. Symbol checking remains a workspace-only
+extra (later narrative chunks — `crossref_reexport_absence`,
+`crossref_unchecked_anchors` — refine it); "parity" here is about which
+declared paths are checked and what counts as existing.
 
-<!--
-Before designing your implementation, check docs/subsystems/ for relevant
-cross-cutting patterns.
-
-QUESTIONS TO CONSIDER:
-- Does this chunk touch any existing subsystem's scope?
-- Will this chunk implement part of a subsystem (contribute code) or use it
-  (depend on it)?
-- Did you discover code during exploration that should be part of a subsystem
-  but doesn't follow its patterns?
-
-If no subsystems are relevant, delete this section.
-
-WHEN SUBSYSTEMS ARE RELEVANT:
-List each relevant subsystem with its status and your relationship:
-- **docs/subsystems/validation** (DOCUMENTED): This chunk USES the validation
-  subsystem to check input
-- **docs/subsystems/error_handling** (REFACTORING): This chunk IMPLEMENTS a
-  new error type following the subsystem's patterns
-
-HOW SUBSYSTEM STATUS AFFECTS YOUR WORK:
-
-DOCUMENTED subsystems: The subsystem's patterns are captured but deviations are not
-being actively fixed. If you discover code that deviates from the subsystem's
-patterns, add it to the subsystem's Known Deviations section. Do NOT prioritize
-fixing those deviations—your chunk has its own goals.
-
-REFACTORING subsystems: The subsystem is being actively consolidated. If your chunk
-work touches code that deviates from the subsystem's patterns, attempt to bring it
-into compliance as part of your work. This is "opportunistic improvement"—improve
-what you touch, but don't expand scope to fix unrelated deviations.
-
-WHEN YOU DISCOVER DEVIATING CODE:
-- Add it to the subsystem's Known Deviations section
-- Note whether you will address it (REFACTORING status + relevant to your work)
-  or leave it for future work (DOCUMENTED status or outside your chunk's scope)
-
-Example:
-- **Discovered deviation**: src/legacy/parser.py#validate_input does its own
-  validation instead of using the validation subsystem
-  - Added to docs/subsystems/validation Known Deviations
-  - Action: Will not address (subsystem is DOCUMENTED; deviation outside chunk scope)
--->
+Testing follows docs/trunk/TESTING_PHILOSOPHY.md: behavior-level tests
+through `validate_workspace`, using the existing tmp-path workspace fixtures
+in tests/test_workspace_validation.py. One single-tree test is added to
+tests/test_integrity.py pinning the directory-acceptance semantics the
+workspace side is being aligned to, so the parity contract is stated on both
+sides.
 
 ## Sequence
 
-<!--
-Ordered steps to implement this chunk. Each step should be:
-- Small enough to reason about in isolation
-- Large enough to be meaningful
-- Clear about its inputs and outputs
+### Step 1: Restructure `check_code_references` around a shared path check
 
-This sequence is your contract with yourself (and with agents).
-Work through it in order. Don't skip ahead.
+In `src/workspace_validation.py`:
 
-Example:
+- Parse frontmatter as today; return early only when frontmatter is None or
+  when *both* `code_references` and `code_paths` (via
+  `getattr(frontmatter, "code_paths", [])`) are empty.
+- For chunk artifacts, return early unless
+  `frontmatter.status in (ChunkStatus.ACTIVE, ChunkStatus.COMPOSITE)`,
+  with a comment citing the single-tree rationale (import `ChunkStatus`
+  from `models`).
+- Extract a small local helper (closure or method) that, given a reference
+  string, a field name, and the file part, performs: qualified (`::`) →
+  append `UnverifiedReference`; `not (member_root / file_part).exists()` →
+  `UNRESOLVABLE_FRONTMATTER` defect. The defect message names the field
+  (`code_paths` / `code_references`) so fix loops know which frontmatter
+  entry to edit.
+- `code_paths` entries run through the helper with the whole entry as the
+  file part (no `#` splitting — the field is plain paths).
+- `code_references` entries run through the helper, then keep the existing
+  symbol-absence check, additionally guarded by `target.is_file()` so a
+  directory target skips symbol lookup explicitly rather than via the
+  `IsADirectoryError`-is-an-`OSError` accident.
+- Add chunk backreference comments for this chunk at the method level.
 
-### Step 1: Define the SegmentHeader struct
+### Step 2: Workspace tests
 
-Create the struct that represents a segment's header with fields for:
-- magic number (4 bytes)
-- version (2 bytes)
-- segment_id (8 bytes)
-- message_count (4 bytes)
-- checksum (4 bytes)
+In `tests/test_workspace_validation.py` (extend the existing
+"Frontmatter code_references" section; add a `code_paths` helper mirroring
+`code_ref_chunk`):
 
-Location: src/segment/format.rs
+- code_references entry naming an existing **directory** → clean (the Cloud
+  Capital `packages/libs/env-config` case).
+- code_references entry naming a missing path still defects (regression
+  guard on the `.exists()` swap).
+- directory target with a `#symbol` anchor → clean, symbol check skipped.
+- chunk `code_paths` entry naming a missing file → `UNRESOLVABLE_FRONTMATTER`
+  defect whose message says `code_paths` (the rot-invisibly gap).
+- chunk `code_paths` entry naming an existing directory → clean.
+- chunk with `code_paths` but empty `code_references` is still scanned
+  (guards the early-return restructure).
+- HISTORICAL chunk with a stale `code_references`/`code_paths` entry → clean
+  (status-gating parity); FUTURE chunk likewise.
+- subsystem stale `code_references` still defects regardless of subsystem
+  status (subsystem scope unchanged).
 
-### Step 2: Implement header serialization
+### Step 3: Single-tree parity pin
 
-Add `to_bytes()` and `from_bytes()` methods to SegmentHeader.
-Use little-endian encoding per SPEC.md Section 3.1.
+In `tests/test_integrity.py`, add a test asserting an ACTIVE chunk whose
+`code_paths`/`code_references` entry names an existing **directory** passes
+`_validate_chunk_file_paths` — the semantics workspace mode now agrees with.
 
-### Step 3: ...
+### Step 4: Full validation
 
----
-
-**BACKREFERENCE COMMENTS**
-
-When implementing code, add backreference comments to help future agents trace
-code back to its governing documentation.
-
-**Valid backreference types:**
-- `# Subsystem: docs/subsystems/<name>` - For architectural patterns
-- `# Chunk: docs/chunks/<name>` - For implementation work
-
-Place comments at the appropriate level:
-- **Module-level**: If this code implements the subsystem/chunk's core functionality
-- **Class-level**: If this class is part of the pattern
-- **Method-level**: If this method implements a specific behavior
-
-Format (place immediately before the symbol):
-```
-# Subsystem: docs/subsystems/workflow_artifacts - Workflow artifact manager pattern
-# Chunk: docs/chunks/auth_refactor - Authentication system redesign
-```
-
-Do NOT add narrative backreferences. Narratives decompose into chunks; reference
-the implementing chunk instead.
-
-**Task context note**: In multi-project tasks, always use local paths (e.g.,
-`docs/chunks/chunk_name`) for chunk backreferences, not paths to the external
-artifact repo. Each project has `external.yaml` pointers that resolve to the
-actual chunk content.
--->
+- `uv run pytest tests/` — full suite.
+- `uv run ve validate` — clean.
+- Update this chunk's GOAL.md `code_paths` (planning-time) and, after
+  implementation, `code_references`.
 
 ## Dependencies
 
-<!--
-What must exist before this chunk can be implemented?
-- Other chunks that must be complete
-- External libraries to add
-- Infrastructure or configuration
-
-If there are no dependencies, delete this section.
--->
+None. `crossref_defect_line_anchor`, `crossref_glob_refs`, and
+`federation_member_refs` depend on this chunk landing first (narrative
+prompts 1, 3, 4), which is a reason to keep the restructure in Step 1 small
+and legible — those chunks will edit the same method.
 
 ## Risks and Open Questions
 
-<!--
-What might go wrong? What are you unsure about?
-Being explicit about uncertainty helps you (and agents) know where to
-be careful and when to stop and ask questions.
-
-Example:
-- fsync behavior may differ across filesystems; need to verify on ext4 and APFS
-- Unclear whether concurrent reads during write are safe; may need mutex
-- Performance target is aggressive; may need to iterate on buffer sizes
--->
+- **Status gating is a behavior change beyond the two named fixes**: a
+  workspace containing HISTORICAL/FUTURE chunks with stale refs stops
+  defecting on them. This is exactly what "the two validators must agree on
+  semantics" requires — single-tree deliberately exempts those statuses —
+  but it will change defect counts on existing workspaces (downward, on
+  legitimate grounds).
+- Directory-with-symbol-anchor (`pkg/dir#Symbol`) is accepted silently.
+  A later narrative chunk (`crossref_unchecked_anchors`) introduces the
+  UNCHECKED disposition that would make this visible; inventing a partial
+  version here would fork that design.
+- `parse_frontmatter` failures (returns None) keep today's silent-skip
+  behavior; changing that is out of scope.
 
 ## Deviations
 
-<!--
-POPULATE DURING IMPLEMENTATION, not at planning time.
-
-When reality diverges from the plan, document it here:
-- What changed?
-- Why?
-- What was the impact?
-
-Minor deviations (renamed a function, used a different helper) don't need
-documentation. Significant deviations (changed the approach, skipped a step,
-added steps) do.
-
-Example:
-- Step 4: Originally planned to use std::fs::rename for atomic swap.
-  Testing revealed this isn't atomic across filesystems. Changed to
-  write-fsync-rename-fsync sequence per platform best practices.
--->
+- Step 3: tests/test_integrity.py already pinned directory acceptance for
+  `code_paths` (`test_directory_code_path_exists_clean`, from
+  crossref_rename_integrity), so only the `code_references`-file-part
+  directory pin was added (`test_directory_code_reference_exists_clean`).
+- Step 1: the shared helper became a closure (`resolve_path`) returning the
+  existing target path (or None after recording the disposition), which let
+  the symbol check reuse its result instead of re-resolving.
