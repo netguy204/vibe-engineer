@@ -92,6 +92,8 @@ class IntegrityResult:
     chunk_backrefs_found: int = 0
     subsystem_backrefs_found: int = 0
     external_chunks_skipped: int = 0
+    # Chunk: docs/chunks/validation_backref_allowlist - Suppression is reported, not silent
+    backrefs_suppressed: int = 0
 
 
 # Chunk: docs/chunks/integrity_validate - Core integrity validator class
@@ -112,6 +114,10 @@ class IntegrityValidator:
             from project import Project
             project = Project(self.project_dir)
         self._project = project
+        # Chunk: docs/chunks/validation_backref_allowlist - Declared non-reference paths
+        from template_system import load_ve_config
+
+        self.ve_config = load_ve_config(self.project_dir)
         # Access managers via project properties
         self.chunks = self._project.chunks
         self.narratives = self._project.narratives
@@ -331,14 +337,21 @@ class IntegrityValidator:
         backref_errors, backref_warnings, files_count, chunk_refs, subsystem_refs = (
             self._validate_code_backreferences()
         )
+        # Chunk: docs/chunks/validation_backref_allowlist - Suppress declared non-references
+        backref_errors, backref_warnings, stale_entries, suppressed = (
+            self._apply_backreference_allowlist(backref_errors, backref_warnings)
+        )
         errors.extend(backref_errors)
         warnings.extend(backref_warnings)
+        warnings.extend(stale_entries)
+        backrefs_suppressed = suppressed
         files_scanned = files_count
         chunk_backrefs_found = chunk_refs
         subsystem_backrefs_found = subsystem_refs
 
         return IntegrityResult(
             success=len(errors) == 0,
+            backrefs_suppressed=backrefs_suppressed,
             errors=errors,
             warnings=warnings,
             chunks_scanned=chunks_scanned,
@@ -639,6 +652,67 @@ class IntegrityValidator:
     # Chunk: docs/chunks/integrity_bidirectional - Extended with code↔chunk bidirectional warnings
     # Chunk: docs/chunks/backref_language_agnostic - Language-agnostic source file enumeration
     # Chunk: docs/chunks/federation_qualified_refs - Single-tree checks apply to bare refs only
+    # Chunk: docs/chunks/validation_backref_allowlist - Suppression is a separate pass
+    def _apply_backreference_allowlist(
+        self,
+        errors: list[IntegrityError],
+        warnings: list[IntegrityWarning],
+    ) -> tuple[list[IntegrityError], list[IntegrityWarning], list[IntegrityWarning], int]:
+        """Drop findings from declared non-reference paths.
+
+        A filter over completed findings rather than a branch inside the scan:
+        the scanner keeps reporting everything it sees, and suppression is one
+        reviewable step that can be tested on its own.
+
+        An entry that suppressed nothing comes back as a warning. That is the
+        whole reason this is not a bare list of globs — a suppression outliving
+        its cause is a defect waiting to be hidden, and the only way it stays
+        visible is if the validator says so unprompted.
+
+        Returns:
+            (kept_errors, kept_warnings, stale_entry_warnings, suppressed_count)
+        """
+        entries = self.ve_config.ignore_backreferences
+        if not entries:
+            return errors, warnings, [], 0
+
+        used: set[str] = set()
+
+        def covered(source: str) -> bool:
+            # source is "path:line"; the path may itself contain no colon on
+            # any platform VE supports, so rsplit is safe and cheap.
+            path = source.rsplit(":", 1)[0]
+            hit = False
+            for entry in entries:
+                if entry.matches(path):
+                    used.add(entry.path)
+                    hit = True
+            return hit
+
+        kept_errors = [e for e in errors if not covered(e.source)]
+        kept_warnings = [w for w in warnings if not covered(w.source)]
+        suppressed = (len(errors) - len(kept_errors)) + (
+            len(warnings) - len(kept_warnings)
+        )
+
+        stale = [
+            IntegrityWarning(
+                source=".ve-config.yaml",
+                target=entry.path,
+                link_type="allowlist→unused",
+                message=(
+                    f"validation.ignore_backreferences entry '{entry.path}' "
+                    f"suppressed nothing ({entry.reason}). Remove it, or correct "
+                    "the path — an entry that matches nothing today will hide a "
+                    "real reference the day something moves into its path."
+                ),
+            )
+            for entry in entries
+            if entry.path not in used
+        ]
+
+        return kept_errors, kept_warnings, stale, suppressed
+
     def _validate_code_backreferences(
         self,
     ) -> tuple[list[IntegrityError], list[IntegrityWarning], int, int, int]:

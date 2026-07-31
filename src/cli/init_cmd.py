@@ -90,6 +90,16 @@ def validate(project_dir, verbose, strict):
         click.echo(f"{prefix}: [{warning.link_type}] {warning.source} -> {warning.target}", err=True)
         click.echo(f"       {warning.message}", err=True)
 
+    # Chunk: docs/chunks/validation_backref_allowlist - Suppression is stated on every run
+    # Printed outside the verbose block on purpose: a reader deciding whether a
+    # clean run means anything has to know findings were withheld, and a count
+    # only visible under -v is a count nobody sees.
+    if result.backrefs_suppressed:
+        click.echo(
+            f"Suppressed {result.backrefs_suppressed} backreference finding(s) via "
+            "validation.ignore_backreferences in .ve-config.yaml"
+        )
+
     # Summary
     error_count = len(result.errors)
     warning_count = len(result.warnings)

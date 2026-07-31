@@ -117,6 +117,51 @@ Command documentation and updates travel with the plugin (`/plugin update vibe-e
 
 <!-- VE:MANAGED:END -->
 
+## Validation Must Be Clean
+
+`uv run ve validate` exits zero. Treat any failure as a real signal, and leave
+it clean when you finish — a validator carrying known-benign failures teaches
+everyone to skip it, and a gate nobody reads is not a gate.
+
+When it fails, classify every finding before fixing anything. There are exactly
+two kinds:
+
+**A real problem — fix it.** The reference names an artifact that does not
+exist, or names it wrongly. Most often a rename left a reference behind, or an
+artifact was deleted while its backreferences stayed. Correct the reference, or
+restore the artifact. Never silence one of these.
+
+**A false alarm — allowlist it.** The scanner is deliberately
+language-agnostic, so it reads a `# Chunk: ...` inside a string literal exactly
+as it reads one in a comment. Test fixtures that write sample source into temp
+files, archived investigation prototypes quoting a retired naming scheme, and
+documentation showing the syntax are all reference-shaped text that is not a
+reference. Declare the path in `.ve-config.yaml`:
+
+```yaml
+validation:
+  ignore_backreferences:
+    - path: "tests/test_something.py"
+      reason: >-
+        Why this path holds reference-shaped text that is not a reference.
+```
+
+The `reason` is required and is not decoration: a suppression that does not say
+why it exists cannot be reviewed later. Keep the glob tight — `*` does not
+cross a directory boundary, and widening one to cover a whole subtree is how an
+allowlist starts hiding defects nobody chose to hide.
+
+Prefer fixing the text over suppressing the path when you can. A single
+illustrative reference in a docstring is better written `docs/chunks/<id>`,
+which cannot match, than covered by an allowlist entry that also blinds the
+file's real references.
+
+`ve validate` reports how many findings it suppressed, and reports any
+allowlist entry that has stopped suppressing anything. Both are signals: the
+first tells a reader the clean run was partial, and the second means an entry
+has outlived its cause and should be removed before something real moves into
+its path.
+
 ## Development
 
 This project uses UV for package management. Run tests with `uv run pytest tests/`.
