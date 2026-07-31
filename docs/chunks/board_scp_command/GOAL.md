@@ -9,9 +9,13 @@ code_paths:
 - tests/test_board_storage.py
 code_references:
 - ref: src/board/storage.py#collect_board_files
-  implements: "Discovers board.toml and swarm key material for SCP transfer"
+  implements: Discovers board.toml and swarm key material for SCP transfer
 - ref: src/cli/board.py#scp_cmd
-  implements: "CLI command that SCPs board config and keys to a remote host"
+  implements: CLI command that SCPs board config and keys to a remote host
+- ref: tests/test_board_cli.py
+  implements: Board SCP command
+- ref: tests/test_board_storage.py
+  implements: Board SCP command
 narrative: null
 investigation: null
 subsystems: []
@@ -22,7 +26,6 @@ created_after:
 - leader_board_hibernate_watch
 - readme_orch_steward_docs
 ---
-
 # Chunk Goal
 
 ## Minor Goal

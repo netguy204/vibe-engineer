@@ -5,13 +5,22 @@ parent_chunk: null
 code_paths:
 - src/orchestrator/git_utils.py
 - src/orchestrator/daemon.py
+- tests/test_orchestrator_cli_core.py
+- tests/test_orchestrator_daemon.py
+- tests/test_orchestrator_git_utils.py
 code_references:
-  - ref: src/orchestrator/git_utils.py#repo_has_commits
-    implements: "Check whether a git repo has any commits"
-  - ref: src/orchestrator/git_utils.py#get_current_branch
-    implements: "Improved error message for empty repo case"
-  - ref: src/orchestrator/daemon.py#start_daemon
-    implements: "Early guard against empty repos before daemon fork"
+- ref: src/orchestrator/git_utils.py#repo_has_commits
+  implements: Check whether a git repo has any commits
+- ref: src/orchestrator/git_utils.py#get_current_branch
+  implements: Improved error message for empty repo case
+- ref: src/orchestrator/daemon.py#start_daemon
+  implements: Early guard against empty repos before daemon fork
+- ref: tests/test_orchestrator_cli_core.py
+  implements: Empty repo detection
+- ref: tests/test_orchestrator_daemon.py
+  implements: Empty repo detection
+- ref: tests/test_orchestrator_git_utils.py
+  implements: Empty repo detection
 narrative: null
 investigation: null
 subsystems: []
@@ -26,7 +35,6 @@ created_after:
 - entity_touch_command
 - orch_retry_single
 ---
-
 # Chunk Goal
 
 ## Minor Goal

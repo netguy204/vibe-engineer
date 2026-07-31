@@ -3,13 +3,25 @@ status: ACTIVE
 ticket: null
 parent_chunk: null
 code_paths:
-  - src/entity_decay.py
-  - src/models/entity.py
-  - src/entity_shutdown.py
-  - src/entities.py
-  - tests/test_entity_decay.py
-  - tests/test_entity_decay_integration.py
-code_references: []
+- src/entity_decay.py
+- src/models/entity.py
+- src/entity_shutdown.py
+- src/entities.py
+- tests/test_entity_decay.py
+- tests/test_entity_decay_integration.py
+code_references:
+- ref: src/entities.py
+  implements: Referenced by src/entities.py
+- ref: src/entity_decay.py
+  implements: Referenced by src/entity_decay.py
+- ref: src/entity_shutdown.py
+  implements: Referenced by src/entity_shutdown.py
+- ref: src/models/entity.py
+  implements: Referenced by src/models/entity.py
+- ref: tests/test_entity_decay.py
+  implements: Referenced by tests/test_entity_decay.py
+- ref: tests/test_entity_decay_integration.py
+  implements: Referenced by tests/test_entity_decay_integration.py
 narrative: null
 investigation: agent_memory_consolidation
 subsystems: []
@@ -20,7 +32,6 @@ depends_on:
 - entity_touch_command
 created_after: []
 ---
-
 # Chunk Goal
 
 ## Minor Goal

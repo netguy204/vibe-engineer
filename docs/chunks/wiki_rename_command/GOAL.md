@@ -9,15 +9,19 @@ code_paths:
 - tests/test_entity_wiki_rename.py
 code_references:
 - ref: src/entity_repo.py#WikiRenameResult
-  implements: "Result dataclass for wiki rename operation"
+  implements: Result dataclass for wiki rename operation
 - ref: src/entity_repo.py#_rewrite_wikilinks
-  implements: "Regex-based wikilink rewriting across wiki pages"
+  implements: Regex-based wikilink rewriting across wiki pages
 - ref: src/entity_repo.py#wiki_rename
-  implements: "Core wiki rename logic: move file, update frontmatter, rewrite all wikilinks"
+  implements: 'Core wiki rename logic: move file, update frontmatter, rewrite all
+    wikilinks'
 - ref: src/cli/wiki.py#wiki
-  implements: "Top-level wiki click group"
+  implements: Top-level wiki click group
 - ref: src/cli/wiki.py#rename
-  implements: "ve wiki rename subcommand: validates entity/page, invokes wiki_rename, reports results"
+  implements: 've wiki rename subcommand: validates entity/page, invokes wiki_rename,
+    reports results'
+- ref: tests/test_entity_wiki_rename.py
+  implements: Tests for wiki_rename() and ve wiki rename CLI
 narrative: null
 investigation: null
 subsystems: []
@@ -27,7 +31,6 @@ depends_on: []
 created_after:
 - orch_worktree_process_reap
 ---
-
 # Chunk Goal
 
 ## Minor Goal

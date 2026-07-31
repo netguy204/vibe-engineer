@@ -8,16 +8,18 @@ code_paths:
 - tests/test_reviewer_decisions.py
 - tests/test_reviewers.py
 code_references:
-  - ref: src/reviewers.py#CuratedDecision
-    implements: "Dataclass for curated decision results with path, frontmatter, and mtime"
-  - ref: src/reviewers.py#Reviewers::list_curated_decisions
-    implements: "Shared helper encapsulating glob/parse/filter/sort/limit pipeline"
-  - ref: src/cli/reviewer.py#_format_curated_decision
-    implements: "Shared CLI formatting helper with optional nudge note support"
-  - ref: src/cli/reviewer.py#decisions
-    implements: "Group handler --recent path delegates to shared helper"
-  - ref: src/cli/reviewer.py#list_decisions
-    implements: "List subcommand delegates to shared helper (without nudge)"
+- ref: src/reviewers.py#CuratedDecision
+  implements: Dataclass for curated decision results with path, frontmatter, and mtime
+- ref: src/reviewers.py#Reviewers::list_curated_decisions
+  implements: Shared helper encapsulating glob/parse/filter/sort/limit pipeline
+- ref: src/cli/reviewer.py#_format_curated_decision
+  implements: Shared CLI formatting helper with optional nudge note support
+- ref: src/cli/reviewer.py#decisions
+  implements: Group handler --recent path delegates to shared helper
+- ref: src/cli/reviewer.py#list_decisions
+  implements: List subcommand delegates to shared helper (without nudge)
+- ref: tests/test_reviewers.py
+  implements: Tests for list_curated_decisions()
 narrative: arch_review_gaps
 investigation: null
 subsystems: []
@@ -33,7 +35,6 @@ created_after:
 - test_file_split
 - orch_session_auto_resume
 ---
-
 # Chunk Goal
 
 ## Minor Goal

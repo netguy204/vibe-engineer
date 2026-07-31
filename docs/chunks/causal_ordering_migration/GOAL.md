@@ -5,6 +5,7 @@ parent_chunk: null
 code_paths:
 - docs/chunks/0042-causal_ordering_migration/migrate.py
 - tests/test_migration_utilities.py
+- docs/chunks/causal_ordering_migration/migrate.py
 code_references:
 - ref: docs/chunks/0042-causal_ordering_migration/migrate.py#extract_short_name
   implements: Extract short name from directory names with optional ticket suffixes
@@ -23,6 +24,8 @@ code_references:
   implements: CLI entry point with dry-run preview and verification guidance
 - ref: tests/test_migration_utilities.py
   implements: Unit tests for migration script utilities
+- ref: docs/chunks/causal_ordering_migration/migrate.py
+  implements: Causal ordering migration
 narrative: null
 subsystems:
 - subsystem_id: workflow_artifacts
@@ -30,7 +33,6 @@ subsystems:
 created_after:
 - artifact_list_ordering
 ---
-
 # Chunk Goal
 
 ## Minor Goal

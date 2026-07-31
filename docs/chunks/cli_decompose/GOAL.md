@@ -3,30 +3,36 @@ status: ACTIVE
 ticket: null
 parent_chunk: null
 code_paths:
-  - src/cli/chunk.py
-  - src/cli/orch.py
-  - src/cli/friction.py
-  - src/cli/formatters.py
-  - src/models/__init__.py
-  - src/models/chunk.py
-  - src/orchestrator/log_streaming.py
-  - tests/test_models_chunk.py
-  - tests/test_orchestrator_log_streaming.py
+- src/cli/chunk.py
+- src/cli/orch.py
+- src/cli/friction.py
+- src/cli/formatters.py
+- src/models/__init__.py
+- src/models/chunk.py
+- src/orchestrator/log_streaming.py
+- tests/test_models_chunk.py
+- tests/test_orchestrator_log_streaming.py
 code_references:
-  - ref: src/models/chunk.py#parse_status_filters
-    implements: "Pure domain-layer parsing of status filters from CLI options"
-  - ref: src/cli/formatters.py#format_chunk_list_entry
-    implements: "Extracted chunk list entry formatting for text output"
-  - ref: src/orchestrator/log_streaming.py#get_phase_log_files
-    implements: "Get existing phase log files in order"
-  - ref: src/orchestrator/log_streaming.py#stream_phase_log
-    implements: "Stream lines from a phase log file with position tracking"
-  - ref: src/orchestrator/log_streaming.py#display_phase_log
-    implements: "Display a complete phase log with parsing and formatting"
-  - ref: src/cli/friction.py#_prompt_friction_inputs
-    implements: "Shared interactive prompting logic for friction entries"
-  - ref: src/cli/orch.py#orch_tail
-    implements: "Refactored to use log_streaming module"
+- ref: src/models/chunk.py#parse_status_filters
+  implements: Pure domain-layer parsing of status filters from CLI options
+- ref: src/cli/formatters.py#format_chunk_list_entry
+  implements: Extracted chunk list entry formatting for text output
+- ref: src/orchestrator/log_streaming.py#get_phase_log_files
+  implements: Get existing phase log files in order
+- ref: src/orchestrator/log_streaming.py#stream_phase_log
+  implements: Stream lines from a phase log file with position tracking
+- ref: src/orchestrator/log_streaming.py#display_phase_log
+  implements: Display a complete phase log with parsing and formatting
+- ref: src/cli/friction.py#_prompt_friction_inputs
+  implements: Shared interactive prompting logic for friction entries
+- ref: src/cli/orch.py#orch_tail
+  implements: Refactored to use log_streaming module
+- ref: src/cli/chunk.py
+  implements: Using handle_task_context for routing
+- ref: tests/test_models_chunk.py
+  implements: Extract parse_status_filters to domain layer
+- ref: tests/test_orchestrator_log_streaming.py
+  implements: Extract log streaming logic from CLI
 narrative: arch_review_remediation
 investigation: null
 subsystems: []
@@ -38,7 +44,6 @@ created_after:
 - orchestrator_api_decompose
 - task_operations_decompose
 ---
-
 # Chunk Goal
 
 ## Minor Goal

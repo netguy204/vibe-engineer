@@ -8,14 +8,20 @@ code_paths:
 - tests/test_board_client.py
 - tests/test_board_cli.py
 code_references:
-  - ref: src/board/client.py#BoardClient::watch_with_reconnect
-    implements: "Default max_retries=10 and re-subscription log after reconnect"
-  - ref: src/board/client.py#BoardClient::watch_multi_with_reconnect
-    implements: "Default max_retries=10 and re-subscription log after reconnect for multi-channel watch"
-  - ref: src/cli/board.py#watch_cmd
-    implements: "--max-reconnects CLI flag and exit code 3 on reconnect exhaustion"
-  - ref: src/cli/board.py#watch_multi_cmd
-    implements: "--max-reconnects CLI flag and exit code 3 on reconnect exhaustion for multi-channel watch"
+- ref: src/board/client.py#BoardClient::watch_with_reconnect
+  implements: Default max_retries=10 and re-subscription log after reconnect
+- ref: src/board/client.py#BoardClient::watch_multi_with_reconnect
+  implements: Default max_retries=10 and re-subscription log after reconnect for multi-channel
+    watch
+- ref: src/cli/board.py#watch_cmd
+  implements: --max-reconnects CLI flag and exit code 3 on reconnect exhaustion
+- ref: src/cli/board.py#watch_multi_cmd
+  implements: --max-reconnects CLI flag and exit code 3 on reconnect exhaustion for
+    multi-channel watch
+- ref: tests/test_board_cli.py
+  implements: CLI reconnect tests
+- ref: tests/test_board_client.py
+  implements: Default max_retries and logging tests
 narrative: null
 investigation: null
 subsystems: []

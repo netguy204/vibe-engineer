@@ -1,20 +1,22 @@
 ---
 status: DOCUMENTED
 chunks:
-  - chunk_id: external_artifact_unpin
-    relationship: implements
-  - chunk_id: validate_external_chunks
-    relationship: uses
-  - chunk_id: taskdir_subsystem_overlap
-    relationship: uses
-  - chunk_id: task_operations_decompose
-    relationship: implements
-  - chunk_id: federation_peer_refs
-    relationship: implements
-  - chunk_id: federation_reverse_interest
-    relationship: implements
-  - chunk_id: federation_template_pointers
-    relationship: uses
+- chunk_id: external_artifact_unpin
+  relationship: implements
+- chunk_id: validate_external_chunks
+  relationship: uses
+- chunk_id: taskdir_subsystem_overlap
+  relationship: uses
+- chunk_id: task_operations_decompose
+  relationship: implements
+- chunk_id: federation_peer_refs
+  relationship: implements
+- chunk_id: federation_reverse_interest
+  relationship: implements
+- chunk_id: federation_template_pointers
+  relationship: uses
+- chunk_id: agentskills_migration
+  relationship: uses
 code_references:
 - ref: src/interest.py#scan_interest_edges
   implements: One-pass enumeration of every external.yaml pointer in a workspace
@@ -127,7 +129,6 @@ code_references:
 created_after:
 - workflow_artifacts
 ---
-
 # cross_repo_operations
 
 ## Intent

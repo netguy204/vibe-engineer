@@ -2,8 +2,26 @@
 status: FUTURE
 ticket: null
 parent_chunk: null
-code_paths: []
-code_references: []
+code_paths:
+- src/backreferences.py
+- src/integrity.py
+- src/source_files.py
+- tests/test_backreferences.py
+- tests/test_integrity.py
+- tests/test_source_files.py
+code_references:
+- ref: src/backreferences.py
+  implements: Language-agnostic source file enumeration
+- ref: src/integrity.py
+  implements: Language-agnostic source file enumeration
+- ref: src/source_files.py
+  implements: Language-agnostic source file enumeration
+- ref: tests/test_backreferences.py
+  implements: Tests for backreference filter bug fix
+- ref: tests/test_integrity.py
+  implements: Tests for multi-language code backreference scanning
+- ref: tests/test_source_files.py
+  implements: Tests for source file enumeration utility
 narrative: arch_review_cleanup
 investigation: null
 subsystems: []

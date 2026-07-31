@@ -21,6 +21,8 @@ code_references:
     that suppressed nothing so the list cannot rot unnoticed
 - ref: src/cli/init_cmd.py#validate
   implements: The suppressed count printed on every run, outside the verbose block
+- ref: tests/test_validation_allowlist.py
+  implements: Allowlist behavior
 narrative: null
 investigation: null
 subsystems: []

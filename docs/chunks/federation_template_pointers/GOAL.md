@@ -3,45 +3,53 @@ status: ACTIVE
 ticket: null
 parent_chunk: null
 code_paths:
-  - src/package_scaffold.py
-  - src/cli/package.py
-  - src/cli/__init__.py
-  - src/templates/package/AGENTS.md.jinja2
-  - src/project.py
-  - tests/test_package_scaffold.py
-  - tests/test_package_scaffold_cli.py
-  - README.md
-  - docs/trunk/EXTERNAL.md
+- src/package_scaffold.py
+- src/cli/package.py
+- src/cli/__init__.py
+- src/templates/package/AGENTS.md.jinja2
+- src/project.py
+- tests/test_package_scaffold.py
+- tests/test_package_scaffold_cli.py
+- README.md
+- docs/trunk/EXTERNAL.md
 code_references:
-  - ref: src/package_scaffold.py#PackageScaffold
-    implements: "Scaffolds a package as a workspace member; pointer-only by default"
-  - ref: src/package_scaffold.py#PackageScaffold::validate
-    implements: "Total validation before creation, so a rejected scaffold writes nothing"
-  - ref: src/package_scaffold.py#PackageScaffold::_resolve_edges
-    implements: "Refuses interest edges whose target artifact does not exist"
-  - ref: src/package_scaffold.py#PackageScaffold::execute
-    implements: "Creates pointers (or a full tree), renders instructions, registers the member"
-  - ref: src/package_scaffold.py#PackageScaffold::_register
-    implements: "Member registration through the workspace library API; clean skip with no manifest"
-  - ref: src/package_scaffold.py#PackageScaffold::_render_agents_md
-    implements: "Renders where the governing docs live and how to opt into a full tree"
-  - ref: src/package_scaffold.py#parse_interest
-    implements: "`<member>::docs/<type>/<name>[: why]` interest spec grammar"
-  - ref: src/package_scaffold.py#InterestEdge
-    implements: "A resolved interest edge: local pointer path and qualified reference"
-  - ref: src/cli/package.py#scaffold
-    implements: "`ve package scaffold` — the command a package template calls"
-  - ref: src/project.py#Project::_workspace_advisory
-    implements: "`ve init` states that it is minting an addressing root inside a workspace"
-  - ref: src/templates/package/AGENTS.md.jinja2
-    implements: "Agent instructions for a pointer-only package, inside VE:MANAGED markers"
+- ref: src/package_scaffold.py#PackageScaffold
+  implements: Scaffolds a package as a workspace member; pointer-only by default
+- ref: src/package_scaffold.py#PackageScaffold::validate
+  implements: Total validation before creation, so a rejected scaffold writes nothing
+- ref: src/package_scaffold.py#PackageScaffold::_resolve_edges
+  implements: Refuses interest edges whose target artifact does not exist
+- ref: src/package_scaffold.py#PackageScaffold::execute
+  implements: Creates pointers (or a full tree), renders instructions, registers the
+    member
+- ref: src/package_scaffold.py#PackageScaffold::_register
+  implements: Member registration through the workspace library API; clean skip with
+    no manifest
+- ref: src/package_scaffold.py#PackageScaffold::_render_agents_md
+  implements: Renders where the governing docs live and how to opt into a full tree
+- ref: src/package_scaffold.py#parse_interest
+  implements: '`<member>::docs/<type>/<name>[: why]` interest spec grammar'
+- ref: src/package_scaffold.py#InterestEdge
+  implements: 'A resolved interest edge: local pointer path and qualified reference'
+- ref: src/cli/package.py#scaffold
+  implements: "`ve package scaffold` \u2014 the command a package template calls"
+- ref: src/project.py#Project::_workspace_advisory
+  implements: '`ve init` states that it is minting an addressing root inside a workspace'
+- ref: src/templates/package/AGENTS.md.jinja2
+  implements: Agent instructions for a pointer-only package, inside VE:MANAGED markers
+- ref: src/cli/__init__.py
+  implements: '`ve package scaffold` pointer-only members'
+- ref: tests/test_package_scaffold.py
+  implements: Scaffolding registers membership
+- ref: tests/test_package_scaffold_cli.py
+  implements: Operator surface a package
 narrative: monorepo_federation
 investigation: null
 subsystems:
-  - subsystem_id: cross_repo_operations
-    relationship: uses
-  - subsystem_id: template_system
-    relationship: uses
+- subsystem_id: cross_repo_operations
+  relationship: uses
+- subsystem_id: template_system
+  relationship: uses
 friction_entries: []
 depends_on:
 - federation_workspace_manifest
@@ -49,7 +57,6 @@ depends_on:
 created_after:
 - backend_live_validation
 ---
-
 # Chunk Goal
 
 ## Minor Goal

@@ -1,37 +1,143 @@
 ---
 status: SOLVED
-trigger: "Entity memory system needs wiki-based knowledge, git-backed portability, and Agent SDK consolidation"
+trigger: Entity memory system needs wiki-based knowledge, git-backed portability,
+  and Agent SDK consolidation
 proposed_chunks:
-  - prompt: "Define canonical entity wiki schema as ve template with directory structure, page templates, frontmatter conventions, and maintenance instructions"
-    chunk_directory: null
-    depends_on: []
-  - prompt: "Create entity git repo structure and ve entity create command"
-    chunk_directory: null
-    depends_on: [0]
-  - prompt: "Implement ve entity attach/detach for submodule lifecycle"
-    chunk_directory: null
-    depends_on: [1]
-  - prompt: "Revise entity-startup skill to load from wiki-based structure"
-    chunk_directory: null
-    depends_on: [0, 2]
-  - prompt: "Revise entity-shutdown to use wiki diff + Agent SDK consolidation"
-    chunk_directory: null
-    depends_on: [0, 3]
-  - prompt: "Implement ve entity push/pull for remote sync"
-    chunk_directory: null
-    depends_on: [2]
-  - prompt: "Implement ve entity fork/merge with LLM-assisted conflict resolution"
-    chunk_directory: null
-    depends_on: [5]
-  - prompt: "Create migration tool for existing entities to wiki-based structure"
-    chunk_directory: null
-    depends_on: [0, 1]
-  - prompt: "Ensure entity submodules work with orchestrator worktrees"
-    chunk_directory: null
-    depends_on: [2, 4]
-created_after: ["entity_session_harness"]
+- prompt: Define canonical entity wiki schema as ve template with directory structure,
+    page templates, frontmatter conventions, and maintenance instructions
+  chunk_directory: null
+  depends_on: []
+- prompt: Create entity git repo structure and ve entity create command
+  chunk_directory: null
+  depends_on:
+  - 0
+- prompt: Implement ve entity attach/detach for submodule lifecycle
+  chunk_directory: null
+  depends_on:
+  - 1
+- prompt: Revise entity-startup skill to load from wiki-based structure
+  chunk_directory: null
+  depends_on:
+  - 0
+  - 2
+- prompt: Revise entity-shutdown to use wiki diff + Agent SDK consolidation
+  chunk_directory: null
+  depends_on:
+  - 0
+  - 3
+- prompt: Implement ve entity push/pull for remote sync
+  chunk_directory: null
+  depends_on:
+  - 2
+- prompt: Implement ve entity fork/merge with LLM-assisted conflict resolution
+  chunk_directory: null
+  depends_on:
+  - 5
+- prompt: Create migration tool for existing entities to wiki-based structure
+  chunk_directory: null
+  depends_on:
+  - 0
+  - 1
+- prompt: Ensure entity submodules work with orchestrator worktrees
+  chunk_directory: null
+  depends_on:
+  - 2
+  - 4
+- prompt: '`ve entity attach <repo-url>` and `ve entity detach <name>` manage the
+    submodule lifecycle that makes entities portable across projects.'
+  chunk_directory: entity_attach_detach
+  depends_on: []
+- prompt: "Strengthen the wiki construction prompts used by entity creation paths\
+    \ (`from-transcript`, `ingest-transcript`, and `migrate`) so they produce wikis\
+    \ with richer cross-references and better adherence to the LLM Wiki pattern. Sibling\
+    \ to `entity_wiki_maintenance_prompt`, which improves runtime wiki maintenance\
+    \ \u2014 this chunk improves initial construction."
+  chunk_directory: entity_creation_wiki_prompts
+  depends_on: []
+- prompt: "Implement `ve entity fork <name> <new-name>` and `ve entity merge <name>\
+    \ <source>` to enable entities to diverge for specialized training and recombine\
+    \ learnings \u2014 like code branches but for specialist knowledge."
+  chunk_directory: entity_fork_merge
+  depends_on: []
+- prompt: "Implement `ve entity from-transcript <jsonl-path> <name>` to create a brand\
+    \ new wiki-based entity from a Claude Code session transcript. This captures productive\
+    \ sessions that weren't associated with an entity at the time \u2014 the operator\
+    \ realizes after the fact that the conversation produced a valuable specialist\
+    \ and wants to retroactively create one."
+  chunk_directory: entity_from_transcript
+  depends_on: []
+- prompt: Implement `ve entity ingest-transcript <name> <jsonl-paths...>` to feed
+    session transcripts into an existing entity's wiki, running the full incremental
+    wiki update + consolidation pipeline for each one. This lets the operator retroactively
+    import productive sessions that happened outside entity context into an entity
+    that already exists.
+  chunk_directory: entity_ingest_transcript
+  depends_on: []
+- prompt: Create a migration tool that converts existing entities (current journal/consolidated/core
+    memory format in `.entities/`) to the new wiki-based git repo structure. This
+    is critical for preserving the valuable specialist knowledge that existing entities
+    have accumulated.
+  chunk_directory: entity_memory_migration
+  depends_on: []
+- prompt: Implement `ve entity push <name>` and `ve entity pull <name>` to sync entity
+    repos with their remote origin, enabling entities to share knowledge across projects
+    and team members.
+  chunk_directory: entity_push_pull
+  depends_on: []
+- prompt: 'Each entity is a standalone git repository created via `ve entity create
+    <name>`. Entities are portable specialists that move across the platform: an entity
+    repo can be hosted on GitHub, submodule-added to projects, forked for divergent
+    training, and merged to combine learnings. This chunk owns the foundational repo
+    structure and the creation command.'
+  chunk_directory: entity_repo_structure
+  depends_on: []
+- prompt: 'The entity-shutdown skill uses a wiki-based pipeline for wiki entities:
+    mechanical git diff for journal creation, then Agent SDK consolidation for memory
+    synthesis, then commit to entity repo. The dispatcher routes wiki entities to
+    this pipeline and legacy entities to the prior Messages-API pipeline. This eliminates
+    the fragile timeout-based journal extraction that previously failed silently for
+    wiki-based entities.'
+  chunk_directory: entity_shutdown_wiki
+  depends_on: []
+- prompt: "Each entity has a role-specific `wiki/SOP.md` file (Standard Operating\
+    \ Procedures) that the startup payload includes verbatim under \"## Standard Operating\
+    \ Procedures\". This replaces a generic hardcoded \"Active State\" reminder that\
+    \ asked entities to restart watched channels \u2014 guidance that was inactionable\
+    \ because the entity had no way to know what was active before. SOP.md is empty\
+    \ by default and is populated for specific roles (e.g., a steward's SOP says \"\
+    run /steward-watch\"). The startup payload omits the section entirely when SOP.md\
+    \ is empty or absent \u2014 zero noise for entities without procedures."
+  chunk_directory: entity_sop_file
+  depends_on: []
+- prompt: The entity-startup skill loads from the wiki-based entity structure. At
+    startup, the entity loads core memories for fast identity establishment, then
+    the wiki index for structured knowledge overview, then recent consolidated memories.
+    The entity's session instructions include the wiki schema so it knows to maintain
+    its wiki during the session.
+  chunk_directory: entity_startup_wiki
+  depends_on: []
+- prompt: "Wiki maintenance prompting in the entity startup payload is strong enough\
+    \ that entities actively maintain their wikis during work sessions. The full wiki\
+    \ schema document loads into the entity's initial context (not merely referenced\
+    \ for later reading), and the startup skill's maintenance section uses compounding-artifact\
+    \ framing with concrete when-X-do-Y triggers. The schema document and startup\
+    \ template reinforce each other \u2014 the schema is the reference, the startup\
+    \ makes it active \u2014 matching the effectiveness of the original LLM Wiki prompt."
+  chunk_directory: entity_wiki_maintenance_prompt
+  depends_on: []
+- prompt: "Define the canonical entity wiki schema \u2014 the structured, standardized\
+    \ knowledge base format that all entities use to maintain their personal knowledge\
+    \ during work sessions."
+  chunk_directory: entity_wiki_schema
+  depends_on: []
+- prompt: Ensure entity submodules work correctly when the orchestrator creates worktrees
+    for chunk execution. This is essential for entities that operate in orchestrator-managed
+    contexts where multiple chunks may run in parallel worktrees.
+  chunk_directory: entity_worktree_support
+  depends_on: []
+created_after:
+- entity_session_harness
 ---
-
 <!--
 DO NOT DELETE THIS COMMENT until the investigation reaches a terminal status.
 This documents the frontmatter schema and guides investigation workflow.

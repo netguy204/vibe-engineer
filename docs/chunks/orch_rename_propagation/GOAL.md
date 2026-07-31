@@ -3,23 +3,28 @@ status: ACTIVE
 ticket: null
 parent_chunk: null
 code_paths:
-  - src/orchestrator/models.py
-  - src/orchestrator/state.py
-  - src/orchestrator/scheduler.py
-  - src/orchestrator/worktree.py
-  - src/chunks.py
-  - tests/test_orch_rename_propagation.py
+- src/orchestrator/models.py
+- src/orchestrator/state.py
+- src/orchestrator/scheduler.py
+- src/orchestrator/worktree.py
+- src/chunks.py
+- tests/test_orch_rename_propagation.py
 code_references:
 - ref: src/orchestrator/scheduler.py#Scheduler::_detect_rename
-  implements: "Detect chunk renames by comparing baseline to current IMPLEMENTING chunks"
+  implements: Detect chunk renames by comparing baseline to current IMPLEMENTING chunks
 - ref: src/orchestrator/scheduler.py#Scheduler::_propagate_rename
-  implements: "Propagate rename through work units, branches, directories, and conflict data"
+  implements: Propagate rename through work units, branches, directories, and conflict
+    data
 - ref: src/orchestrator/state.py#StateStore::_migrate_v15
-  implements: "Schema migration for baseline_implementing column"
+  implements: Schema migration for baseline_implementing column
 - ref: src/orchestrator/worktree.py#WorktreeManager::rename_branch
-  implements: "Rename orchestrator branch for renamed chunk"
+  implements: Rename orchestrator branch for renamed chunk
 - ref: tests/test_orch_rename_propagation.py
-  implements: "Tests for rename detection and propagation"
+  implements: Tests for rename detection and propagation
+- ref: src/chunks.py
+  implements: Lists all IMPLEMENTING chunks for baseline snapshot
+- ref: src/orchestrator/models.py
+  implements: baseline_implementing field for rename detection
 narrative: null
 investigation: null
 subsystems:
@@ -37,7 +42,6 @@ created_after:
 - worktree_merge_extract
 - phase_aware_recovery
 ---
-
 # Chunk Goal
 
 ## Minor Goal

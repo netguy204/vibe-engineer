@@ -11,25 +11,41 @@ code_paths:
 - src/orchestrator/worktree.py
 - tests/test_project.py
 - tests/test_init.py
+- src/package_scaffold.py
+- tests/test_orchestrator_worktree_symlinks.py
+- tests/test_task_init.py
 code_references:
 - ref: src/template_system.py#render_to_directory
-  implements: "skill_layout parameter for agentskills.io <name>/SKILL.md directory structure"
+  implements: skill_layout parameter for agentskills.io <name>/SKILL.md directory
+    structure
 - ref: src/project.py#Project::_init_skills
-  implements: "Renders skills to .agents/skills/ and creates .claude/commands/ backwards-compat symlinks"
+  implements: Renders skills to .agents/skills/ and creates .claude/commands/ backwards-compat
+    symlinks
 - ref: src/project.py#Project::_init_agents_md
-  implements: "AGENTS.md as canonical instructions file with CLAUDE.md symlink and migration from pre-existing CLAUDE.md"
+  implements: AGENTS.md as canonical instructions file with CLAUDE.md symlink and
+    migration from pre-existing CLAUDE.md
 - ref: src/task_init.py#TaskInit::_render_agents_md
-  implements: "Task-context AGENTS.md rendering with CLAUDE.md symlink"
+  implements: Task-context AGENTS.md rendering with CLAUDE.md symlink
 - ref: src/task_init.py#TaskInit::_render_skills
-  implements: "Task-context skill rendering to .agents/skills/ with .claude/commands/ symlinks"
+  implements: Task-context skill rendering to .agents/skills/ with .claude/commands/
+    symlinks
 - ref: src/orchestrator/worktree.py#WorktreeManager::_setup_agent_environment_symlinks
-  implements: "Worktree symlinks for AGENTS.md and .agents/ alongside existing CLAUDE.md and .claude/"
+  implements: Worktree symlinks for AGENTS.md and .agents/ alongside existing CLAUDE.md
+    and .claude/
 - ref: src/orchestrator/worktree.py#WorktreeManager::_cleanup_agent_environment_symlinks
-  implements: "Cleanup of AGENTS.md and .agents symlinks in worktree teardown"
+  implements: Cleanup of AGENTS.md and .agents symlinks in worktree teardown
 - ref: src/templates/claude/AGENTS.md.jinja2
-  implements: "Renamed canonical template from CLAUDE.md.jinja2"
+  implements: Renamed canonical template from CLAUDE.md.jinja2
 - ref: src/templates/task/AGENTS.md.jinja2
-  implements: "Renamed task template from CLAUDE.md.jinja2"
+  implements: Renamed task template from CLAUDE.md.jinja2
+- ref: src/package_scaffold.py
+  implements: AGENTS.md canonical, CLAUDE.md symlink
+- ref: tests/test_orchestrator_worktree_symlinks.py
+  implements: Updated for AGENTS.md and .agents/ structure
+- ref: tests/test_project.py
+  implements: Updated for AGENTS.md and .agents/skills/ structure
+- ref: tests/test_task_init.py
+  implements: Updated for AGENTS.md and .agents/skills/ structure
 narrative: null
 investigation: null
 subsystems:
@@ -43,7 +59,6 @@ depends_on: []
 created_after:
 - skill_chunk_execute_review_loop
 ---
-
 # Chunk Goal
 
 ## Minor Goal

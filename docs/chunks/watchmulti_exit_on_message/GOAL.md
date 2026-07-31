@@ -10,13 +10,17 @@ code_paths:
 - tests/test_board_cli.py
 code_references:
 - ref: src/board/client.py#BoardClient::watch_multi
-  implements: "Count-limited message delivery in multi-channel watch generator"
+  implements: Count-limited message delivery in multi-channel watch generator
 - ref: src/board/client.py#BoardClient::watch_multi_with_reconnect
-  implements: "Count tracking across reconnects for total message cap"
+  implements: Count tracking across reconnects for total message cap
 - ref: src/cli/board.py#watch_multi_cmd
-  implements: "--count CLI flag wired through to client methods"
+  implements: --count CLI flag wired through to client methods
 - ref: commands/swarm-monitor.md
-  implements: "Event-driven loop pattern using --count 1 with run_in_background"
+  implements: Event-driven loop pattern using --count 1 with run_in_background
+- ref: tests/test_board_cli.py
+  implements: CLI count flag tests
+- ref: tests/test_board_client.py
+  implements: Count-limited watch tests
 narrative: null
 investigation: null
 subsystems: []
@@ -26,7 +30,6 @@ depends_on: []
 created_after:
 - multichannel_watch
 ---
-
 # Chunk Goal
 
 ## Minor Goal

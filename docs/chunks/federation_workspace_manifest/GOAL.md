@@ -3,56 +3,70 @@ status: ACTIVE
 ticket: null
 parent_chunk: null
 code_paths:
-  - src/models/workspace.py
-  - src/models/__init__.py
-  - src/workspace.py
-  - src/cli/workspace.py
-  - src/cli/__init__.py
-  - tests/test_workspace_manifest.py
-  - README.md
+- src/models/workspace.py
+- src/models/__init__.py
+- src/workspace.py
+- src/cli/workspace.py
+- src/cli/__init__.py
+- tests/test_workspace_manifest.py
+- README.md
 code_references:
-  - ref: src/models/workspace.py#WorkspaceMember
-    implements: "Member schema: short name plus workspace-root-relative tree path"
-  - ref: src/models/workspace.py#WorkspaceManifest
-    implements: "Manifest schema, mapping form acceptance, duplicate-name rejection"
-  - ref: src/models/workspace.py#validate_member_name
-    implements: "Member name grammar ([a-z0-9_-]+), excluding / and :: so names stay unambiguous against org/repo qualifiers"
-  - ref: src/models/workspace.py#normalize_member_path
-    implements: "Member paths are relative to the workspace root and cannot escape it"
-  - ref: src/workspace.py#Workspace
-    implements: "Loaded workspace: name-to-tree resolution surface"
-  - ref: src/workspace.py#Workspace::resolve
-    implements: "Resolving a member name to its tree root"
-  - ref: src/workspace.py#Workspace::find_member_for_path
-    implements: "Nested-member disambiguation: longest prefix wins, so the innermost tree owns a path"
-  - ref: src/workspace.py#_UniqueKeyLoader
-    implements: "Duplicate member names in the manifest file are an error rather than silent last-wins"
-  - ref: src/workspace.py#load_workspace
-    implements: "Manifest discovery by upward search plus parse and shape validation"
-  - ref: src/workspace.py#find_workspace_root
-    implements: "Upward search for .ve-workspace.yaml so commands work from anywhere inside the workspace"
-  - ref: src/workspace.py#write_manifest
-    implements: "Manifest serialization, round-tripping the name-to-path mapping"
-  - ref: src/workspace.py#is_ve_tree
-    implements: "Permissive member predicate: docs/ with an artifact directory, so pointer-only trees are registrable"
-  - ref: src/workspace.py#has_trunk
-    implements: "Strict scan predicate: docs/trunk/ marks an intentional tree"
-  - ref: src/workspace.py#validate_member_paths
-    implements: "Member paths exist and contain a VE tree"
-  - ref: src/workspace.py#scan_for_trees
-    implements: "Bootstrap discovery of candidate trees, preserving nesting and pruning non-member directories"
-  - ref: src/workspace.py#_should_skip_dir
-    implements: "Scan pruning: hidden directories and build/vendor trees are never members, notably VE's own worktree checkouts"
-  - ref: src/workspace.py#suggest_member_names
-    implements: "Naming scanned candidates, with collision disambiguation"
-  - ref: src/workspace.py#add_member
-    implements: "Validated member registration, usable without the CLI"
-  - ref: src/cli/workspace.py#list_members
-    implements: "ve workspace list: enumerate members, flagging defective paths"
-  - ref: src/cli/workspace.py#add
-    implements: "ve workspace add: validate and append a member"
-  - ref: src/cli/workspace.py#init
-    implements: "ve workspace init [--scan]: bootstrap a manifest from discovered candidates after confirmation"
+- ref: src/models/workspace.py#WorkspaceMember
+  implements: 'Member schema: short name plus workspace-root-relative tree path'
+- ref: src/models/workspace.py#WorkspaceManifest
+  implements: Manifest schema, mapping form acceptance, duplicate-name rejection
+- ref: src/models/workspace.py#validate_member_name
+  implements: 'Member name grammar ([a-z0-9_-]+), excluding / and :: so names stay
+    unambiguous against org/repo qualifiers'
+- ref: src/models/workspace.py#normalize_member_path
+  implements: Member paths are relative to the workspace root and cannot escape it
+- ref: src/workspace.py#Workspace
+  implements: 'Loaded workspace: name-to-tree resolution surface'
+- ref: src/workspace.py#Workspace::resolve
+  implements: Resolving a member name to its tree root
+- ref: src/workspace.py#Workspace::find_member_for_path
+  implements: 'Nested-member disambiguation: longest prefix wins, so the innermost
+    tree owns a path'
+- ref: src/workspace.py#_UniqueKeyLoader
+  implements: Duplicate member names in the manifest file are an error rather than
+    silent last-wins
+- ref: src/workspace.py#load_workspace
+  implements: Manifest discovery by upward search plus parse and shape validation
+- ref: src/workspace.py#find_workspace_root
+  implements: Upward search for .ve-workspace.yaml so commands work from anywhere
+    inside the workspace
+- ref: src/workspace.py#write_manifest
+  implements: Manifest serialization, round-tripping the name-to-path mapping
+- ref: src/workspace.py#is_ve_tree
+  implements: 'Permissive member predicate: docs/ with an artifact directory, so pointer-only
+    trees are registrable'
+- ref: src/workspace.py#has_trunk
+  implements: 'Strict scan predicate: docs/trunk/ marks an intentional tree'
+- ref: src/workspace.py#validate_member_paths
+  implements: Member paths exist and contain a VE tree
+- ref: src/workspace.py#scan_for_trees
+  implements: Bootstrap discovery of candidate trees, preserving nesting and pruning
+    non-member directories
+- ref: src/workspace.py#_should_skip_dir
+  implements: 'Scan pruning: hidden directories and build/vendor trees are never members,
+    notably VE''s own worktree checkouts'
+- ref: src/workspace.py#suggest_member_names
+  implements: Naming scanned candidates, with collision disambiguation
+- ref: src/workspace.py#add_member
+  implements: Validated member registration, usable without the CLI
+- ref: src/cli/workspace.py#list_members
+  implements: 've workspace list: enumerate members, flagging defective paths'
+- ref: src/cli/workspace.py#add
+  implements: 've workspace add: validate and append a member'
+- ref: src/cli/workspace.py#init
+  implements: 've workspace init [--scan]: bootstrap a manifest from discovered candidates
+    after confirmation'
+- ref: src/cli/__init__.py
+  implements: '`ve workspace` manifest commands'
+- ref: src/models/__init__.py
+  implements: Workspace manifest schema
+- ref: tests/test_workspace_manifest.py
+  implements: Workspace manifest tests
 narrative: monorepo_federation
 investigation: null
 subsystems: []
@@ -61,7 +75,6 @@ depends_on: []
 created_after:
 - backend_live_validation
 ---
-
 # Chunk Goal
 
 ## Minor Goal

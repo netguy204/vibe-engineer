@@ -11,17 +11,20 @@ code_paths:
 - tests/test_orchestrator_reentry.py
 code_references:
 - ref: src/orchestrator/models.py#WorkUnit::implement_iterations
-  implements: "Track total IMPLEMENT phase dispatches on work unit"
+  implements: Track total IMPLEMENT phase dispatches on work unit
 - ref: src/orchestrator/models.py#WorkUnit::reentry_context
-  implements: "Store re-entry context string for IMPLEMENT phase injection"
+  implements: Store re-entry context string for IMPLEMENT phase injection
 - ref: src/orchestrator/agent.py#AgentRunner::run_phase
-  implements: "Inject reentry_context into IMPLEMENT prompt with Re-entry Context header"
+  implements: Inject reentry_context into IMPLEMENT prompt with Re-entry Context header
 - ref: src/orchestrator/scheduler.py#Scheduler::_run_work_unit
-  implements: "Increment implement_iterations, enforce max_iterations limit, pass reentry_context to agent"
+  implements: Increment implement_iterations, enforce max_iterations limit, pass reentry_context
+    to agent
 - ref: src/orchestrator/review_routing.py#_apply_review_decision
-  implements: "Reset implement_iterations to 0 on APPROVE"
+  implements: Reset implement_iterations to 0 on APPROVE
 - ref: src/orchestrator/state.py#StateStore::_migrate_v16
-  implements: "Database migration adding implement_iterations and reentry_context columns"
+  implements: Database migration adding implement_iterations and reentry_context columns
+- ref: tests/test_orchestrator_reentry.py
+  implements: Re-entry prompt injection and iteration limit tests
 narrative: null
 investigation: null
 subsystems: []
@@ -31,7 +34,6 @@ depends_on: []
 created_after:
 - orch_review_feedback_fidelity
 ---
-
 # Chunk Goal
 
 ## Minor Goal

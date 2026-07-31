@@ -3,35 +3,40 @@ status: ACTIVE
 ticket: null
 parent_chunk: null
 code_paths:
-  - src/orchestrator/worktree.py
-  - src/orchestrator/scheduler.py
-  - src/orchestrator/api/worktrees.py
-  - tests/test_orchestrator_worktree.py
+- src/orchestrator/worktree.py
+- src/orchestrator/scheduler.py
+- src/orchestrator/api/worktrees.py
+- tests/test_orchestrator_worktree.py
+- tests/test_orchestrator_scheduler_dispatch.py
+- tests/test_orchestrator_worktree_multirepo.py
 code_references:
-  - ref: src/orchestrator/worktree.py#WorktreeManager::finalize_work_unit
-    implements: "Consolidated worktree finalization logic (commit, remove, merge, cleanup)"
-  - ref: src/orchestrator/scheduler.py#Scheduler::_advance_phase
-    implements: "Uses finalize_work_unit for work unit completion"
-  - ref: src/orchestrator/api/worktrees.py#prune_work_unit_endpoint
-    implements: "Single worktree prune using finalize_work_unit"
-  - ref: src/orchestrator/api/worktrees.py#prune_all_endpoint
-    implements: "Batch worktree prune using finalize_work_unit"
-  - ref: tests/test_orchestrator_worktree.py#TestFinalizeWorkUnit
-    implements: "Unit tests for finalize_work_unit method"
-  - ref: src/orchestrator/api/worktrees.py
-    implements: "Consolidated worktree finalization in prune endpoint"
+- ref: src/orchestrator/worktree.py#WorktreeManager::finalize_work_unit
+  implements: Consolidated worktree finalization logic (commit, remove, merge, cleanup)
+- ref: src/orchestrator/scheduler.py#Scheduler::_advance_phase
+  implements: Uses finalize_work_unit for work unit completion
+- ref: src/orchestrator/api/worktrees.py#prune_work_unit_endpoint
+  implements: Single worktree prune using finalize_work_unit
+- ref: src/orchestrator/api/worktrees.py#prune_all_endpoint
+  implements: Batch worktree prune using finalize_work_unit
+- ref: tests/test_orchestrator_worktree.py#TestFinalizeWorkUnit
+  implements: Unit tests for finalize_work_unit method
+- ref: src/orchestrator/api/worktrees.py
+  implements: Consolidated worktree finalization in prune endpoint
+- ref: tests/test_orchestrator_scheduler_dispatch.py
+  implements: Should call finalize_work_unit
+- ref: tests/test_orchestrator_worktree_multirepo.py
+  implements: Tests for finalize_work_unit
 narrative: arch_consolidation
 investigation: null
 subsystems:
-  - subsystem_id: orchestrator
-    relationship: implements
+- subsystem_id: orchestrator
+  relationship: implements
 friction_entries: []
 bug_type: null
 depends_on: []
 created_after:
 - orch_api_retry
 ---
-
 # Chunk Goal
 
 ## Minor Goal

@@ -1,51 +1,61 @@
 ---
 status: COMPLETED
-advances_trunk_goal: "Required Properties: The workflow must not be locked to a single agent vendor; the orchestrator must support pluggable agent backends."
+advances_trunk_goal: 'Required Properties: The workflow must not be locked to a single
+  agent vendor; the orchestrator must support pluggable agent backends.'
 proposed_chunks:
-  - prompt: >-
-      Extract an AgentBackend protocol (with normalized, backend-agnostic types:
-      ToolUse, ToolDecision, SessionRequest, and the existing AgentResult) at the
-      AgentRunner.run_phase / resume_for_active_status seam, and move the current
-      Claude-Agent-SDK logic behind a ClaudeBackend implementation. Pure refactor:
-      no behavior change, existing orchestrator tests stay green. This makes the
-      Claude coupling explicit and is the precondition for any second backend.
-    depends_on: []
-    chunk_directory: backend_seam
-  - prompt: >-
-      Implement a CursorBackend that drives cursor-agent over ACP (JSON-RPC 2.0
-      on stdio via `agent acp`). Map the three orchestrator policy callbacks to
-      ACP: sandbox enforcement -> session/request_permission, question/suspend ->
-      cursor/ask_question, and the ReviewDecision tool -> a .cursor/mcp.json stdio
-      MCP server (or postToolUse capture). Resume via session/load; model selects
-      Composer. Implements the AgentBackend protocol from the seam chunk.
-    depends_on: [0, 3]
-    chunk_directory: backend_cursor
-  - prompt: >-
-      Add backend selection to OrchestratorConfig (a `backend` field, default
-      claude) plus a factory that constructs the configured AgentBackend, and
-      surface it through `ve settings` / orchestrator config. Defaults to Claude
-      so behavior is unchanged until an operator opts into Cursor.
-    depends_on: [0]
-    chunk_directory: backend_config
-  - prompt: >-
-      Replace the regex parser over Claude SDK message string-reprs in
-      log_parser.py with a structured reader driven by the seam's normalized log
-      events, so activity summaries work across backends (Cursor emits structured
-      stream-json / ACP session/update rather than Claude SDK reprs). Removes the
-      fragile str(message) regex coupling.
-    depends_on: [0]
-    chunk_directory: backend_logparse
-  - prompt: >-
-      Parity-test Composer against Claude on a handful of real chunks end-to-end
-      through the orchestrator (plan/implement/review/complete), tune phase prompts
-      and per-phase max_turns budgets for Composer where they diverge, and document
-      the Cursor setup (cursor-agent install, ACP, .cursor/ config) in
-      ORCHESTRATOR.md.
-    depends_on: [1, 2]
-    chunk_directory: backend_parity
-created_after: ["intent_ownership"]
+- prompt: 'Extract an AgentBackend protocol (with normalized, backend-agnostic types:
+    ToolUse, ToolDecision, SessionRequest, and the existing AgentResult) at the AgentRunner.run_phase
+    / resume_for_active_status seam, and move the current Claude-Agent-SDK logic behind
+    a ClaudeBackend implementation. Pure refactor: no behavior change, existing orchestrator
+    tests stay green. This makes the Claude coupling explicit and is the precondition
+    for any second backend.'
+  depends_on: []
+  chunk_directory: backend_seam
+- prompt: 'Implement a CursorBackend that drives cursor-agent over ACP (JSON-RPC 2.0
+    on stdio via `agent acp`). Map the three orchestrator policy callbacks to ACP:
+    sandbox enforcement -> session/request_permission, question/suspend -> cursor/ask_question,
+    and the ReviewDecision tool -> a .cursor/mcp.json stdio MCP server (or postToolUse
+    capture). Resume via session/load; model selects Composer. Implements the AgentBackend
+    protocol from the seam chunk.'
+  depends_on:
+  - 0
+  - 3
+  chunk_directory: backend_cursor
+- prompt: Add backend selection to OrchestratorConfig (a `backend` field, default
+    claude) plus a factory that constructs the configured AgentBackend, and surface
+    it through `ve settings` / orchestrator config. Defaults to Claude so behavior
+    is unchanged until an operator opts into Cursor.
+  depends_on:
+  - 0
+  chunk_directory: backend_config
+- prompt: Replace the regex parser over Claude SDK message string-reprs in log_parser.py
+    with a structured reader driven by the seam's normalized log events, so activity
+    summaries work across backends (Cursor emits structured stream-json / ACP session/update
+    rather than Claude SDK reprs). Removes the fragile str(message) regex coupling.
+  depends_on:
+  - 0
+  chunk_directory: backend_logparse
+- prompt: Parity-test Composer against Claude on a handful of real chunks end-to-end
+    through the orchestrator (plan/implement/review/complete), tune phase prompts
+    and per-phase max_turns budgets for Composer where they diverge, and document
+    the Cursor setup (cursor-agent install, ACP, .cursor/ config) in ORCHESTRATOR.md.
+  depends_on:
+  - 1
+  - 2
+  chunk_directory: backend_parity
+- prompt: The orchestrator's Cursor backend drives `cursor-agent` in **print mode**
+    (`-p --output-format stream-json`), not the interactive ACP protocol, because
+    only print mode runs an orchestrator phase to autonomous completion. ACP holds
+    turns open waiting for operator confirmation and never signals completion, so
+    an unattended phase hangs. Worktree sandbox enforcement is applied out-of-process
+    via a `.cursor/hooks.json` `beforeShellExecution` hook, and the reviewer's verdict
+    is captured from the ReviewDecision MCP tool. The Claude/Cursor behavioral divergences
+    are documented in `docs/trunk/ORCHESTRATOR.md`.
+  chunk_directory: backend_live_validation
+  depends_on: []
+created_after:
+- intent_ownership
 ---
-
 ## Advances Trunk Goal
 
 **Required Properties** — "The workflow must not be locked to a single agent

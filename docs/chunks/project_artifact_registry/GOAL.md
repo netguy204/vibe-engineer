@@ -9,25 +9,34 @@ code_paths:
 - src/cli/chunk.py
 - src/task_utils.py
 - tests/test_project.py
+- tests/test_chunk_list_proposed.py
 code_references:
-  - ref: src/project.py#Project
-    implements: "Unified artifact registry class with lazy-loaded properties for all artifact managers"
-  - ref: src/project.py#Project::narratives
-    implements: "Lazy-loaded Narratives property"
-  - ref: src/project.py#Project::investigations
-    implements: "Lazy-loaded Investigations property"
-  - ref: src/project.py#Project::subsystems
-    implements: "Lazy-loaded Subsystems property"
-  - ref: src/project.py#Project::friction
-    implements: "Lazy-loaded Friction property"
-  - ref: src/chunks.py#Chunks::list_proposed_chunks
-    implements: "Refactored to accept Project instance instead of three separate manager parameters"
-  - ref: src/integrity.py#IntegrityValidator::__init__
-    implements: "Accepts optional Project for unified manager access, eliminating five separate manager constructions"
-  - ref: src/task/artifact_ops.py#list_task_proposed_chunks
-    implements: "Uses Project for unified manager access when listing proposed chunks in task context"
-  - ref: src/cli/chunk.py#list_proposed_chunks_cmd
-    implements: "Uses Project for unified manager access"
+- ref: src/project.py#Project
+  implements: Unified artifact registry class with lazy-loaded properties for all
+    artifact managers
+- ref: src/project.py#Project::narratives
+  implements: Lazy-loaded Narratives property
+- ref: src/project.py#Project::investigations
+  implements: Lazy-loaded Investigations property
+- ref: src/project.py#Project::subsystems
+  implements: Lazy-loaded Subsystems property
+- ref: src/project.py#Project::friction
+  implements: Lazy-loaded Friction property
+- ref: src/chunks.py#Chunks::list_proposed_chunks
+  implements: Refactored to accept Project instance instead of three separate manager
+    parameters
+- ref: src/integrity.py#IntegrityValidator::__init__
+  implements: Accepts optional Project for unified manager access, eliminating five
+    separate manager constructions
+- ref: src/task/artifact_ops.py#list_task_proposed_chunks
+  implements: Uses Project for unified manager access when listing proposed chunks
+    in task context
+- ref: src/cli/chunk.py#list_proposed_chunks_cmd
+  implements: Uses Project for unified manager access
+- ref: tests/test_chunk_list_proposed.py
+  implements: Updated to use Project for unified manager access
+- ref: tests/test_project.py
+  implements: Tests for unified artifact registry properties
 narrative: arch_decompose
 investigation: null
 subsystems: []
@@ -44,7 +53,6 @@ created_after:
 - orch_pre_review_rebase
 - orch_merge_before_delete
 ---
-
 # Chunk Goal
 
 ## Minor Goal

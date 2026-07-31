@@ -4,7 +4,12 @@ ticket: null
 parent_chunk: null
 code_paths:
 - src/orchestrator/scheduler.py
-code_references: []
+- tests/test_orchestrator_scheduler_dispatch.py
+code_references:
+- ref: src/orchestrator/scheduler.py
+  implements: TOCTOU guard for status verification before worktree creation
+- ref: tests/test_orchestrator_scheduler_dispatch.py
+  implements: TOCTOU guard tests for status verification
 narrative: arch_review_gaps
 investigation: null
 subsystems: []

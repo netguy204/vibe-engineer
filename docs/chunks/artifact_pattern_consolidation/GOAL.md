@@ -3,45 +3,53 @@ status: ACTIVE
 ticket: null
 parent_chunk: null
 code_paths:
-  - src/artifact_ordering.py
-  - src/artifact_manager.py
-  - src/models/references.py
-  - src/template_system.py
-  - src/chunks.py
-  - src/narratives.py
-  - src/investigations.py
-  - src/subsystems.py
-  - tests/test_artifact_ordering.py
-  - tests/test_models.py
-  - tests/test_template_system.py
+- src/artifact_ordering.py
+- src/artifact_manager.py
+- src/models/references.py
+- src/template_system.py
+- src/chunks.py
+- src/narratives.py
+- src/investigations.py
+- src/subsystems.py
+- tests/test_artifact_ordering.py
+- tests/test_models.py
+- tests/test_template_system.py
 code_references:
-  - ref: src/artifact_ordering.py#_normalize_created_after
-    implements: "Unified normalization for created_after values (null → [], string → [string], list → list)"
-  - ref: src/artifact_manager.py#ArtifactManager::find_duplicates
-    implements: "Base class duplicate detection method shared by all four artifact managers"
-  - ref: src/models/references.py#ArtifactRelationship
-    implements: "Generic artifact relationship model replacing ChunkRelationship and SubsystemRelationship"
-  - ref: src/models/references.py#_validate_artifact_id
-    implements: "Shared artifact ID validation helper for relationship models"
-  - ref: src/template_system.py#ActiveArtifact
-    implements: "Base dataclass with common properties for active artifact contexts"
-  - ref: src/template_system.py#ActiveChunk
-    implements: "Chunk-specific artifact context inheriting from ActiveArtifact"
-  - ref: src/template_system.py#ActiveNarrative
-    implements: "Narrative-specific artifact context inheriting from ActiveArtifact"
-  - ref: src/template_system.py#ActiveSubsystem
-    implements: "Subsystem-specific artifact context inheriting from ActiveArtifact"
-  - ref: src/template_system.py#ActiveInvestigation
-    implements: "Investigation-specific artifact context inheriting from ActiveArtifact"
-  - ref: src/chunks.py#Chunks::find_duplicates
-    implements: "Backward-compatible wrapper for legacy ticket_id parameter"
+- ref: src/artifact_ordering.py#_normalize_created_after
+  implements: "Unified normalization for created_after values (null \u2192 [], string\
+    \ \u2192 [string], list \u2192 list)"
+- ref: src/artifact_manager.py#ArtifactManager::find_duplicates
+  implements: Base class duplicate detection method shared by all four artifact managers
+- ref: src/models/references.py#ArtifactRelationship
+  implements: Generic artifact relationship model replacing ChunkRelationship and
+    SubsystemRelationship
+- ref: src/models/references.py#_validate_artifact_id
+  implements: Shared artifact ID validation helper for relationship models
+- ref: src/template_system.py#ActiveArtifact
+  implements: Base dataclass with common properties for active artifact contexts
+- ref: src/template_system.py#ActiveChunk
+  implements: Chunk-specific artifact context inheriting from ActiveArtifact
+- ref: src/template_system.py#ActiveNarrative
+  implements: Narrative-specific artifact context inheriting from ActiveArtifact
+- ref: src/template_system.py#ActiveSubsystem
+  implements: Subsystem-specific artifact context inheriting from ActiveArtifact
+- ref: src/template_system.py#ActiveInvestigation
+  implements: Investigation-specific artifact context inheriting from ActiveArtifact
+- ref: src/chunks.py#Chunks::find_duplicates
+  implements: Backward-compatible wrapper for legacy ticket_id parameter
+- ref: tests/test_artifact_ordering.py
+  implements: Tests for unified created_after normalization
+- ref: tests/test_models.py
+  implements: Tests for generic ArtifactRelationship model
+- ref: tests/test_template_system.py
+  implements: Tests for ActiveArtifact base class
 narrative: arch_review_remediation
 investigation: null
 subsystems:
-  - subsystem_id: template_system
-    relationship: implements
-  - subsystem_id: workflow_artifacts
-    relationship: implements
+- subsystem_id: template_system
+  relationship: implements
+- subsystem_id: workflow_artifacts
+  relationship: implements
 friction_entries: []
 bug_type: null
 depends_on: []
@@ -50,7 +58,6 @@ created_after:
 - orchestrator_api_decompose
 - task_operations_decompose
 ---
-
 # Chunk Goal
 
 ## Minor Goal

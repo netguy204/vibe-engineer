@@ -6,12 +6,15 @@ code_paths:
 - src/orchestrator/scheduler.py
 - tests/test_orchestrator_scheduler.py
 code_references:
-  - ref: src/orchestrator/scheduler.py#Scheduler::_find_incomplete_finalizations
-    implements: "Detect work units that crashed during finalization (worktree removed, branch unmerged)"
-  - ref: src/orchestrator/scheduler.py#Scheduler::_recover_incomplete_finalization
-    implements: "Auto-merge clean branches or escalate to NEEDS_ATTENTION on conflict"
-  - ref: src/orchestrator/scheduler.py#Scheduler::_recover_from_crash
-    implements: "Integration point - calls finalization recovery after RUNNING unit recovery"
+- ref: src/orchestrator/scheduler.py#Scheduler::_find_incomplete_finalizations
+  implements: Detect work units that crashed during finalization (worktree removed,
+    branch unmerged)
+- ref: src/orchestrator/scheduler.py#Scheduler::_recover_incomplete_finalization
+  implements: Auto-merge clean branches or escalate to NEEDS_ATTENTION on conflict
+- ref: src/orchestrator/scheduler.py#Scheduler::_recover_from_crash
+  implements: Integration point - calls finalization recovery after RUNNING unit recovery
+- ref: tests/test_orchestrator_scheduler.py
+  implements: Crash recovery for incomplete finalization
 narrative: arch_review_gaps
 investigation: null
 subsystems:

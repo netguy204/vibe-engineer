@@ -40,6 +40,12 @@ code_references:
   implements: 've external point: create an interest edge, refusing dangling targets'
 - ref: src/cli/formatters.py#format_chunk_list_entry
   implements: Listing shows whichever target flavor the pointer carries
+- ref: src/cli/chunk.py
+  implements: Both target flavors are reported
+- ref: tests/conftest.py
+  implements: Shared workspace fixtures for peer refs
+- ref: tests/test_external_peer_refs.py
+  implements: Peer external reference tests
 narrative: monorepo_federation
 investigation: null
 subsystems:
@@ -51,7 +57,6 @@ depends_on:
 created_after:
 - backend_live_validation
 ---
-
 # Chunk Goal
 
 ## Minor Goal

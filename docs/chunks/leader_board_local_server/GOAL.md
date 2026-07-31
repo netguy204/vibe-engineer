@@ -13,25 +13,35 @@ code_paths:
 - tests/test_leader_board_e2e.py
 code_references:
 - ref: src/leader_board/protocol.py#InvalidFrameError
-  implements: "Frame parsing error type for malformed/unknown frames"
+  implements: Frame parsing error type for malformed/unknown frames
 - ref: src/leader_board/protocol.py#parse_client_frame
-  implements: "JSON string → typed ClientFrame parsing with validation"
+  implements: "JSON string \u2192 typed ClientFrame parsing with validation"
 - ref: src/leader_board/protocol.py#serialize_server_frame
-  implements: "ServerFrame → compact JSON serialization for wire protocol"
+  implements: "ServerFrame \u2192 compact JSON serialization for wire protocol"
 - ref: src/leader_board/fs_storage.py#FileSystemStorage
-  implements: "Filesystem-backed StorageAdapter with JSONL message logs, file locking, and atomic compaction"
+  implements: Filesystem-backed StorageAdapter with JSONL message logs, file locking,
+    and atomic compaction
 - ref: src/leader_board/server.py#websocket_handler
-  implements: "WebSocket connection lifecycle: challenge/auth handshake, swarm-scoped message loop"
+  implements: 'WebSocket connection lifecycle: challenge/auth handshake, swarm-scoped
+    message loop'
 - ref: src/leader_board/server.py#_handle_watch
-  implements: "Async watch frame handler dispatched via create_task for concurrency"
+  implements: Async watch frame handler dispatched via create_task for concurrency
 - ref: src/leader_board/server.py#_compaction_loop
-  implements: "Background compaction scheduler on 30-day TTL"
+  implements: Background compaction scheduler on 30-day TTL
 - ref: src/leader_board/server.py#_enumerate_all_channels
-  implements: "Filesystem enumeration of all (swarm, channel) pairs for compaction"
+  implements: Filesystem enumeration of all (swarm, channel) pairs for compaction
 - ref: src/leader_board/server.py#create_app
-  implements: "Starlette application factory wiring storage, core, and compaction lifespan"
+  implements: Starlette application factory wiring storage, core, and compaction lifespan
 - ref: src/leader_board/server.py#run_server
-  implements: "Convenience entry point for CLI integration via uvicorn.run"
+  implements: Convenience entry point for CLI integration via uvicorn.run
+- ref: tests/test_leader_board_e2e.py
+  implements: Local WebSocket server adapter
+- ref: tests/test_leader_board_fs_storage.py
+  implements: Local WebSocket server adapter
+- ref: tests/test_leader_board_protocol.py
+  implements: Local WebSocket server adapter
+- ref: tests/test_leader_board_server.py
+  implements: Local WebSocket server adapter
 narrative: leader_board
 investigation: null
 subsystems: []
@@ -42,7 +52,6 @@ depends_on:
 created_after:
 - finalize_double_commit
 ---
-
 # Chunk Goal
 
 ## Minor Goal

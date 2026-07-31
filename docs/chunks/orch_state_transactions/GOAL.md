@@ -6,14 +6,16 @@ code_paths:
 - src/orchestrator/state.py
 - tests/test_orchestrator_state.py
 code_references:
-  - ref: src/orchestrator/state.py#StateStore
-    implements: "Concurrency model documentation for dual-connection pattern"
-  - ref: src/orchestrator/state.py#StateStore::transaction
-    implements: "Context manager for explicit BEGIN/COMMIT transaction boundaries"
-  - ref: src/orchestrator/state.py#StateStore::create_work_unit
-    implements: "Atomic work unit creation with status log in single transaction"
-  - ref: src/orchestrator/state.py#StateStore::update_work_unit
-    implements: "Atomic work unit update with status log in single transaction"
+- ref: src/orchestrator/state.py#StateStore
+  implements: Concurrency model documentation for dual-connection pattern
+- ref: src/orchestrator/state.py#StateStore::transaction
+  implements: Context manager for explicit BEGIN/COMMIT transaction boundaries
+- ref: src/orchestrator/state.py#StateStore::create_work_unit
+  implements: Atomic work unit creation with status log in single transaction
+- ref: src/orchestrator/state.py#StateStore::update_work_unit
+  implements: Atomic work unit update with status log in single transaction
+- ref: tests/test_orchestrator_state.py
+  implements: Transaction atomicity tests
 narrative: arch_consolidation
 investigation: null
 subsystems:
@@ -25,7 +27,6 @@ depends_on: []
 created_after:
 - orch_api_retry
 ---
-
 # Chunk Goal
 
 ## Minor Goal

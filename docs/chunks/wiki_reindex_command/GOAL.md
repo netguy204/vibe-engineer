@@ -8,22 +8,27 @@ code_paths:
 - src/entity_repo.py
 - tests/test_entity_wiki_reindex.py
 code_references:
-  - ref: src/cli/wiki.py#wiki
-    implements: "wiki CLI command group entry point"
-  - ref: src/cli/wiki.py#reindex
-    implements: "ve wiki reindex <entity> subcommand — CLI glue for reindex_wiki"
-  - ref: src/cli/__init__.py
-    implements: "Registration of the wiki command group into the main CLI"
-  - ref: src/entity_repo.py#WikiReindexResult
-    implements: "Result dataclass for wiki reindex operation (pages_total, directories_scanned)"
-  - ref: src/entity_repo.py#_parse_existing_summaries
-    implements: "Extract page→summary mapping from existing index.md to preserve manual summaries"
-  - ref: src/entity_repo.py#_scan_wiki_pages
-    implements: "Scan wiki directory and return pages grouped by section (core/domain/techniques/projects/relationships)"
-  - ref: src/entity_repo.py#_generate_index_md
-    implements: "Render fresh index.md content from scanned pages, reusing preserved summaries"
-  - ref: src/entity_repo.py#reindex_wiki
-    implements: "Main reindex function — orchestrates scan, summary preservation, and index overwrite"
+- ref: src/cli/wiki.py#wiki
+  implements: wiki CLI command group entry point
+- ref: src/cli/wiki.py#reindex
+  implements: "ve wiki reindex <entity> subcommand \u2014 CLI glue for reindex_wiki"
+- ref: src/cli/__init__.py
+  implements: Registration of the wiki command group into the main CLI
+- ref: src/entity_repo.py#WikiReindexResult
+  implements: Result dataclass for wiki reindex operation (pages_total, directories_scanned)
+- ref: src/entity_repo.py#_parse_existing_summaries
+  implements: "Extract page\u2192summary mapping from existing index.md to preserve\
+    \ manual summaries"
+- ref: src/entity_repo.py#_scan_wiki_pages
+  implements: Scan wiki directory and return pages grouped by section (core/domain/techniques/projects/relationships)
+- ref: src/entity_repo.py#_generate_index_md
+  implements: Render fresh index.md content from scanned pages, reusing preserved
+    summaries
+- ref: src/entity_repo.py#reindex_wiki
+  implements: "Main reindex function \u2014 orchestrates scan, summary preservation,\
+    \ and index overwrite"
+- ref: tests/test_entity_wiki_reindex.py
+  implements: Tests for wiki reindex logic and CLI
 narrative: null
 investigation: null
 subsystems: []
@@ -33,7 +38,6 @@ depends_on: []
 created_after:
 - orch_worktree_process_reap
 ---
-
 # Chunk Goal
 
 ## Minor Goal

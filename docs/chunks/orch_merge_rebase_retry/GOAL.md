@@ -12,13 +12,18 @@ code_paths:
 - tests/test_orchestrator_scheduler_merge_conflict.py
 code_references:
 - ref: src/orchestrator/scheduler.py#Scheduler::_handle_merge_conflict_retry
-  implements: "Detect merge conflicts during finalization and cycle back to REBASE phase"
+  implements: Detect merge conflicts during finalization and cycle back to REBASE
+    phase
 - ref: src/orchestrator/worktree.py#WorktreeManager::recreate_worktree_from_branch
-  implements: "Recreate worktree from surviving branch after merge conflict"
+  implements: Recreate worktree from surviving branch after merge conflict
 - ref: src/orchestrator/merge.py#is_merge_conflict_error
-  implements: "Distinguish merge conflicts from other finalization errors"
+  implements: Distinguish merge conflicts from other finalization errors
 - ref: tests/test_orchestrator_scheduler_merge_conflict.py
-  implements: "Tests for merge conflict retry logic"
+  implements: Tests for merge conflict retry logic
+- ref: src/orchestrator/models.py
+  implements: Retry count for merge conflict recovery
+- ref: src/orchestrator/state.py
+  implements: Merge conflict retry tracking
 narrative: null
 investigation: null
 subsystems:
@@ -36,7 +41,6 @@ created_after:
 - worktree_merge_extract
 - phase_aware_recovery
 ---
-
 # Chunk Goal
 
 ## Minor Goal

@@ -6,17 +6,28 @@ code_paths:
 - src/orchestrator/scheduler.py
 - src/orchestrator/api.py
 - tests/test_orchestrator_scheduler.py
+- src/orchestrator/api/conflicts.py
+- tests/test_orchestrator_api.py
+- tests/test_orchestrator_scheduler_review.py
 code_references:
-  - ref: src/orchestrator/scheduler.py#unblock_dependents
-    implements: "Module-level function that unblocks dependent work units when a chunk completes"
-  - ref: src/orchestrator/scheduler.py#Scheduler::_unblock_dependents
-    implements: "Wrapper method for backward compatibility within Scheduler"
-  - ref: src/orchestrator/api.py#update_work_unit_endpoint
-    implements: "API endpoint that calls unblock_dependents when status is manually set to DONE"
-  - ref: src/orchestrator/api.py#retry_merge_endpoint
-    implements: "API endpoint that calls unblock_dependents after successful merge retry"
-  - ref: src/orchestrator/api/work_units.py#update_work_unit_endpoint
-    implements: "Unblock dependents when manually set to DONE"
+- ref: src/orchestrator/scheduler.py#unblock_dependents
+  implements: Module-level function that unblocks dependent work units when a chunk
+    completes
+- ref: src/orchestrator/scheduler.py#Scheduler::_unblock_dependents
+  implements: Wrapper method for backward compatibility within Scheduler
+- ref: src/orchestrator/api.py#update_work_unit_endpoint
+  implements: API endpoint that calls unblock_dependents when status is manually set
+    to DONE
+- ref: src/orchestrator/api.py#retry_merge_endpoint
+  implements: API endpoint that calls unblock_dependents after successful merge retry
+- ref: src/orchestrator/api/work_units.py#update_work_unit_endpoint
+  implements: Unblock dependents when manually set to DONE
+- ref: src/orchestrator/api/conflicts.py
+  implements: Unblock dependents after successful merge retry
+- ref: tests/test_orchestrator_api.py
+  implements: Tests for manual DONE unblocking via API
+- ref: tests/test_orchestrator_scheduler_review.py
+  implements: Manual DONE transition triggers unblock
 narrative: null
 investigation: null
 subsystems: []
@@ -28,8 +39,6 @@ created_after:
 - integrity_validate
 - orch_reviewer_decision_mcp
 ---
-
-
 # Chunk Goal
 
 ## Minor Goal

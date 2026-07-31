@@ -6,14 +6,18 @@ code_paths:
 - src/orchestrator/merge.py
 - tests/test_orchestrator_merge.py
 code_references:
-  - ref: src/orchestrator/merge.py#is_on_branch
-    implements: "Helper to detect if HEAD is on a given branch"
-  - ref: src/orchestrator/merge.py#has_clean_working_tree
-    implements: "Helper to detect if working tree has uncommitted changes (used by tests, no longer gating merge strategy)"
-  - ref: src/orchestrator/merge.py#merge_native
-    implements: "Native git merge for on-branch merges (handles dirty trees correctly)"
-  - ref: src/orchestrator/merge.py#merge_without_checkout
-    implements: "Branch-aware merge strategy: native merge when on-branch, plumbing when off-branch"
+- ref: src/orchestrator/merge.py#is_on_branch
+  implements: Helper to detect if HEAD is on a given branch
+- ref: src/orchestrator/merge.py#has_clean_working_tree
+  implements: Helper to detect if working tree has uncommitted changes (used by tests,
+    no longer gating merge strategy)
+- ref: src/orchestrator/merge.py#merge_native
+  implements: Native git merge for on-branch merges (handles dirty trees correctly)
+- ref: src/orchestrator/merge.py#merge_without_checkout
+  implements: 'Branch-aware merge strategy: native merge when on-branch, plumbing
+    when off-branch'
+- ref: tests/test_orchestrator_merge.py
+  implements: Branch-aware merge strategy tests
 narrative: null
 investigation: null
 subsystems:
@@ -25,7 +29,6 @@ depends_on: []
 created_after:
 - rename_rebase_guard
 ---
-
 # Chunk Goal
 
 ## Minor Goal

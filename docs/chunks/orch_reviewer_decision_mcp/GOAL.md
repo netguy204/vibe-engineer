@@ -8,28 +8,46 @@ code_paths:
 - src/templates/commands/chunk-review.md.jinja2
 - tests/test_orchestrator_scheduler.py
 - tests/test_orchestrator_agent.py
+- tests/test_orchestrator_agent_callbacks.py
+- tests/test_orchestrator_agent_runner.py
+- tests/test_orchestrator_agent_sandbox.py
+- tests/test_orchestrator_agent_skills.py
+- tests/test_orchestrator_agent_stream.py
 code_references:
-  - ref: src/orchestrator/backends/claude.py#review_decision_tool
-    implements: "ReviewDecision MCP tool defined via @tool decorator"
-  - ref: src/orchestrator/backends/claude.py#create_orchestrator_mcp_server
-    implements: "Creates MCP server with orchestrator tools for REVIEW phase"
-  - ref: src/orchestrator/agent.py#AgentRunner::run_phase
-    implements: "Main phase execution migrated from query() to ClaudeSDKClient"
-  - ref: src/orchestrator/agent.py#AgentRunner::resume_for_active_status
-    implements: "Session resume migrated from query() to ClaudeSDKClient"
-  - ref: src/orchestrator/backends/claude.py#create_review_decision_hook
-    implements: "Hook updated to match MCP tool naming convention (mcp__orchestrator__ReviewDecision)"
-  - ref: tests/test_orchestrator_agent_review.py#TestMCPServerConfiguration
-    implements: "Tests for MCP server configuration during REVIEW phase"
+- ref: src/orchestrator/backends/claude.py#review_decision_tool
+  implements: ReviewDecision MCP tool defined via @tool decorator
+- ref: src/orchestrator/backends/claude.py#create_orchestrator_mcp_server
+  implements: Creates MCP server with orchestrator tools for REVIEW phase
+- ref: src/orchestrator/agent.py#AgentRunner::run_phase
+  implements: Main phase execution migrated from query() to ClaudeSDKClient
+- ref: src/orchestrator/agent.py#AgentRunner::resume_for_active_status
+  implements: Session resume migrated from query() to ClaudeSDKClient
+- ref: src/orchestrator/backends/claude.py#create_review_decision_hook
+  implements: Hook updated to match MCP tool naming convention (mcp__orchestrator__ReviewDecision)
+- ref: tests/test_orchestrator_agent_review.py#TestMCPServerConfiguration
+  implements: Tests for MCP server configuration during REVIEW phase
+- ref: tests/test_orchestrator_agent.py
+  implements: Updated tests for ClaudeSDKClient migration
+- ref: tests/test_orchestrator_agent_callbacks.py
+  implements: Updated tests for ClaudeSDKClient migration
+- ref: tests/test_orchestrator_agent_runner.py
+  implements: Updated tests for ClaudeSDKClient migration
+- ref: tests/test_orchestrator_agent_sandbox.py
+  implements: Updated tests for ClaudeSDKClient migration
+- ref: tests/test_orchestrator_agent_skills.py
+  implements: Updated tests for ClaudeSDKClient migration
+- ref: tests/test_orchestrator_agent_stream.py
+  implements: Updated tests for ClaudeSDKClient migration
 narrative: null
 investigation: null
 subsystems: []
 friction_entries: []
 bug_type: semantic
 depends_on: []
-created_after: ["orch_dashboard_live_tail", "reviewer_decision_tool"]
+created_after:
+- orch_dashboard_live_tail
+- reviewer_decision_tool
 ---
-
 # Chunk Goal
 
 ## Minor Goal

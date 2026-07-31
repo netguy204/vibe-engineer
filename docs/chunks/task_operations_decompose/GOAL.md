@@ -11,127 +11,115 @@ code_paths:
 - src/task/friction.py
 - src/task/overlap.py
 - src/task/exceptions.py
+- src/task_utils.py
 code_references:
-  # Package structure and re-exports
-  - ref: src/task/__init__.py
-    implements: "Package re-exports for backward compatibility with task_utils imports"
-
-  # Exception hierarchy
-  - ref: src/task/exceptions.py#TaskError
-    implements: "Base exception class for all task operations"
-  - ref: src/task/exceptions.py#TaskChunkError
-    implements: "Chunk-specific task error"
-  - ref: src/task/exceptions.py#TaskNarrativeError
-    implements: "Narrative-specific task error"
-  - ref: src/task/exceptions.py#TaskInvestigationError
-    implements: "Investigation-specific task error"
-  - ref: src/task/exceptions.py#TaskSubsystemError
-    implements: "Subsystem-specific task error"
-  - ref: src/task/exceptions.py#TaskPromoteError
-    implements: "Artifact promotion error"
-  - ref: src/task/exceptions.py#TaskCopyExternalError
-    implements: "External copy operation error"
-  - ref: src/task/exceptions.py#TaskRemoveExternalError
-    implements: "External removal operation error"
-  - ref: src/task/exceptions.py#TaskFrictionError
-    implements: "Friction logging error"
-  - ref: src/task/exceptions.py#TaskOverlapError
-    implements: "Overlap detection error"
-  - ref: src/task/exceptions.py#TaskActivateError
-    implements: "Chunk activation error"
-
-  # Config module
-  - ref: src/task/config.py#is_task_directory
-    implements: "Task directory detection via .ve-task.yaml"
-  - ref: src/task/config.py#load_task_config
-    implements: "Task configuration loading and validation"
-  - ref: src/task/config.py#resolve_repo_directory
-    implements: "Org/repo reference resolution to filesystem path"
-  - ref: src/task/config.py#parse_projects_option
-    implements: "--projects CLI option parsing"
-  - ref: src/task/config.py#resolve_project_ref
-    implements: "Flexible project reference resolution"
-  - ref: src/task/config.py#resolve_project_qualified_ref
-    implements: "Project-qualified code reference parsing"
-  - ref: src/task/config.py#find_task_directory
-    implements: "Walk-up task directory discovery"
-  - ref: src/task/config.py#TaskProjectContext
-    implements: "Task project context dataclass"
-  - ref: src/task/config.py#check_task_project_context
-    implements: "Task project context detection"
-
-  # Artifact operations module
-  - ref: src/task/artifact_ops.py#add_dependents_to_artifact
-    implements: "Generic artifact dependents update"
-  - ref: src/task/artifact_ops.py#append_dependent_to_artifact
-    implements: "Idempotent dependent entry append"
-  - ref: src/task/artifact_ops.py#add_dependents_to_chunk
-    implements: "Chunk-specific dependents wrapper"
-  - ref: src/task/artifact_ops.py#add_dependents_to_narrative
-    implements: "Narrative-specific dependents wrapper"
-  - ref: src/task/artifact_ops.py#add_dependents_to_investigation
-    implements: "Investigation-specific dependents wrapper"
-  - ref: src/task/artifact_ops.py#add_dependents_to_subsystem
-    implements: "Subsystem-specific dependents wrapper"
-  - ref: src/task/artifact_ops.py#create_task_chunk
-    implements: "Multi-repo chunk creation orchestration"
-  - ref: src/task/artifact_ops.py#create_task_narrative
-    implements: "Multi-repo narrative creation orchestration"
-  - ref: src/task/artifact_ops.py#create_task_investigation
-    implements: "Multi-repo investigation creation orchestration"
-  - ref: src/task/artifact_ops.py#create_task_subsystem
-    implements: "Multi-repo subsystem creation orchestration"
-  - ref: src/task/artifact_ops.py#list_task_chunks
-    implements: "Task-level chunk listing with dependents"
-  - ref: src/task/artifact_ops.py#list_task_narratives
-    implements: "Task-level narrative listing with dependents"
-  - ref: src/task/artifact_ops.py#list_task_investigations
-    implements: "Task-level investigation listing with dependents"
-  - ref: src/task/artifact_ops.py#list_task_subsystems
-    implements: "Task-level subsystem listing with dependents"
-  - ref: src/task/artifact_ops.py#get_current_task_chunk
-    implements: "Current IMPLEMENTING chunk retrieval"
-  - ref: src/task/artifact_ops.py#get_next_chunk_id
-    implements: "Legacy sequential chunk ID calculation"
-  - ref: src/task/artifact_ops.py#list_task_artifacts_grouped
-    implements: "Grouped artifact listing by location"
-  - ref: src/task/artifact_ops.py#list_task_proposed_chunks
-    implements: "Proposed chunk collection from artifacts"
-  - ref: src/task/artifact_ops.py#is_external_chunk
-    implements: "External chunk detection convenience wrapper"
-  - ref: src/task/artifact_ops.py#activate_task_chunk
-    implements: "FUTURE chunk activation in task context"
-
-  # Promote module
-  - ref: src/task/promote.py#identify_source_project
-    implements: "Source project identification for promotion"
-  - ref: src/task/promote.py#promote_artifact
-    implements: "Artifact promotion to external repository"
-
-  # External module
-  - ref: src/task/external.py#copy_artifact_as_external
-    implements: "External artifact copy to project"
-  - ref: src/task/external.py#remove_artifact_from_external
-    implements: "External reference removal from project"
-  - ref: src/task/external.py#remove_dependent_from_artifact
-    implements: "Dependent entry removal from frontmatter"
-
-  # Friction module
-  - ref: src/task/friction.py#create_task_friction_entry
-    implements: "Multi-repo friction entry creation"
-  - ref: src/task/friction.py#add_external_friction_source
-    implements: "External friction source reference addition"
-
-  # Overlap module
-  - ref: src/task/overlap.py#TaskOverlapResult
-    implements: "Overlap detection result dataclass"
-  - ref: src/task/overlap.py#find_task_overlapping_chunks
-    implements: "Cross-repo chunk overlap detection"
+- ref: src/task/__init__.py
+  implements: Package re-exports for backward compatibility with task_utils imports
+- ref: src/task/exceptions.py#TaskError
+  implements: Base exception class for all task operations
+- ref: src/task/exceptions.py#TaskChunkError
+  implements: Chunk-specific task error
+- ref: src/task/exceptions.py#TaskNarrativeError
+  implements: Narrative-specific task error
+- ref: src/task/exceptions.py#TaskInvestigationError
+  implements: Investigation-specific task error
+- ref: src/task/exceptions.py#TaskSubsystemError
+  implements: Subsystem-specific task error
+- ref: src/task/exceptions.py#TaskPromoteError
+  implements: Artifact promotion error
+- ref: src/task/exceptions.py#TaskCopyExternalError
+  implements: External copy operation error
+- ref: src/task/exceptions.py#TaskRemoveExternalError
+  implements: External removal operation error
+- ref: src/task/exceptions.py#TaskFrictionError
+  implements: Friction logging error
+- ref: src/task/exceptions.py#TaskOverlapError
+  implements: Overlap detection error
+- ref: src/task/exceptions.py#TaskActivateError
+  implements: Chunk activation error
+- ref: src/task/config.py#is_task_directory
+  implements: Task directory detection via .ve-task.yaml
+- ref: src/task/config.py#load_task_config
+  implements: Task configuration loading and validation
+- ref: src/task/config.py#resolve_repo_directory
+  implements: Org/repo reference resolution to filesystem path
+- ref: src/task/config.py#parse_projects_option
+  implements: --projects CLI option parsing
+- ref: src/task/config.py#resolve_project_ref
+  implements: Flexible project reference resolution
+- ref: src/task/config.py#resolve_project_qualified_ref
+  implements: Project-qualified code reference parsing
+- ref: src/task/config.py#find_task_directory
+  implements: Walk-up task directory discovery
+- ref: src/task/config.py#TaskProjectContext
+  implements: Task project context dataclass
+- ref: src/task/config.py#check_task_project_context
+  implements: Task project context detection
+- ref: src/task/artifact_ops.py#add_dependents_to_artifact
+  implements: Generic artifact dependents update
+- ref: src/task/artifact_ops.py#append_dependent_to_artifact
+  implements: Idempotent dependent entry append
+- ref: src/task/artifact_ops.py#add_dependents_to_chunk
+  implements: Chunk-specific dependents wrapper
+- ref: src/task/artifact_ops.py#add_dependents_to_narrative
+  implements: Narrative-specific dependents wrapper
+- ref: src/task/artifact_ops.py#add_dependents_to_investigation
+  implements: Investigation-specific dependents wrapper
+- ref: src/task/artifact_ops.py#add_dependents_to_subsystem
+  implements: Subsystem-specific dependents wrapper
+- ref: src/task/artifact_ops.py#create_task_chunk
+  implements: Multi-repo chunk creation orchestration
+- ref: src/task/artifact_ops.py#create_task_narrative
+  implements: Multi-repo narrative creation orchestration
+- ref: src/task/artifact_ops.py#create_task_investigation
+  implements: Multi-repo investigation creation orchestration
+- ref: src/task/artifact_ops.py#create_task_subsystem
+  implements: Multi-repo subsystem creation orchestration
+- ref: src/task/artifact_ops.py#list_task_chunks
+  implements: Task-level chunk listing with dependents
+- ref: src/task/artifact_ops.py#list_task_narratives
+  implements: Task-level narrative listing with dependents
+- ref: src/task/artifact_ops.py#list_task_investigations
+  implements: Task-level investigation listing with dependents
+- ref: src/task/artifact_ops.py#list_task_subsystems
+  implements: Task-level subsystem listing with dependents
+- ref: src/task/artifact_ops.py#get_current_task_chunk
+  implements: Current IMPLEMENTING chunk retrieval
+- ref: src/task/artifact_ops.py#get_next_chunk_id
+  implements: Legacy sequential chunk ID calculation
+- ref: src/task/artifact_ops.py#list_task_artifacts_grouped
+  implements: Grouped artifact listing by location
+- ref: src/task/artifact_ops.py#list_task_proposed_chunks
+  implements: Proposed chunk collection from artifacts
+- ref: src/task/artifact_ops.py#is_external_chunk
+  implements: External chunk detection convenience wrapper
+- ref: src/task/artifact_ops.py#activate_task_chunk
+  implements: FUTURE chunk activation in task context
+- ref: src/task/promote.py#identify_source_project
+  implements: Source project identification for promotion
+- ref: src/task/promote.py#promote_artifact
+  implements: Artifact promotion to external repository
+- ref: src/task/external.py#copy_artifact_as_external
+  implements: External artifact copy to project
+- ref: src/task/external.py#remove_artifact_from_external
+  implements: External reference removal from project
+- ref: src/task/external.py#remove_dependent_from_artifact
+  implements: Dependent entry removal from frontmatter
+- ref: src/task/friction.py#create_task_friction_entry
+  implements: Multi-repo friction entry creation
+- ref: src/task/friction.py#add_external_friction_source
+  implements: External friction source reference addition
+- ref: src/task/overlap.py#TaskOverlapResult
+  implements: Overlap detection result dataclass
+- ref: src/task/overlap.py#find_task_overlapping_chunks
+  implements: Cross-repo chunk overlap detection
+- ref: src/task_utils.py
+  implements: Task utilities package decomposition
 narrative: null
 investigation: null
 subsystems:
-  - subsystem_id: cross_repo_operations
-    relationship: implements
+- subsystem_id: cross_repo_operations
+  relationship: implements
 friction_entries: []
 bug_type: null
 depends_on: []
@@ -146,7 +134,6 @@ created_after:
 - remove_legacy_prefix
 - scheduler_decompose
 ---
-
 # Chunk Goal
 
 ## Minor Goal

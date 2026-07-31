@@ -13,32 +13,41 @@ code_paths:
 - docs/chunks/entity_worktree_attach/MIGRATION.md
 - README.md
 code_references:
-  - ref: src/cli/entity_worktree.py#do_attach
-    implements: "Worktree-based attach: composes ensure_canonical_clone + git worktree add"
-  - ref: src/cli/entity_worktree.py#do_detach
-    implements: "Worktree-based detach: git worktree remove + branch cleanup"
-  - ref: src/cli/entity_worktree.py#project_slug
-    implements: "Deterministic project slug for branch naming"
-  - ref: src/cli/entity_worktree.py#attach_branch_name
-    implements: "Project-scoped branch convention: ve-attach/<slug>"
-  - ref: src/cli/entity_worktree.py#AttachResult
-    implements: "Importable result for downstream entity_claude_autoattach"
-  - ref: src/cli/entity_worktree.py#WorktreeAttachError
-    implements: "Distinct error class for worktree-attach failures"
-  - ref: src/cli/entity.py#attach
-    implements: "ve entity attach CLI wired to do_attach"
-  - ref: src/cli/entity.py#detach
-    implements: "ve entity detach CLI wired to do_detach"
-  - ref: src/cli/entity.py#list_entities
-    implements: "Worktree-aware entity listing (no submodule branch)"
-  - ref: src/entity_repo.py#AttachedEntityInfo
-    implements: "Metadata for worktree-attached entities surfaced by ve entity list"
-  - ref: src/entity_repo.py#list_attached_entities
-    implements: "Worktree-aware attached-entity enumeration"
-  - ref: src/entity_repo.py#push_entity
-    implements: "Configured-upstream-aware push for worktree-attached entities"
-  - ref: src/entity_repo.py#pull_entity
-    implements: "Configured-upstream-aware pull for worktree-attached entities"
+- ref: src/cli/entity_worktree.py#do_attach
+  implements: 'Worktree-based attach: composes ensure_canonical_clone + git worktree
+    add'
+- ref: src/cli/entity_worktree.py#do_detach
+  implements: 'Worktree-based detach: git worktree remove + branch cleanup'
+- ref: src/cli/entity_worktree.py#project_slug
+  implements: Deterministic project slug for branch naming
+- ref: src/cli/entity_worktree.py#attach_branch_name
+  implements: 'Project-scoped branch convention: ve-attach/<slug>'
+- ref: src/cli/entity_worktree.py#AttachResult
+  implements: Importable result for downstream entity_claude_autoattach
+- ref: src/cli/entity_worktree.py#WorktreeAttachError
+  implements: Distinct error class for worktree-attach failures
+- ref: src/cli/entity.py#attach
+  implements: ve entity attach CLI wired to do_attach
+- ref: src/cli/entity.py#detach
+  implements: ve entity detach CLI wired to do_detach
+- ref: src/cli/entity.py#list_entities
+  implements: Worktree-aware entity listing (no submodule branch)
+- ref: src/entity_repo.py#AttachedEntityInfo
+  implements: Metadata for worktree-attached entities surfaced by ve entity list
+- ref: src/entity_repo.py#list_attached_entities
+  implements: Worktree-aware attached-entity enumeration
+- ref: src/entity_repo.py#push_entity
+  implements: Configured-upstream-aware push for worktree-attached entities
+- ref: src/entity_repo.py#pull_entity
+  implements: Configured-upstream-aware pull for worktree-attached entities
+- ref: src/orchestrator/worktree.py
+  implements: Submodule-based entity lifecycle in worktrees
+- ref: tests/test_entity_push_pull_cli.py
+  implements: Helpers rewritten to use worktree-based attach
+- ref: tests/test_entity_worktree_attach.py
+  implements: Worktree-based attach/detach
+- ref: tests/test_entity_worktree_attach_cli.py
+  implements: CLI surfaces for worktree attach/detach
 narrative: entity_worktrees
 investigation: null
 subsystems: []
@@ -49,7 +58,6 @@ depends_on:
 created_after:
 - plugin_hook_cli_bootstrap
 ---
-
 # Chunk Goal
 
 ## Minor Goal

@@ -7,16 +7,20 @@ code_paths:
 - src/entity_shutdown.py
 - tests/test_entity_shutdown.py
 code_references:
-  - ref: src/entity_shutdown.py#_capture_baseline_ref
-    implements: "Captures entity repo HEAD SHA before the agent session starts"
-  - ref: src/entity_shutdown.py#extract_wiki_diff
-    implements: "Accepts optional baseline_ref; diffs baseline_ref..HEAD when provided, falls back to --cached HEAD"
-  - ref: src/entity_shutdown.py#run_wiki_consolidation
-    implements: "Threads baseline_ref parameter through to extract_wiki_diff"
-  - ref: src/entity_shutdown.py#run_shutdown
-    implements: "Accepts and forwards baseline_ref to run_wiki_consolidation"
-  - ref: src/cli/entity.py#claude_cmd
-    implements: "Records baseline_ref before launching the agent session and passes it to run_shutdown"
+- ref: src/entity_shutdown.py#_capture_baseline_ref
+  implements: Captures entity repo HEAD SHA before the agent session starts
+- ref: src/entity_shutdown.py#extract_wiki_diff
+  implements: Accepts optional baseline_ref; diffs baseline_ref..HEAD when provided,
+    falls back to --cached HEAD
+- ref: src/entity_shutdown.py#run_wiki_consolidation
+  implements: Threads baseline_ref parameter through to extract_wiki_diff
+- ref: src/entity_shutdown.py#run_shutdown
+  implements: Accepts and forwards baseline_ref to run_wiki_consolidation
+- ref: src/cli/entity.py#claude_cmd
+  implements: Records baseline_ref before launching the agent session and passes it
+    to run_shutdown
+- ref: tests/test_entity_shutdown.py
+  implements: baseline_ref tests
 narrative: null
 investigation: null
 subsystems: []
@@ -26,7 +30,6 @@ depends_on: []
 created_after:
 - wiki_snapshot_vs_log
 ---
-
 # Chunk Goal
 
 ## Minor Goal

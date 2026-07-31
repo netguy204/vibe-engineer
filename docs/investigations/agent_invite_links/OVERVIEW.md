@@ -1,21 +1,65 @@
 ---
 status: SOLVED
-trigger: "Exploring whether agent-friendly invite links could simplify steward onboarding, inspired by a product that lets agents join collaborative environments via pasted URLs"
+trigger: Exploring whether agent-friendly invite links could simplify steward onboarding,
+  inspired by a product that lets agents join collaborative environments via pasted
+  URLs
 proposed_chunks:
-  - prompt: "Encrypted key blob storage on the Durable Object — PUT/GET/DELETE routes for token-encrypted private key blobs indexed by hash(token)"
-    chunk_directory: gateway_token_storage
-    depends_on: []
-  - prompt: "Cleartext gateway HTTP routes — GET/POST message endpoints that decrypt the key per-request using the token, enabling agents to interact with swarm channels via plain HTTP"
-    chunk_directory: gateway_cleartext_api
-    depends_on: [0]
-  - prompt: "ve board invite and ve board revoke CLI commands — generate token, encrypt key, upload blob, output invite URL; revoke by deleting blob"
-    chunk_directory: invite_cli_command
-    depends_on: [0]
-  - prompt: "Agent-facing instruction page at /invite/{token} — plain text protocol description with example curl commands that any agent can follow to start interacting with the swarm"
-    chunk_directory: invite_instruction_page
-    depends_on: [1]
+- prompt: "Encrypted key blob storage on the Durable Object \u2014 PUT/GET/DELETE\
+    \ routes for token-encrypted private key blobs indexed by hash(token)"
+  chunk_directory: gateway_token_storage
+  depends_on: []
+- prompt: "Cleartext gateway HTTP routes \u2014 GET/POST message endpoints that decrypt\
+    \ the key per-request using the token, enabling agents to interact with swarm\
+    \ channels via plain HTTP"
+  chunk_directory: gateway_cleartext_api
+  depends_on:
+  - 0
+- prompt: "ve board invite and ve board revoke CLI commands \u2014 generate token,\
+    \ encrypt key, upload blob, output invite URL; revoke by deleting blob"
+  chunk_directory: invite_cli_command
+  depends_on:
+  - 0
+- prompt: "Agent-facing instruction page at /invite/{token} \u2014 plain text protocol\
+    \ description with example curl commands that any agent can follow to start interacting\
+    \ with the swarm"
+  chunk_directory: invite_instruction_page
+  depends_on:
+  - 1
+- prompt: 'Improve the HTTP cleartext gateway''s usability for browser-based and third-party
+    clients. Three changes:'
+  chunk_directory: gateway_cors_and_docs
+  depends_on: []
+- prompt: 'The cleartext gateway''s read/write API (`GET`/`POST /gateway/{token}/channels/{channel}/messages`)
+    shares its crypto pipeline with the invite-page handler. Both paths resolve a
+    token to a symmetric message key by:'
+  chunk_directory: gateway_message_read_fix
+  depends_on: []
+- prompt: 'Round out the invite system (see `docs/investigations/agent_invite_links`)
+    with two additional CLI commands:'
+  chunk_directory: invite_list_revoke
+  depends_on: []
+- prompt: "The leader-board worker routes `/invite/{token}` requests to the correct\
+    \ Durable Object without requiring a `?swarm=` query parameter. Because invite\
+    \ URLs don't carry a swarm ID, the worker entry point (`src/index.ts`) resolves\
+    \ the swarm from the token hash via a `TOKEN_SWARM_INDEX` KV namespace before\
+    \ forwarding to the DO. The KV index is maintained on every gateway key write,\
+    \ single-key delete, and bulk delete, so token\u2192swarm lookups stay in sync\
+    \ with the gateway key store."
+  chunk_directory: invite_path_routing_fix
+  depends_on: []
+- prompt: Move the `ve board revoke` command to `ve board invite revoke` so all invite
+    operations are grouped under the `invite` subcommand. Currently `revoke` exists
+    as a top-level `board` command while `create` and `list` are under `ve board invite`,
+    making `revoke` undiscoverable.
+  chunk_directory: invite_revoke_subcommand
+  depends_on: []
+- prompt: Fix bug where newly created invite tokens are immediately invalid. `ve board
+    invite create` succeeds (HTTP 200 from PUT to `/gateway/keys`) and returns an
+    invite URL, but curling the URL immediately returns "Invalid or expired invite
+    token".
+  chunk_directory: invite_token_instant_expiry
+  depends_on: []
 ---
-
 ## Trigger
 
 Operator encountered a product that lets users paste a link into any agent (OpenClaw, ClawedCode, etc.), and the agent follows the link to receive instructions for joining a collaborative editing environment — essentially a "Google Docs for agents" onboarding flow.

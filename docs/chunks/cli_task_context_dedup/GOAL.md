@@ -12,12 +12,23 @@ code_paths:
 - src/cli/external.py
 - tests/test_cli_utils.py
 code_references:
-  - ref: src/cli/utils.py#handle_task_context
-    implements: "Core task-context routing helper that checks is_task_directory and executes handler"
-  - ref: src/cli/chunk.py#list_proposed_chunks_cmd
-    implements: "Using handle_task_context for routing in list-proposed command"
-  - ref: tests/test_cli_utils.py#TestHandleTaskContext
-    implements: "Unit tests for handle_task_context helper"
+- ref: src/cli/utils.py#handle_task_context
+  implements: Core task-context routing helper that checks is_task_directory and executes
+    handler
+- ref: src/cli/chunk.py#list_proposed_chunks_cmd
+  implements: Using handle_task_context for routing in list-proposed command
+- ref: tests/test_cli_utils.py#TestHandleTaskContext
+  implements: Unit tests for handle_task_context helper
+- ref: src/cli/external.py
+  implements: Using handle_task_context for routing
+- ref: src/cli/friction.py
+  implements: Using handle_task_context for routing
+- ref: src/cli/investigation.py
+  implements: Using handle_task_context for routing
+- ref: src/cli/narrative.py
+  implements: Using handle_task_context for routing
+- ref: src/cli/subsystem.py
+  implements: Using handle_task_context for routing
 narrative: arch_consolidation
 investigation: null
 subsystems: []
@@ -27,7 +38,6 @@ depends_on: []
 created_after:
 - orch_api_retry
 ---
-
 # Chunk Goal
 
 ## Minor Goal

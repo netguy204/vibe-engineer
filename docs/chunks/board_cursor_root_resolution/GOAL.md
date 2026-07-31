@@ -9,15 +9,20 @@ code_paths:
 - tests/test_board_cli.py
 code_references:
 - ref: src/board/storage.py#find_git_root
-  implements: "Walk parent directories to find .git root (directory or worktree file)"
+  implements: Walk parent directories to find .git root (directory or worktree file)
 - ref: src/board/storage.py#resolve_board_root
-  implements: "Priority-chain root resolution: explicit override → .ve-task.yaml → .git → CWD fallback"
+  implements: "Priority-chain root resolution: explicit override \u2192 .ve-task.yaml\
+    \ \u2192 .git \u2192 CWD fallback"
 - ref: src/cli/board.py#watch_cmd
-  implements: "Watch command wired to auto-resolve project root for cursor storage"
+  implements: Watch command wired to auto-resolve project root for cursor storage
 - ref: src/cli/board.py#watch_multi_cmd
-  implements: "Watch-multi command wired to auto-resolve project root for cursor storage"
+  implements: Watch-multi command wired to auto-resolve project root for cursor storage
 - ref: src/cli/board.py#ack_cmd
-  implements: "Ack command wired to auto-resolve project root for cursor storage"
+  implements: Ack command wired to auto-resolve project root for cursor storage
+- ref: tests/test_board_cli.py
+  implements: Referenced by tests/test_board_cli.py
+- ref: tests/test_board_storage.py
+  implements: Referenced by tests/test_board_storage.py
 narrative: null
 investigation: null
 subsystems: []

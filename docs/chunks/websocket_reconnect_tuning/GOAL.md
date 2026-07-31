@@ -6,8 +6,11 @@ code_paths:
 - src/board/client.py
 - tests/test_board_client.py
 code_references:
-  - ref: src/board/client.py#BoardClient::watch_with_reconnect
-    implements: "Backoff reset to 1.0s after successful reconnect; keepalive investigation findings documented in PLAN.md"
+- ref: src/board/client.py#BoardClient::watch_with_reconnect
+  implements: Backoff reset to 1.0s after successful reconnect; keepalive investigation
+    findings documented in PLAN.md
+- ref: tests/test_board_client.py
+  implements: Backoff reset tests
 narrative: null
 investigation: null
 subsystems: []
@@ -17,7 +20,6 @@ depends_on: []
 created_after:
 - gateway_cors_and_docs
 ---
-
 # Chunk Goal
 
 ## Minor Goal

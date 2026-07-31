@@ -14,19 +14,27 @@ code_paths:
 - workers/leader-board/test/e2e.test.ts
 code_references:
 - ref: src/board/client.py#BoardClient::watch_multi
-  implements: "Multi-channel watch async generator - sends watch frames for all channels and yields messages as they arrive"
+  implements: Multi-channel watch async generator - sends watch frames for all channels
+    and yields messages as they arrive
 - ref: src/board/client.py#BoardClient::watch_multi_with_reconnect
-  implements: "Reconnect wrapper for watch_multi with cursor tracking across reconnects"
+  implements: Reconnect wrapper for watch_multi with cursor tracking across reconnects
 - ref: src/cli/board.py#watch_multi_cmd
-  implements: "CLI command 've board watch-multi' accepting multiple channels with tagged output"
+  implements: CLI command 've board watch-multi' accepting multiple channels with
+    tagged output
 - ref: workers/leader-board/src/swarm-do.ts#SwarmDO::handleWatch
-  implements: "Updated to store per-channel watch entries in attachment array for hibernation"
+  implements: Updated to store per-channel watch entries in attachment array for hibernation
 - ref: workers/leader-board/src/swarm-do.ts#SwarmDO::wakeWatchers
-  implements: "Updated to iterate multi-channel watch array and remove only delivered channel entries"
+  implements: Updated to iterate multi-channel watch array and remove only delivered
+    channel entries
 - ref: workers/leader-board/src/swarm-do.ts#SwarmDO::removeWatcher
-  implements: "Updated to clear all channel watches on disconnect"
+  implements: Updated to clear all channel watches on disconnect
 - ref: commands/swarm-monitor.md
-  implements: "Updated swarm-monitor to use single watch-multi connection instead of N separate watches"
+  implements: Updated swarm-monitor to use single watch-multi connection instead of
+    N separate watches
+- ref: tests/test_board_cli.py
+  implements: Multi-channel watch CLI tests
+- ref: tests/test_board_client.py
+  implements: Multi-channel watch tests
 narrative: null
 investigation: null
 subsystems: []
@@ -36,7 +44,6 @@ depends_on: []
 created_after:
 - websocket_reconnect_tuning
 ---
-
 # Chunk Goal
 
 ## Minor Goal

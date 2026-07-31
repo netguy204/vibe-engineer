@@ -3,28 +3,34 @@ status: ACTIVE
 ticket: null
 parent_chunk: null
 code_paths:
-  - src/models/friction.py
-  - src/models/chunk.py
-  - src/chunks.py
-  - src/templates/chunk/GOAL.md.jinja2
-  - tests/test_chunk_validate.py
+- src/models/friction.py
+- src/models/chunk.py
+- src/chunks.py
+- src/templates/chunk/GOAL.md.jinja2
+- tests/test_chunk_validate.py
+- src/chunk_validation.py
 code_references:
-  - ref: src/models/friction.py#FrictionEntryReference
-    implements: "Pydantic model for friction entry reference with entry_id and scope fields"
-  - ref: src/models/friction.py
-    implements: "Regex pattern for validating friction entry ID format (F followed by digits)"
-  - ref: src/models/chunk.py#ChunkFrontmatter
-    implements: "Added friction_entries field to chunk frontmatter schema"
-  - ref: src/chunks.py#Chunks::validate_friction_entries_ref
-    implements: "Validation method checking friction entry references exist in FRICTION.md"
-  - ref: src/chunks.py#Chunks::validate_chunk_complete
-    implements: "Integration of friction entry validation into chunk completion validation"
-  - ref: src/templates/chunk/GOAL.md.jinja2
-    implements: "Template with friction_entries field and documentation comment explaining format"
-  - ref: tests/test_chunk_validate.py#TestFrictionEntryRefValidation
-    implements: "Test class validating friction entry reference validation behavior"
-  - ref: src/integrity.py#IntegrityValidator::_validate_chunk_outbound
-    implements: "Validation method checking friction entry references exist in FRICTION.md"
+- ref: src/models/friction.py#FrictionEntryReference
+  implements: Pydantic model for friction entry reference with entry_id and scope
+    fields
+- ref: src/models/friction.py
+  implements: Regex pattern for validating friction entry ID format (F followed by
+    digits)
+- ref: src/models/chunk.py#ChunkFrontmatter
+  implements: Added friction_entries field to chunk frontmatter schema
+- ref: src/chunks.py#Chunks::validate_friction_entries_ref
+  implements: Validation method checking friction entry references exist in FRICTION.md
+- ref: src/chunks.py#Chunks::validate_chunk_complete
+  implements: Integration of friction entry validation into chunk completion validation
+- ref: src/templates/chunk/GOAL.md.jinja2
+  implements: Template with friction_entries field and documentation comment explaining
+    format
+- ref: tests/test_chunk_validate.py#TestFrictionEntryRefValidation
+  implements: Test class validating friction entry reference validation behavior
+- ref: src/integrity.py#IntegrityValidator::_validate_chunk_outbound
+  implements: Validation method checking friction entry references exist in FRICTION.md
+- ref: src/chunk_validation.py
+  implements: Integration of friction entry validation into chunk completion validation
 narrative: null
 investigation: friction_log_artifact
 subsystems: []
@@ -34,7 +40,6 @@ created_after:
 - orch_agent_skills
 - orch_question_forward
 ---
-
 # Chunk Goal
 
 ## Minor Goal

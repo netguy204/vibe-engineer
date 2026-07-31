@@ -24,6 +24,10 @@ code_references:
 - ref: src/cli/workspace.py#SCAN_CAVEAT
   implements: The disclosure states the own-line limit that remains, not the indentation
     limit that is gone
+- ref: tests/test_backreferences.py
+  implements: Grammar and rewrite at depth
+- ref: tests/test_workspace_validation.py
+  implements: Interior references are covered
 narrative: null
 investigation: null
 subsystems: []

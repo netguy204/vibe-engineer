@@ -7,15 +7,20 @@ code_paths:
 - tests/**/*.py
 - docs/**/*.md
 - src/templates/**/*.jinja2
-code_references: []
+- docs/chunks/update_crossref_format/migrate_crossrefs.py
+code_references:
+- ref: docs/chunks/update_crossref_format/migrate_crossrefs.py
+  implements: Migration script
 narrative: null
 subsystems:
 - subsystem_id: workflow_artifacts
   relationship: implements
-created_after: ["ordering_remove_seqno"]
-superseded_by: "scratchpad_remove_infra - Chunk backreferences were eliminated entirely (not just reformatted). Templates now instruct agents to remove all # Chunk: and # Narrative: comments rather than update their format."
+created_after:
+- ordering_remove_seqno
+superseded_by: 'scratchpad_remove_infra - Chunk backreferences were eliminated entirely
+  (not just reformatted). Templates now instruct agents to remove all # Chunk: and
+  # Narrative: comments rather than update their format.'
 ---
-
 # Chunk Goal
 
 ## Minor Goal

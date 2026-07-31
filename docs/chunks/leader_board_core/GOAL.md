@@ -13,37 +13,43 @@ code_paths:
 - tests/test_leader_board_adapter_contract.py
 code_references:
 - ref: src/leader_board/models.py#SwarmInfo
-  implements: "Swarm registration domain model (swarm_id, public_key, created_at)"
+  implements: Swarm registration domain model (swarm_id, public_key, created_at)
 - ref: src/leader_board/models.py#ChannelMessage
-  implements: "Channel message domain model with monotonic position and opaque body"
+  implements: Channel message domain model with monotonic position and opaque body
 - ref: src/leader_board/models.py#ChannelInfo
-  implements: "Channel summary model (head/oldest position)"
+  implements: Channel summary model (head/oldest position)
 - ref: src/leader_board/models.py#CursorExpiredError
-  implements: "Cursor expired exception with earliest_position field"
+  implements: Cursor expired exception with earliest_position field
 - ref: src/leader_board/models.py#SwarmNotFoundError
-  implements: "Swarm not found exception"
+  implements: Swarm not found exception
 - ref: src/leader_board/models.py#ChannelNotFoundError
-  implements: "Channel not found exception"
+  implements: Channel not found exception
 - ref: src/leader_board/models.py#AuthFailedError
-  implements: "Auth verification failure exception"
+  implements: Auth verification failure exception
 - ref: src/leader_board/storage.py#StorageAdapter
-  implements: "Adapter storage protocol — async interface for durable persistence"
+  implements: "Adapter storage protocol \u2014 async interface for durable persistence"
 - ref: src/leader_board/memory_storage.py#InMemoryStorage
-  implements: "In-memory StorageAdapter reference implementation for tests"
+  implements: In-memory StorageAdapter reference implementation for tests
 - ref: src/leader_board/core.py#LeaderBoardCore
-  implements: "Core business logic: swarm ops, channel ops, blocking read, compaction"
+  implements: 'Core business logic: swarm ops, channel ops, blocking read, compaction'
 - ref: src/leader_board/core.py#LeaderBoardCore::register_swarm
-  implements: "Swarm registration with duplicate detection"
+  implements: Swarm registration with duplicate detection
 - ref: src/leader_board/core.py#LeaderBoardCore::verify_auth
-  implements: "Ed25519 signature verification against stored public keys"
+  implements: Ed25519 signature verification against stored public keys
 - ref: src/leader_board/core.py#LeaderBoardCore::append
-  implements: "Channel message append with validation and reader wake-up"
+  implements: Channel message append with validation and reader wake-up
 - ref: src/leader_board/core.py#LeaderBoardCore::read_after
-  implements: "Cursor-based blocking read with expiration detection"
+  implements: Cursor-based blocking read with expiration detection
 - ref: src/leader_board/core.py#LeaderBoardCore::compact
-  implements: "30-day TTL compaction delegated to storage adapter"
+  implements: 30-day TTL compaction delegated to storage adapter
 - ref: src/leader_board/__init__.py
-  implements: "Package public API exports"
+  implements: Package public API exports
+- ref: tests/test_leader_board_adapter_contract.py
+  implements: Portable leader board core library
+- ref: tests/test_leader_board_core.py
+  implements: Portable leader board core library
+- ref: tests/test_leader_board_storage.py
+  implements: Portable leader board core library
 narrative: leader_board
 investigation: null
 subsystems: []
@@ -54,7 +60,6 @@ depends_on:
 created_after:
 - finalize_double_commit
 ---
-
 # Chunk Goal
 
 ## Minor Goal

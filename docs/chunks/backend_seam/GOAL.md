@@ -2,34 +2,52 @@
 status: ACTIVE
 ticket: null
 parent_chunk: null
-code_paths: ["src/orchestrator/backend.py", "src/orchestrator/backends/__init__.py", "src/orchestrator/backends/claude.py", "src/orchestrator/agent.py", "src/orchestrator/scheduler.py", "tests/test_orchestrator_backend.py", "tests/test_orchestrator_agent_runner.py", "tests/test_orchestrator_agent_stream.py", "tests/test_orchestrator_agent_callbacks.py", "tests/test_orchestrator_agent_review.py", "tests/test_orchestrator_agent_sandbox.py", "tests/test_orchestrator_agent_skills.py", "tests/test_orchestrator_feedback_injection.py", "tests/test_orchestrator_reentry.py"]
+code_paths:
+- src/orchestrator/backend.py
+- src/orchestrator/backends/__init__.py
+- src/orchestrator/backends/claude.py
+- src/orchestrator/agent.py
+- src/orchestrator/scheduler.py
+- tests/test_orchestrator_backend.py
+- tests/test_orchestrator_agent_runner.py
+- tests/test_orchestrator_agent_stream.py
+- tests/test_orchestrator_agent_callbacks.py
+- tests/test_orchestrator_agent_review.py
+- tests/test_orchestrator_agent_sandbox.py
+- tests/test_orchestrator_agent_skills.py
+- tests/test_orchestrator_feedback_injection.py
+- tests/test_orchestrator_reentry.py
 code_references:
-  - ref: src/orchestrator/backend.py#AgentBackend
-    implements: "Backend-agnostic protocol the orchestrator runs phases through"
-  - ref: src/orchestrator/backend.py#SessionRequest
-    implements: "Normalized per-phase request (prompt, env, sandbox context, policy callbacks)"
-  - ref: src/orchestrator/backend.py#ToolUse
-    implements: "Normalized tool-invocation type for permission/sandbox gating"
-  - ref: src/orchestrator/backend.py#ToolDecision
-    implements: "ALLOW/DENY vocabulary for tool-use policy"
-  - ref: src/orchestrator/backend.py#is_sandbox_violation
-    implements: "Shared, backend-agnostic worktree sandbox policy"
-  - ref: src/orchestrator/backends/claude.py#ClaudeBackend
-    implements: "Claude Agent SDK confined behind the AgentBackend seam"
-  - ref: src/orchestrator/agent.py#AgentRunner::__init__
-    implements: "Pluggable backend injection (default ClaudeBackend)"
-  - ref: src/orchestrator/agent.py#AgentRunner::run_phase
-    implements: "Builds a SessionRequest and delegates phase execution to the backend"
-  - ref: src/orchestrator/agent.py#AgentRunner::resume_for_active_status
-    implements: "Resume delegated to the backend with session-id fallback"
+- ref: src/orchestrator/backend.py#AgentBackend
+  implements: Backend-agnostic protocol the orchestrator runs phases through
+- ref: src/orchestrator/backend.py#SessionRequest
+  implements: Normalized per-phase request (prompt, env, sandbox context, policy callbacks)
+- ref: src/orchestrator/backend.py#ToolUse
+  implements: Normalized tool-invocation type for permission/sandbox gating
+- ref: src/orchestrator/backend.py#ToolDecision
+  implements: ALLOW/DENY vocabulary for tool-use policy
+- ref: src/orchestrator/backend.py#is_sandbox_violation
+  implements: Shared, backend-agnostic worktree sandbox policy
+- ref: src/orchestrator/backends/claude.py#ClaudeBackend
+  implements: Claude Agent SDK confined behind the AgentBackend seam
+- ref: src/orchestrator/agent.py#AgentRunner::__init__
+  implements: Pluggable backend injection (default ClaudeBackend)
+- ref: src/orchestrator/agent.py#AgentRunner::run_phase
+  implements: Builds a SessionRequest and delegates phase execution to the backend
+- ref: src/orchestrator/agent.py#AgentRunner::resume_for_active_status
+  implements: Resume delegated to the backend with session-id fallback
+- ref: src/orchestrator/backends/__init__.py
+  implements: Backend implementations package
+- ref: tests/test_orchestrator_backend.py
+  implements: Unit tests for the AgentBackend seam
 narrative: pluggable_backends
 investigation: null
 subsystems: []
 friction_entries: []
 depends_on: []
-created_after: ["watch_handshake_5xx_retry"]
+created_after:
+- watch_handshake_5xx_retry
 ---
-
 # Chunk Goal
 
 ## Minor Goal

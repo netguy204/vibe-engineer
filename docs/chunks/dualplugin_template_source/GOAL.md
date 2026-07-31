@@ -14,27 +14,35 @@ code_paths:
 - tests/test_plugin_render.py
 - tests/test_plugin_commands.py
 - docs/chunks/dualplugin_template_source/TEMPLATING_GUIDE.md
+- tests/test_plugin_skills.py
 code_references:
 - ref: src/plugin_render.py#render_plugin_template
-  implements: "Single-template render with the flavor/source_template contract and trailing-newline normalization"
+  implements: Single-template render with the flavor/source_template contract and
+    trailing-newline normalization
 - ref: src/plugin_render.py#list_plugin_templates
-  implements: "Collection discovery (partials excluded) that the drift test and CLI parametrize over"
+  implements: Collection discovery (partials excluded) that the drift test and CLI
+    parametrize over
 - ref: src/plugin_render.py#render_plugin_collection
-  implements: "Whole-collection render into the plugin source repo"
+  implements: Whole-collection render into the plugin source repo
 - ref: src/plugin_render.py#is_plugin_source_repo
-  implements: "Render-target guard: only the repo carrying .claude-plugin/plugin.json"
+  implements: 'Render-target guard: only the repo carrying .claude-plugin/plugin.json'
 - ref: src/cli/plugin.py#render
-  implements: "The `ve plugin render` command (Claude flavor)"
+  implements: The `ve plugin render` command (Claude flavor)
 - ref: src/templates/plugin/partials/claude/idioms.md.jinja2
-  implements: "Claude idiom macros — the flavor-substitution interface (frontmatter, generated_marker, probe, canonical_preamble, plugin_root)"
+  implements: "Claude idiom macros \u2014 the flavor-substitution interface (frontmatter,\
+    \ generated_marker, probe, canonical_preamble, plugin_root)"
 - ref: src/templates/plugin/commands/ve-status.md.jinja2
-  implements: "Pilot template with custom context probes"
+  implements: Pilot template with custom context probes
 - ref: src/templates/plugin/commands/chunk-create.md.jinja2
-  implements: "Pilot template using the canonical preamble with task guidance via {% call %}"
+  implements: Pilot template using the canonical preamble with task guidance via {%
+    call %}
 - ref: tests/test_plugin_render.py#TestDrift
-  implements: "Drift test: committed renders must match fresh renders byte-for-byte and carry the marker"
+  implements: 'Drift test: committed renders must match fresh renders byte-for-byte
+    and carry the marker'
 - ref: tests/test_plugin_render.py#TestRenderCli
-  implements: "CLI behavior: source-repo guard, render output, idempotence"
+  implements: 'CLI behavior: source-repo guard, render output, idempotence'
+- ref: tests/test_plugin_skills.py
+  implements: Marker collision guard
 narrative: cursor_plugin_port
 investigation: null
 subsystems: []
@@ -43,7 +51,6 @@ depends_on: []
 created_after:
 - plugin_hook_cli_bootstrap
 ---
-
 # Chunk Goal
 
 ## Minor Goal

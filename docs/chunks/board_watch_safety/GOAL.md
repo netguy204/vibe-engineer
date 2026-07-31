@@ -10,19 +10,24 @@ code_paths:
 - tests/test_board_cli.py
 code_references:
 - ref: src/board/storage.py#watch_pid_path
-  implements: "Returns PID file path for a channel watch process"
+  implements: Returns PID file path for a channel watch process
 - ref: src/board/storage.py#read_watch_pid
-  implements: "Reads PID from watch PID file, returns None if missing or unparseable"
+  implements: Reads PID from watch PID file, returns None if missing or unparseable
 - ref: src/board/storage.py#write_watch_pid
-  implements: "Writes current process PID to watch PID file"
+  implements: Writes current process PID to watch PID file
 - ref: src/board/storage.py#remove_watch_pid
-  implements: "Removes watch PID file on exit, no-op if already gone"
+  implements: Removes watch PID file on exit, no-op if already gone
 - ref: src/cli/board.py#watch_cmd
-  implements: "Kill-previous-watch logic and PID lifecycle in single-channel watch"
+  implements: Kill-previous-watch logic and PID lifecycle in single-channel watch
 - ref: src/cli/board.py#watch_multi_cmd
-  implements: "Kill-previous-watch logic and PID lifecycle in multi-channel watch"
+  implements: Kill-previous-watch logic and PID lifecycle in multi-channel watch
 - ref: commands/steward-watch.md
-  implements: "Watch Safety SOP guidance on ack discipline, multi-channel patterns, and timeout cleanup"
+  implements: Watch Safety SOP guidance on ack discipline, multi-channel patterns,
+    and timeout cleanup
+- ref: tests/test_board_cli.py
+  implements: Referenced by tests/test_board_cli.py
+- ref: tests/test_board_storage.py
+  implements: Referenced by tests/test_board_storage.py
 narrative: null
 investigation: null
 subsystems: []

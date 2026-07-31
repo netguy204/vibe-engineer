@@ -8,17 +8,23 @@ code_paths:
 - tests/test_board_client.py
 code_references:
 - ref: src/board/client.py#BoardClient::watch_with_reconnect
-  implements: "Stale connection detection via asyncio.wait_for timeout and watch frame re-registration on existing connection"
+  implements: Stale connection detection via asyncio.wait_for timeout and watch frame
+    re-registration on existing connection
 - ref: src/board/client.py#BoardClient::watch_multi
-  implements: "Stale connection detection for multi-channel watch with re-registration of all active watch frames on timeout"
+  implements: Stale connection detection for multi-channel watch with re-registration
+    of all active watch frames on timeout
 - ref: src/board/client.py#BoardClient::watch_multi_with_reconnect
-  implements: "Pass-through of stale_timeout parameter to watch_multi for multi-channel reconnect wrapper"
+  implements: Pass-through of stale_timeout parameter to watch_multi for multi-channel
+    reconnect wrapper
 - ref: workers/leader-board/src/swarm-do.ts#SwarmDO::handleWatch
-  implements: "Deduplicate watcher entries for same WebSocket before adding new registration"
+  implements: Deduplicate watcher entries for same WebSocket before adding new registration
 - ref: workers/leader-board/src/swarm-do.ts#SwarmDO::wakeWatchers
-  implements: "Track delivery success and fall through to hibernation recovery when all in-memory sends fail"
+  implements: Track delivery success and fall through to hibernation recovery when
+    all in-memory sends fail
 - ref: workers/leader-board/src/swarm-do.ts#SwarmDO::removeWatcher
-  implements: "Diagnostic logging for watcher removal lifecycle events"
+  implements: Diagnostic logging for watcher removal lifecycle events
+- ref: tests/test_board_client.py
+  implements: Stale connection detection tests
 narrative: null
 investigation: null
 subsystems: []
@@ -28,7 +34,6 @@ depends_on: []
 created_after:
 - orch_implement_reentry_prompt
 ---
-
 # Chunk Goal
 
 ## Minor Goal

@@ -39,6 +39,8 @@ code_references:
   implements: Aggregated rows written as qualified references
 - ref: src/cli/formatters.py#workspace_artifact_json_row
   implements: Aggregated JSON rows omit the tip field they never computed
+- ref: tests/test_interest_queries.py
+  implements: Reverse interest and aggregation tests
 narrative: monorepo_federation
 investigation: null
 subsystems:

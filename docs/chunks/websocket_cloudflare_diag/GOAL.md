@@ -2,17 +2,20 @@
 status: FUTURE
 ticket: null
 parent_chunk: websocket_reconnect_tuning
-code_paths: []
-code_references: []
+code_paths:
+- src/board/client.py
+code_references:
+- ref: src/board/client.py
+  implements: "Increase ping_timeout from 10\u219230 to"
 narrative: null
 investigation: null
 subsystems: []
 friction_entries: []
 bug_type: null
 depends_on: []
-created_after: ["websocket_reconnect_tuning"]
+created_after:
+- websocket_reconnect_tuning
 ---
-
 <!--
 ╔══════════════════════════════════════════════════════════════════════════════╗
 ║  DO NOT DELETE THIS COMMENT BLOCK until the chunk complete command is run.   ║

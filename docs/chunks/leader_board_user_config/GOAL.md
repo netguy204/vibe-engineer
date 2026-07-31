@@ -10,29 +10,33 @@ code_paths:
 - tests/test_board_cli.py
 code_references:
 - ref: src/board/config.py#BoardConfig
-  implements: "Board config dataclass holding default_swarm and per-swarm server bindings"
+  implements: Board config dataclass holding default_swarm and per-swarm server bindings
 - ref: src/board/config.py#SwarmConfig
-  implements: "Per-swarm config entry storing server_url"
+  implements: Per-swarm config entry storing server_url
 - ref: src/board/config.py#load_board_config
-  implements: "Reads ~/.ve/board.toml and returns BoardConfig, empty config if absent"
+  implements: Reads ~/.ve/board.toml and returns BoardConfig, empty config if absent
 - ref: src/board/config.py#save_board_config
-  implements: "Atomic write of BoardConfig to ~/.ve/board.toml"
+  implements: Atomic write of BoardConfig to ~/.ve/board.toml
 - ref: src/board/config.py#add_swarm
-  implements: "Adds swarm entry and sets default_swarm if first swarm"
+  implements: Adds swarm entry and sets default_swarm if first swarm
 - ref: src/board/config.py#resolve_swarm
-  implements: "Resolves swarm ID: explicit flag → default_swarm → None"
+  implements: "Resolves swarm ID: explicit flag \u2192 default_swarm \u2192 None"
 - ref: src/board/config.py#resolve_server
-  implements: "Resolves server URL: explicit flag → swarm config → ws://localhost:8374"
+  implements: "Resolves server URL: explicit flag \u2192 swarm config \u2192 ws://localhost:8374"
 - ref: src/cli/board.py#bind_cmd
-  implements: "ve board bind command for updating swarm server binding or default swarm"
+  implements: ve board bind command for updating swarm server binding or default swarm
 - ref: src/cli/board.py#swarm_create
-  implements: "Updated to write new swarm entry to board.toml after registration"
+  implements: Updated to write new swarm entry to board.toml after registration
 - ref: src/cli/board.py#send_cmd
-  implements: "Updated to resolve --swarm and --server from board.toml config"
+  implements: Updated to resolve --swarm and --server from board.toml config
 - ref: src/cli/board.py#watch_cmd
-  implements: "Updated to resolve --swarm and --server from board.toml config"
+  implements: Updated to resolve --swarm and --server from board.toml config
 - ref: src/cli/board.py#channels_cmd
-  implements: "Updated to resolve --swarm and --server from board.toml config"
+  implements: Updated to resolve --swarm and --server from board.toml config
+- ref: tests/test_board_cli.py
+  implements: Board user config and defaults
+- ref: tests/test_board_config.py
+  implements: Board user config and defaults
 narrative: leader_board
 investigation: null
 subsystems: []
