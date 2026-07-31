@@ -60,9 +60,11 @@ The system exposes an evidence-of-absence affordance and an operator-authorized 
   evidence backed by fact rather than silence.
 - A moved file is distinguishable from a deleted one: exact path matches and
   same-basename-elsewhere matches are reported as distinct classes.
-- Symbol presence uses the same conservative whole-word semantics as the
-  workspace validator's `_symbol_is_absent`, so the query and the validator
-  never disagree about what "present" means.
+- Symbol presence uses the same conservative semantics as the workspace
+  validator's `_symbol_is_absent` — whole-word occurrence, with Python
+  import/`__all__`-only mentions classified as re-export evidence rather
+  than presence (see docs/chunks/crossref_reexport_absence) — so the query
+  and the validator never disagree about what "present" means.
 - Exit code is scriptable: 0 when anything matched, 1 when absent;
   `--format json` emits the full machine-readable report the fix-loop skills
   consume.

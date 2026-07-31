@@ -1,179 +1,193 @@
 
 
-<!--
-This document captures HOW you'll achieve the chunk's GOAL.
-It should be specific enough that each step is a reasonable unit of work
-to hand to an agent.
--->
-
 # Implementation Plan
 
 ## Approach
 
-<!--
-How will you build this? Describe the strategy at a high level.
-What patterns or techniques will you use?
-What existing code will you build on?
+The whole-word substring scan is the right *floor* for symbol presence — a
+name mentioned in a call, a string, or a dynamic definition must keep the
+validator quiet — but it has one provably-wrong ceiling: a name whose every
+occurrence in a Python file sits inside an `import`/`from … import` statement
+or an `__all__` string list is *bound* there, not *defined* there. That is
+exactly the re-export pattern (`from ._impl import Bar  # noqa: F401`), and
+it is the class this chunk kills.
 
-Reference docs/trunk/DECISIONS.md entries where relevant.
-If this approach represents a new significant decision, ask the user
-if we should add it to DECISIONS.md and reference it here.
+The mechanism is one shared AST-backed predicate in `src/symbols.py` (which
+already owns the AST machinery via `extract_symbols` — per the
+crossref_generator_verify handoff, we extend it rather than build a parallel
+parser):
 
-Always include tests in your implementation plan and adhere to
-docs/trunk/TESTING_PHILOSOPHY.md in your planning.
+```python
+def name_is_reexport_only(content: str, name: str) -> bool | None
+```
 
-Remember to update code_paths in the chunk's GOAL.md (e.g., docs/chunks/crossref_reexport_absence/GOAL.md)
-with references to the files that you expect to touch.
--->
+- `None` — undecidable: `name` is not an identifier, or the content is not
+  parseable Python. Callers fall back to the existing whole-word semantics
+  (conservatism preserved: unparseable files never gain new errors).
+- `True` — every whole-word occurrence of `name` falls on lines covered by
+  an `ast.Import`/`ast.ImportFrom` node span, or by a *simple* statement
+  (`Assign`/`AnnAssign`/`AugAssign`/`Expr`) that mentions the `__all__`
+  name — covering `__all__ = [...]`, `__all__ += [...]`,
+  `__all__.append/extend(...)`. Compound statements (`if`, `try`, …) are
+  deliberately not excludable spans, so `if "Bar" in __all__: …` around real
+  code can never manufacture a false absence.
+- `False` — at least one occurrence lives outside those spans (a def, an
+  assignment, a call, a docstring, a comment not on an import line). This is
+  the conservative default.
 
-## Subsystem Considerations
+Line spans (`lineno..end_lineno`) rather than token-precise positions are
+sufficient and cheap: a `# noqa: F401` comment on an import line falls inside
+the import's span (correct — that comment is part of the re-export idiom),
+and multi-line parenthesized imports are covered by `end_lineno`.
 
-<!--
-Before designing your implementation, check docs/subsystems/ for relevant
-cross-cutting patterns.
+Three symbol-existence checkers then consume the predicate, so they cannot
+disagree:
 
-QUESTIONS TO CONSIDER:
-- Does this chunk touch any existing subsystem's scope?
-- Will this chunk implement part of a subsystem (contribute code) or use it
-  (depend on it)?
-- Did you discover code during exploration that should be part of a subsystem
-  but doesn't follow its patterns?
+1. **`workspace_validation._symbol_is_absent`** — grows an `is_python` flag
+   (the call site knows the target suffix) and returns `(name, reason)` so
+   the defect message can say *why*: "appears nowhere" vs "appears only in
+   import/`__all__` re-export statements; the definition lives in another
+   file". The second message matters — the field failure mode is an agent
+   "fixing" the safe half of the damage, and the message must point at the
+   real fix (repoint the ref at the defining file).
+2. **`symbols.check_reference_target`** (chunk validate/complete gates,
+   subsystem verification) — its whole-word fallback currently returns a
+   *warning* for a re-export-only name, and its `if not symbols:` branch
+   conflates "unparseable" with "parseable but defines nothing" (an
+   `__init__.py` of pure re-exports — the field case — gets a vague warning
+   today). Restructured: unparseable Python keeps the existing warning;
+   parseable Python with the leaf absent entirely is an error (as today);
+   leaf present but re-export-only becomes an **error**; leaf present
+   otherwise stays a warning (module-level constants).
+3. **`absence.search_existence`** (`ve exists`) — the crossref_absence_evidence
+   GOAL pins "the query and the validator never disagree about what
+   'present' means", so the query is tightened in the same release: matches
+   in a Python file where the name is re-export-only move out of
+   `symbol_matches` into a new `reexport_matches` class (mirroring how
+   `basename_matches` classifies "moved" separately from "still there").
+   They still count toward `found` — a re-export site is *evidence* (it
+   usually names the module the definition moved to) — but the
+   classification tells the operator the definition lives elsewhere. JSON
+   report, counts, and text rendering gain the new section.
 
-If no subsystems are relevant, delete this section.
+Out of scope (owned by later chunks in the narrative): honest UNCHECKED
+reporting for non-identifier anchors (crossref_unchecked_anchors), and any
+form of full symbol resolution.
 
-WHEN SUBSYSTEMS ARE RELEVANT:
-List each relevant subsystem with its status and your relationship:
-- **docs/subsystems/validation** (DOCUMENTED): This chunk USES the validation
-  subsystem to check input
-- **docs/subsystems/error_handling** (REFACTORING): This chunk IMPLEMENTS a
-  new error type following the subsystem's patterns
-
-HOW SUBSYSTEM STATUS AFFECTS YOUR WORK:
-
-DOCUMENTED subsystems: The subsystem's patterns are captured but deviations are not
-being actively fixed. If you discover code that deviates from the subsystem's
-patterns, add it to the subsystem's Known Deviations section. Do NOT prioritize
-fixing those deviations—your chunk has its own goals.
-
-REFACTORING subsystems: The subsystem is being actively consolidated. If your chunk
-work touches code that deviates from the subsystem's patterns, attempt to bring it
-into compliance as part of your work. This is "opportunistic improvement"—improve
-what you touch, but don't expand scope to fix unrelated deviations.
-
-WHEN YOU DISCOVER DEVIATING CODE:
-- Add it to the subsystem's Known Deviations section
-- Note whether you will address it (REFACTORING status + relevant to your work)
-  or leave it for future work (DOCUMENTED status or outside your chunk's scope)
-
-Example:
-- **Discovered deviation**: src/legacy/parser.py#validate_input does its own
-  validation instead of using the validation subsystem
-  - Added to docs/subsystems/validation Known Deviations
-  - Action: Will not address (subsystem is DOCUMENTED; deviation outside chunk scope)
--->
+Tests first, per docs/trunk/TESTING_PHILOSOPHY.md: the predicate's decision
+table, the tightened dispositions of both validators, and the query's new
+match class each trace to a success criterion in GOAL.md.
 
 ## Sequence
 
-<!--
-Ordered steps to implement this chunk. Each step should be:
-- Small enough to reason about in isolation
-- Large enough to be meaningful
-- Clear about its inputs and outputs
+### Step 1: `name_is_reexport_only` predicate (TDD)
 
-This sequence is your contract with yourself (and with agents).
-Work through it in order. Don't skip ahead.
+Add failing tests to `tests/test_symbols.py` covering the decision table:
 
-Example:
+- `import Bar` only → True; `from x import Bar` (with `# noqa: F401`) → True
+- `from x import Bar as Baz` queried for `Bar` → True
+- multi-line parenthesized `from x import (\n    Bar,\n)` → True
+- `__all__ = ["Bar"]` only → True; `__all__ += ["Bar"]` and
+  `__all__.append("Bar")` → True
+- import **plus** a real `def Bar`/`class Bar`/`Bar = …` later → False
+- name only in a call / docstring / comment (off import lines) → False
+- `if "Bar" in __all__:` guarding real code → False (compound statements are
+  not excludable spans)
+- unparseable content → None; non-identifier name → None
 
-### Step 1: Define the SegmentHeader struct
+Implement in `src/symbols.py` with a `# Chunk:` backreference.
 
-Create the struct that represents a segment's header with fields for:
-- magic number (4 bytes)
-- version (2 bytes)
-- segment_id (8 bytes)
-- message_count (4 bytes)
-- checksum (4 bytes)
+### Step 2: tighten `check_reference_target`
 
-Location: src/segment/format.rs
+Failing tests in `tests/test_symbols.py` (the existing
+`TestCheckReferenceTarget`-style class):
 
-### Step 2: Implement header serialization
+- `pkg/__init__.py` containing only `from ._impl import Bar` with ref
+  `pkg/__init__.py#Bar` → **error** naming the re-export cause
+- same file plus `Bar = _compat_shim()` → warning (unchanged conservatism)
+- parseable file where the leaf appears nowhere → error (existing behavior,
+  now also for def-less files)
+- unparseable file → warning "Could not extract symbols" (unchanged)
+- `__all__`-only mention → error
 
-Add `to_bytes()` and `from_bytes()` methods to SegmentHeader.
-Use little-endian encoding per SPEC.md Section 3.1.
+Restructure the `symbol_path not in symbols` / `not symbols` flow as
+described in Approach, parsing once to distinguish unparseable from
+defines-nothing.
 
-### Step 3: ...
+### Step 3: tighten `_symbol_is_absent` in workspace validation
 
----
+Failing tests in `tests/test_workspace_validation.py`:
 
-**BACKREFERENCE COMMENTS**
+- code_reference to `src/api.py#Widget` where `api.py` only re-exports
+  `Widget` → `UNRESOLVABLE_FRONTMATTER` defect whose message says the name
+  appears only in import/`__all__` statements and the definition lives in
+  another file
+- `__all__`-only variant → same defect class
+- re-export **plus** local definition → clean
+- existing `test_symbol_appearing_anywhere_in_the_file_is_accepted`
+  (dynamic `Widget = make_class('Widget')`) must keep passing untouched
 
-When implementing code, add backreference comments to help future agents trace
-code back to its governing documentation.
+Change `_symbol_is_absent(content, symbol_path, *, is_python=False)` to
+return `tuple[str, str] | None` (missing name, reason clause); update the
+single call site in `check_code_references` to pass
+`target.suffix == ".py"` and interpolate the reason into the message.
 
-**Valid backreference types:**
-- `# Subsystem: docs/subsystems/<name>` - For architectural patterns
-- `# Chunk: docs/chunks/<name>` - For implementation work
+### Step 4: keep `ve exists` in agreement — `reexport_matches`
 
-Place comments at the appropriate level:
-- **Module-level**: If this code implements the subsystem/chunk's core functionality
-- **Class-level**: If this class is part of the pattern
-- **Method-level**: If this method implements a specific behavior
+Failing tests in `tests/test_absence_evidence.py`:
 
-Format (place immediately before the symbol):
-```
-# Subsystem: docs/subsystems/workflow_artifacts - Workflow artifact manager pattern
-# Chunk: docs/chunks/auth_refactor - Authentication system redesign
-```
+- definition in `impl.py`, re-export in `__init__.py`: `symbol_matches`
+  carries only `impl.py` lines, `reexport_matches` carries the `__init__.py`
+  line, `found` is True
+- name surviving *only* as a re-export (definition deleted): `found` still
+  True, `symbol_matches` empty, `reexport_matches` populated — the evidence
+  points at the moved-to module
+- JSON contract test extends to `reexport_matches` and its count
+- text output renders a distinct section for re-export mentions
 
-Do NOT add narrative backreferences. Narratives decompose into chunks; reference
-the implementing chunk instead.
+Implement in `src/absence.py` (`ExistenceReport.reexport_matches`,
+classification per file inside `search_existence`, `to_dict`, module
+docstring updated to state the tightened shared semantics) and
+`src/cli/exists_cmd.py` (new `_render_section` call; docstring updated from
+"three classes").
 
-**Task context note**: In multi-project tasks, always use local paths (e.g.,
-`docs/chunks/chunk_name`) for chunk backreferences, not paths to the external
-artifact repo. Each project has `external.yaml` pointers that resolve to the
-actual chunk content.
--->
+### Step 5: full-suite run and validation
+
+`uv run pytest tests/` and `uv run ve validate` clean; record final numbers
+against the inherited baseline. Update GOAL.md `code_references` at
+completion time.
 
 ## Dependencies
 
-<!--
-What must exist before this chunk can be implemented?
-- Other chunks that must be complete
-- External libraries to add
-- Infrastructure or configuration
-
-If there are no dependencies, delete this section.
--->
+- `crossref_workspace_parity` (ACTIVE) — established the shared
+  path-existence contract and the `check_code_references` structure this
+  chunk extends.
+- `crossref_absence_evidence` (ACTIVE) — `ve exists` and its pinned
+  agreement with `_symbol_is_absent`.
+- `crossref_generator_verify` (ACTIVE) — `symbols.check_reference_target`,
+  whose AST machinery this chunk shares.
 
 ## Risks and Open Questions
 
-<!--
-What might go wrong? What are you unsure about?
-Being explicit about uncertainty helps you (and agents) know where to
-be careful and when to stop and ask questions.
-
-Example:
-- fsync behavior may differ across filesystems; need to verify on ext4 and APFS
-- Unclear whether concurrent reads during write are safe; may need mutex
-- Performance target is aggressive; may need to iterate on buffer sizes
--->
+- **False absence via excluded spans**: restricting `__all__` exclusion to
+  simple statements is the guard; the compound-statement test pins it.
+- **`try:/except ImportError:` fallback idioms** (`Bar = None` after a
+  failed import) stay *present* because the assignment occurrence is outside
+  every excluded span — covered by the import-plus-definition tests.
+- **Message-sensitive tests elsewhere**: `check_reference_target` feeds the
+  chunk validate/complete gates; tests asserting the old warning for
+  def-less parseable files may need updating to the tightened (and more
+  honest) disposition. The full-suite run in Step 5 catches these.
 
 ## Deviations
 
-<!--
-POPULATE DURING IMPLEMENTATION, not at planning time.
+- Step 2: `check_reference_target` also treats an *unreadable* Python file
+  (OSError/UnicodeDecodeError on read) as uncheckable-warning rather than
+  letting the empty-content fallthrough claim provable absence — the
+  restructure would otherwise have tightened an edge the goal never asked
+  to tighten.
 
-When reality diverges from the plan, document it here:
-- What changed?
-- Why?
-- What was the impact?
-
-Minor deviations (renamed a function, used a different helper) don't need
-documentation. Significant deviations (changed the approach, skipped a step,
-added steps) do.
-
-Example:
-- Step 4: Originally planned to use std::fs::rename for atomic swap.
-  Testing revealed this isn't atomic across filesystems. Changed to
-  write-fsync-rename-fsync sequence per platform best practices.
--->
+Note (design choice, decided at planning time): `name_is_reexport_only`
+returns `False` for a name that never occurs in the content — both callers
+establish occurrence before consulting the predicate, and `True` is reserved
+for "occurrences exist and all are re-export spans".

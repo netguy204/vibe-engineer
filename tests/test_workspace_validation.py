@@ -1297,3 +1297,72 @@ def test_cli_reports_manifest_errors(tmp_path):
 
     assert result.exit_code == 1
     assert "gone" in result.output
+
+
+# ---------------------------------------------------------------------------
+# Re-export-only symbol anchors
+# Chunk: docs/chunks/crossref_reexport_absence - Validator treats re-exports as absent
+# ---------------------------------------------------------------------------
+
+
+def test_reexport_only_symbol_is_unresolvable_frontmatter(tmp_path):
+    """`from ._impl import Widget  # noqa: F401` no longer makes Widget present."""
+    make_workspace(tmp_path, {"lib": "packages/lib"})
+    lib = tmp_path / "packages" / "lib"
+    source(
+        lib / "src" / "api.py",
+        "from ._impl import Widget  # noqa: F401",
+    )
+    code_ref_chunk(lib, "widget", "src/api.py#Widget")
+
+    report = validate(tmp_path)
+
+    (defect,) = of_class(report, FixClass.UNRESOLVABLE_FRONTMATTER)
+    assert "Widget" in defect.message
+    assert "another file" in defect.message
+
+
+def test_dunder_all_only_symbol_is_unresolvable_frontmatter(tmp_path):
+    make_workspace(tmp_path, {"lib": "packages/lib"})
+    lib = tmp_path / "packages" / "lib"
+    source(lib / "src" / "api.py", '__all__ = ["Widget"]')
+    code_ref_chunk(lib, "widget", "src/api.py#Widget")
+
+    report = validate(tmp_path)
+
+    (defect,) = of_class(report, FixClass.UNRESOLVABLE_FRONTMATTER)
+    assert "Widget" in defect.message
+
+
+def test_reexport_plus_local_definition_is_clean(tmp_path):
+    make_workspace(tmp_path, {"lib": "packages/lib"})
+    lib = tmp_path / "packages" / "lib"
+    source(
+        lib / "src" / "api.py",
+        "from ._compat import Widget",
+        "",
+        "",
+        "class Widget:",
+        "    pass",
+    )
+    code_ref_chunk(lib, "widget", "src/api.py#Widget")
+
+    report = validate(tmp_path)
+
+    assert report.defects == ()
+
+
+def test_unparseable_python_keeps_whole_word_presence(tmp_path):
+    """Conservatism survives: an unparseable file never gains a new defect."""
+    make_workspace(tmp_path, {"lib": "packages/lib"})
+    lib = tmp_path / "packages" / "lib"
+    source(
+        lib / "src" / "api.py",
+        "from ._impl import Widget",
+        "def broken(:",
+    )
+    code_ref_chunk(lib, "widget", "src/api.py#Widget")
+
+    report = validate(tmp_path)
+
+    assert report.defects == ()

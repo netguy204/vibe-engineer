@@ -174,6 +174,58 @@ def test_symbol_query_takes_last_double_colon_component(workspace):
 
 
 # ---------------------------------------------------------------------------
+# `ve exists` — re-export mentions are classified, not counted as presence
+# Chunk: docs/chunks/crossref_reexport_absence - Query stays in agreement
+# ---------------------------------------------------------------------------
+
+
+def test_reexport_mention_is_classified_apart_from_symbol_matches(workspace):
+    """The defining file is a symbol match; the re-exporting file is not."""
+    source(
+        workspace / "packages" / "alpha" / "src" / "__init__.py",
+        "from .mod import RealThing  # noqa: F401",
+    )
+    report, exit_code = exists_json(workspace, "RealThing")
+    assert exit_code == 0
+    assert any(
+        m["path"] == "packages/alpha/src/mod.py" for m in report["symbol_matches"]
+    )
+    assert all(
+        m["path"] != "packages/alpha/src/__init__.py"
+        for m in report["symbol_matches"]
+    )
+    assert any(
+        m["path"] == "packages/alpha/src/__init__.py"
+        for m in report["reexport_matches"]
+    )
+
+
+def test_name_surviving_only_as_reexport_is_still_evidence(workspace):
+    """A deleted definition leaves the re-export as the moved-to breadcrumb."""
+    source(
+        workspace / "packages" / "beta" / "src" / "__init__.py",
+        "from great_library import GoneThing",
+    )
+    report, exit_code = exists_json(workspace, "GoneThing")
+    assert exit_code == 0
+    assert report["found"] is True
+    assert report["symbol_matches"] == []
+    (mention,) = report["reexport_matches"]
+    assert mention["path"] == "packages/beta/src/__init__.py"
+
+
+def test_text_output_renders_reexport_mentions_distinctly(workspace):
+    source(
+        workspace / "packages" / "beta" / "src" / "__init__.py",
+        "from great_library import GoneThing",
+    )
+    result = run_exists(workspace, "GoneThing")
+    assert result.exit_code == 0
+    assert "Re-export" in result.output
+    assert "Symbol matches" not in result.output
+
+
+# ---------------------------------------------------------------------------
 # `ve exists` — scope resolution
 # ---------------------------------------------------------------------------
 
@@ -202,11 +254,13 @@ def test_json_report_shape_is_the_skill_contract(workspace):
         "path_matches",
         "basename_matches",
         "symbol_matches",
+        "reexport_matches",
         "counts",
     ):
         assert key in report, f"JSON report missing '{key}'"
     assert report["query"] == "RealThing"
     assert "files_scanned" in report["counts"]
+    assert "reexport_matches" in report["counts"]
 
 
 # ---------------------------------------------------------------------------

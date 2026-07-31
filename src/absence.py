@@ -17,10 +17,17 @@ The point is *evidence*, in both directions:
   scope that was scanned and the file counts, so "not found" is never
   silence.
 
-Symbol presence deliberately reuses the conservative whole-word semantics of
+Symbol presence deliberately reuses the conservative semantics of
 ``workspace_validation._symbol_is_absent``: a name counts as present when it
-appears anywhere in a source file as a whole word. This query and the
-validator must never disagree about what "present" means.
+appears anywhere in a source file as a whole word — except that, in a Python
+file, occurrences confined to import/``__all__`` re-export statements are
+classified as *re-export mentions* rather than presence
+(``symbols.name_is_reexport_only``), because there the name is bound but its
+definition lives in another file. This query and the validator must never
+disagree about what "present" means: a file the validator would call the name
+absent in never appears among the symbol matches, only among the re-export
+mentions — which are still evidence, since a re-export usually names the
+module a definition moved to.
 """
 
 from __future__ import annotations
@@ -31,6 +38,7 @@ from pathlib import Path
 
 from project import find_enclosing_tree
 from source_files import enumerate_all_files, enumerate_source_files
+from symbols import name_is_reexport_only
 from workspace import find_workspace_root, load_workspace
 
 
@@ -162,13 +170,25 @@ class ExistenceReport:
     path_matches: tuple[PathMatch, ...] = ()
     basename_matches: tuple[PathMatch, ...] = ()
     symbol_matches: tuple[SymbolMatch, ...] = ()
+    # Chunk: docs/chunks/crossref_reexport_absence - Re-export mentions classified apart
+    reexport_matches: tuple[SymbolMatch, ...] = ()
     files_scanned: int = 0
     source_files_scanned: int = 0
 
     @property
     def found(self) -> bool:
-        """True when anything matched, in any class."""
-        return bool(self.path_matches or self.basename_matches or self.symbol_matches)
+        """True when anything matched, in any class.
+
+        Re-export mentions count: like a basename match for a moved file,
+        they are evidence pointing at where the definition went, even though
+        the validator would call the name absent in that file.
+        """
+        return bool(
+            self.path_matches
+            or self.basename_matches
+            or self.symbol_matches
+            or self.reexport_matches
+        )
 
     def to_dict(self) -> dict:
         """JSON-serializable form — the contract fix-loop skills consume."""
@@ -179,12 +199,14 @@ class ExistenceReport:
             "path_matches": [m.to_dict() for m in self.path_matches],
             "basename_matches": [m.to_dict() for m in self.basename_matches],
             "symbol_matches": [m.to_dict() for m in self.symbol_matches],
+            "reexport_matches": [m.to_dict() for m in self.reexport_matches],
             "counts": {
                 "files_scanned": self.files_scanned,
                 "source_files_scanned": self.source_files_scanned,
                 "path_matches": len(self.path_matches),
                 "basename_matches": len(self.basename_matches),
                 "symbol_matches": len(self.symbol_matches),
+                "reexport_matches": len(self.reexport_matches),
             },
         }
 
@@ -251,6 +273,7 @@ def search_existence(scope: Scope, query: ExistenceQuery) -> ExistenceReport:
                 basename_matches.append(PathMatch(path=rel, kind="directory"))
 
     symbol_matches: list[SymbolMatch] = []
+    reexport_matches: list[SymbolMatch] = []
     source_files: list[Path] = []
     if query.symbol_query:
         source_files = _dedup_files(scope.roots, enumerate_source_files)
@@ -263,9 +286,19 @@ def search_existence(scope: Scope, query: ExistenceQuery) -> ExistenceReport:
             if not pattern.search(content):
                 continue
             rel = _relative(path, scope.root)
+            # Chunk: docs/chunks/crossref_reexport_absence - Query stays in agreement
+            # A Python file whose only occurrences sit inside import/__all__
+            # statements is a file the validator would call the name absent
+            # in; its lines are evidence of a re-export, not of presence.
+            file_matches = (
+                reexport_matches
+                if path.suffix == ".py"
+                and name_is_reexport_only(content, query.symbol_query)
+                else symbol_matches
+            )
             for line_number, line in enumerate(content.splitlines(), start=1):
                 if pattern.search(line):
-                    symbol_matches.append(
+                    file_matches.append(
                         SymbolMatch(path=rel, line=line_number, text=line.strip())
                     )
 
@@ -275,6 +308,7 @@ def search_existence(scope: Scope, query: ExistenceQuery) -> ExistenceReport:
         path_matches=tuple(path_matches),
         basename_matches=tuple(basename_matches),
         symbol_matches=tuple(symbol_matches),
+        reexport_matches=tuple(reexport_matches),
         files_scanned=len(all_files),
         source_files_scanned=len(source_files),
     )
