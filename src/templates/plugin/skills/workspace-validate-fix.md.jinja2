@@ -88,7 +88,12 @@ audit can recover, which is the failure this tooling exists to prevent.
   register a tree, correct a `code_references` path. A reference is somebody's
   record that this code is governed by that intent. If the only way to satisfy
   the validator would be removing the reference, that is an escalation, not a
-  fix.
+  fix. Peer-pointer coverage is never grounds for deletion either: "this ref is
+  covered by the pointer" is not deduplication, because the pointer records a
+  tree-level interest edge and a chunk's `code_references` typically name only
+  its public surface — a backreference on a private helper is often the only
+  record anywhere tying that code to its intent, and deleting it loses that
+  record without any validator ever noticing.
 - **Never fabricate a target.** Do not run `ve chunk create` or
   `ve subsystem create` to conjure a directory the reference could point at. Do
   not author GOAL.md or OVERVIEW.md prose so a name resolves. Do not pass
@@ -199,6 +204,18 @@ artifact:
   reader gets instead of guessing. Do **not** pass `--name`: the pointer's local
   directory name is what the bare references resolve against, so it must stay the
   artifact's own name.
+
+**Does the pointer make the references redundant?** No. The pointer is the
+resolution mechanism for the bare references, not a replacement for them —
+creating a pointer and then deleting the references it serves would defeat the
+fix you just applied. The two records mean different things: the pointer says
+"this tree depends on that artifact" (an interest edge over the chunk's public
+surface), while each per-symbol backreference says "this code is governed by
+that intent" — and for a private helper, the backreference is usually the only
+such record, because the chunk's own `code_references` name its public surface.
+A reference that resolves through the pointer is correct and finished, not a
+cleanup candidate. If a reference is broken, work its fix class; if the only
+remaining move looks like deletion, escalate — see Invariants.
 
 **Is the candidate the owner, or another reader?** A candidate tree counts as
 holding the artifact even when what it holds is itself an `external.yaml`
