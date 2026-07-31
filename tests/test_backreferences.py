@@ -744,3 +744,102 @@ class TestUpdateBackreferencesQualifiers:
 
         assert count == 0
         assert src.read_text() == original
+
+
+# Chunk: docs/chunks/backref_indented_comments - Grammar and rewrite at depth
+class TestIndentedBackreferences:
+    """Indentation is free; everything else about the grammar stays strict."""
+
+    @pytest.mark.parametrize(
+        "indent",
+        ["", "    ", "\t", "\t\t", " " * 16],
+        ids=["column0", "spaces4", "tab", "tabs2", "deep"],
+    )
+    def test_reference_parses_at_any_indentation(self, indent):
+        parsed = parse_backreference(f"{indent}# Chunk: docs/chunks/widget")
+
+        assert parsed is not None
+        assert parsed.artifact_id == "widget"
+        assert parsed.indent == indent
+
+    def test_indentation_does_not_leak_into_the_reference(self):
+        parsed = parse_backreference("    # Chunk: pybusiness::docs/chunks/widget")
+
+        assert parsed is not None
+        assert parsed.reference == "pybusiness::docs/chunks/widget"
+        assert parsed.qualifier == "pybusiness"
+
+    @pytest.mark.parametrize(
+        "line",
+        [
+            "#Chunk: docs/chunks/widget",
+            "# Chunk:docs/chunks/widget",
+            "x = 1  # Chunk: docs/chunks/widget",
+        ],
+        ids=["no_space_after_hash", "no_space_after_colon", "trailing_after_code"],
+    )
+    def test_strictness_survives_the_widening(self, line):
+        """Widening indentation must not widen anything else."""
+        assert parse_backreference(line) is None
+
+    def test_reference_may_not_span_lines(self):
+        """`[ \\t]` rather than `\\s`: a reference is exactly one line."""
+        assert scan_backreferences("#\nChunk: docs/chunks/widget") == []
+        assert scan_backreferences("# Chunk:\ndocs/chunks/widget") == []
+
+    def test_scan_reports_the_line_the_reference_is_on(self):
+        refs = scan_backreferences(
+            "class Widget:\n    # Chunk: docs/chunks/widget\n    pass\n"
+        )
+
+        assert [r.line_number for r in refs] == [2]
+        assert refs[0].indent == "    "
+
+
+# Chunk: docs/chunks/backref_indented_comments - Rewrites preserve indentation
+class TestRewritePreservesIndentation:
+    def test_interior_reference_is_rewritten_in_place(self, tmp_path):
+        src = tmp_path / "mod.py"
+        src.write_text(
+            "class Widget:\n"
+            "    # Chunk: docs/chunks/alpha - inside\n"
+            "    def method(self):\n"
+            "        # Chunk: docs/chunks/alpha - deeper\n"
+            "        return 1\n"
+        )
+
+        count = update_backreferences(
+            tmp_path,
+            file_path=src,
+            chunk_ids_to_replace=["alpha"],
+            narrative_id="story",
+            narrative_description="Story",
+        )
+
+        assert count == 2
+        assert src.read_text() == (
+            "class Widget:\n"
+            "    # Narrative: docs/narratives/story - Story\n"
+            "    def method(self):\n"
+            "        # Narrative: docs/narratives/story - Story\n"
+            "        return 1\n"
+        )
+
+    def test_same_column_references_still_collapse(self, tmp_path):
+        """Clutter reduction survives: one line per (qualifier, column)."""
+        src = tmp_path / "mod.py"
+        src.write_text(
+            "    # Chunk: docs/chunks/alpha - one\n"
+            "    # Chunk: docs/chunks/beta - two\n"
+        )
+
+        count = update_backreferences(
+            tmp_path,
+            file_path=src,
+            chunk_ids_to_replace=["alpha", "beta"],
+            narrative_id="story",
+            narrative_description="Story",
+        )
+
+        assert count == 2
+        assert src.read_text() == "    # Narrative: docs/narratives/story - Story\n"

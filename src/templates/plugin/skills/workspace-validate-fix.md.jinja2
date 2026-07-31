@@ -138,9 +138,9 @@ jq '[.defects[] | select(.fix_class == "misrouted-bare")]' /tmp/ve-workspace-val
 jq -r '.defects[] | select(.candidates | length > 1) | .location' /tmp/ve-workspace-validate.json
 ```
 
-The report also carries a coverage caveat worth passing on to the operator: only
-backreference comments starting at column 0 are scanned, so a clean run means
-every column-0 reference resolves, not every reference in the repository.
+The report also carries a coverage caveat worth passing on to the operator: a
+backreference is scanned at any indentation, but it must be a comment on its own
+line — a reference trailing after code on the same line is not seen.
 
 ## Step 2: Dispatch on the fix class
 
@@ -411,7 +411,8 @@ escalation as though it were resolved.
 - Iterations: 2
 - Defects: 7 -> 1
 - Escalations: 1
-- Coverage caveat: only column-0 backreference comments are scanned.
+- Coverage caveat: a backreference is scanned at any indentation, but must be
+  a comment on its own line.
 ```
 
 State the numbers against the first pass, list every escalation with its

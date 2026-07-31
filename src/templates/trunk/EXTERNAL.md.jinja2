@@ -243,9 +243,10 @@ record that this code is governed by that intent, so an ambiguous one is a
 question, not a cleanup opportunity. Fixes land in fix-class-grouped batches, so
 "all qualifications" can be reviewed apart from "all new pointers".
 
-Two limits are stated on every run rather than hidden. Only backreference
-comments starting at column 0 are scanned, so a clean run means every column-0
-reference resolves, not every reference. And `org/repo` targets are reported as
+Two limits are stated on every run rather than hidden. A backreference is
+scanned at any indentation, but it must be a comment on its own line — one
+trailing after code on the same line is not seen. And `org/repo` targets are
+reported as
 *unverified* rather than checked, because resolving them needs network or cache
 state, and a gate whose verdict depends on a warm cache is not a gate.
 

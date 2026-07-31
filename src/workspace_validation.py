@@ -52,12 +52,12 @@ is left as a follow-up.
 Two limits this validator states rather than hides
 --------------------------------------------------
 
-1. **Column-0 comments only.** The shared grammar anchors a backreference at
-   the start of a line, so indented comments inside classes and functions are
-   invisible to it (VE's own repository has hundreds). Widening the grammar is
-   separate intent. A clean report therefore means "every column-0 reference
-   resolves", not "every reference in the repository resolves", and the CLI
-   says so.
+1. **Own-line comments only.** The shared grammar accepts a backreference at
+   any indentation, so references inside classes and functions are scanned like
+   any other. What it will not do is find one trailing after code on the same
+   line: a grammar loose enough to match that is loose enough to match prose
+   *about* references. A clean report means "every own-line reference
+   resolves", and the CLI says so.
 2. **``org/repo`` targets are unverified.** Resolving them needs network access
    or a warm repo cache, so they are collected in ``ValidationReport.unverified``
    and never reported as defects. A gate whose verdict depends on whether a

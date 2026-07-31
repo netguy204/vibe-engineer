@@ -575,13 +575,41 @@ def test_nested_members_report_a_defect_exactly_once(tmp_path):
     assert report.files_scanned == 1
 
 
-def test_indented_backreferences_are_not_scanned(tmp_path):
-    """Known limitation: only column-0 backreference comments are matched."""
+def test_indented_backreferences_are_scanned(tmp_path):
+    """A reference inside a class is checked like one at column 0.
+
+    # Chunk: docs/chunks/backref_indented_comments - Interior references are covered
+    """
     make_workspace(tmp_path, {"lib": "packages/lib"})
     source(
         tmp_path / "packages" / "lib" / "a.py",
         "class Widget:",
         "    # Chunk: docs/chunks/missing",
+        "    def method(self):",
+        "        # Chunk: docs/chunks/alsomissing",
+        "        return 1",
+    )
+
+    report = validate(tmp_path)
+
+    assert report.references_checked == 2
+    assert {d.reference for d in report.defects} == {
+        "docs/chunks/missing",
+        "docs/chunks/alsomissing",
+    }
+    # The line numbers must point at the indented lines, not the block openers.
+    assert sorted(d.line for d in report.defects) == [2, 4]
+
+
+def test_reference_trailing_after_code_is_not_scanned(tmp_path):
+    """The own-line rule survives: indentation is free, trailing is not.
+
+    # Chunk: docs/chunks/backref_indented_comments - Own-line remains the boundary
+    """
+    make_workspace(tmp_path, {"lib": "packages/lib"})
+    source(
+        tmp_path / "packages" / "lib" / "a.py",
+        "x = 1  # Chunk: docs/chunks/missing",
     )
 
     report = validate(tmp_path)
@@ -880,7 +908,11 @@ def test_cli_reports_unverified_cross_repo_targets_without_failing(tmp_path):
     assert "not verified" in result.output
 
 
-def test_cli_states_the_column_zero_scanning_limitation(tmp_path):
+def test_cli_states_the_own_line_scanning_limitation(tmp_path):
+    """The disclosure tracks the real limit, and never claims the retired one.
+
+    # Chunk: docs/chunks/backref_indented_comments - Disclosure matches behavior
+    """
     make_workspace(tmp_path, {"lib": "packages/lib"})
 
     result = CliRunner().invoke(
@@ -888,8 +920,12 @@ def test_cli_states_the_column_zero_scanning_limitation(tmp_path):
     )
     help_result = CliRunner().invoke(cli, ["workspace", "validate", "--help"])
 
-    assert "column 0" in result.output
-    assert "column 0" in help_result.output
+    for output in (result.output, help_result.output):
+        assert "own line" in output or "its own line" in output
+        # The retired limitation must not be advertised: a caveat that outlives
+        # the behavior it describes is worse than none.
+        assert "column 0" not in output
+        assert "column-0" not in output
 
 
 def test_cli_errors_without_a_workspace_manifest(tmp_path):

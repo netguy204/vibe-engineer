@@ -8,11 +8,14 @@ This module provides utilities for scanning source files for backreference
 comments (# Chunk:, # Narrative:, # Subsystem:) and updating them during
 consolidation operations.
 
-A backreference's target may be bare or qualified:
+A backreference's target may be bare or qualified. The examples below use
+`<id>` rather than a chunk name on purpose: since this module's grammar reads a
+comment at any indentation, an illustrative reference written out in full would
+be scanned as a real one and reported as dangling.
 
-    # Chunk: docs/chunks/x                  bare - the nearest enclosing tree
-    # Chunk: pybusiness::docs/chunks/x      another tree in the same workspace
-    # Chunk: acme/platform::docs/chunks/x   another repository
+    # Chunk: docs/chunks/<id>                  bare - the nearest enclosing tree
+    # Chunk: pybusiness::docs/chunks/<id>      another tree in the same workspace
+    # Chunk: acme/platform::docs/chunks/<id>   another repository
 
 The `::` qualifier is the same convention `models.references.SymbolicReference`
 already accepts in frontmatter. This module owns the grammar: it parses,
@@ -65,6 +68,8 @@ class ParsedBackreference:
 
     Carries the qualifier alongside the artifact id so callers can tell a
     cross-tree reference from a local one without re-parsing the comment.
+
+    # Chunk: docs/chunks/backref_indented_comments - Indentation travels with the reference
     """
 
     artifact_type: ArtifactType
@@ -74,6 +79,9 @@ class ParsedBackreference:
     separator: str | None = None  # "::" as written, or "/" for legacy prefixes
     line_number: int | None = None  # 1-indexed, when parsed from file content
     malformed_reason: str | None = None
+    # Leading whitespace as written, so a rewrite can put the reference back
+    # at the column it came from instead of flattening it to the margin.
+    indent: str = ""
 
     @property
     def is_bare(self) -> bool:
@@ -163,15 +171,25 @@ _QUALIFIER_PREFIX = r"(?:(?P<qualifier>\S*?)(?P<separator>::|/))?"
 
 
 # Chunk: docs/chunks/federation_qualified_refs - One grammar generator for all artifact types
+# Chunk: docs/chunks/backref_indented_comments - Indentation is captured, not rejected
 def _build_backref_pattern(keyword: str, artifact_dir: str) -> re.Pattern[str]:
     """Compile the backreference pattern for one artifact type.
 
     Named groups (`qualifier`, `separator`, `artifact_id`) rather than
     positional ones: the artifact id is no longer the first group, and named
     access keeps that change loud instead of silently returning a qualifier.
+
+    Leading indentation is unbounded and captured as `indent`; a reference is
+    as valid inside a class or function as at column 0, and that is where most
+    of them live. Everything after the marker is deliberately strict: the gaps
+    are `[ \\t]` rather than `\\s`, so a reference occupies exactly one line and
+    the parser cannot run past the end of it onto the next.
+
+    `indent` is captured rather than discarded because rewrites re-emit it —
+    making interior references visible must not reformat the code holding them.
     """
     return re.compile(
-        rf"^#\s+{keyword}:\s+{_QUALIFIER_PREFIX}"
+        rf"^(?P<indent>[ \t]*)#[ \t]+{keyword}:[ \t]+{_QUALIFIER_PREFIX}"
         rf"docs/{artifact_dir}/(?P<artifact_id>[a-z0-9_-]+)",
         re.MULTILINE,
     )
@@ -256,9 +274,10 @@ def parse_backreference(line: str, line_number: int | None = None) -> ParsedBack
     Returns:
         The parsed reference, or None if the line is not a backreference.
     """
-    # Every pattern anchors on "#", so this skips three regex attempts on the
-    # overwhelming majority of lines in every scanned file.
-    if not line.startswith("#"):
+    # Every pattern anchors on "#" after optional indentation, so this skips
+    # three regex attempts on the overwhelming majority of lines in every
+    # scanned file. It strips first: an indented comment is a real reference.
+    if not line.lstrip(" \t").startswith("#"):
         return None
 
     for artifact_type, pattern in BACKREF_PATTERNS.items():
@@ -276,6 +295,7 @@ def parse_backreference(line: str, line_number: int | None = None) -> ParsedBack
             separator=separator,
             line_number=line_number,
             malformed_reason=reason,
+            indent=match.group("indent"),
         )
     return None
 
@@ -421,7 +441,7 @@ def update_backreferences(
     lines = content.split("\n")
     new_lines: list[str] = []
     replaced_count = 0
-    qualifiers_emitted: set[str] = set()
+    qualifiers_emitted: set[tuple[str, str]] = set()
 
     # Build pattern to match chunk refs we want to replace
     chunk_ids_set = set(chunk_ids_to_replace)
@@ -435,14 +455,24 @@ def update_backreferences(
             and parsed.artifact_id in chunk_ids_set
         ):
             replaced_count += 1
-            # Add one narrative reference per distinct qualifier
-            prefix = parsed.qualifier_prefix
-            if prefix not in qualifiers_emitted:
+            # One narrative reference per (qualifier, column), emitted at the
+            # column the chunk reference occupied.
+            #
+            # Chunk: docs/chunks/backref_indented_comments - Rewrites preserve indentation
+            #
+            # Indentation is part of the dedup key, not just the output: a
+            # reference inside a function documents that function, so collapsing
+            # it into a top-level comment would move the annotation away from
+            # the code it describes and reindent the file. Two references at the
+            # same column under the same qualifier still collapse — that is the
+            # clutter reduction consolidation exists for.
+            key = (parsed.qualifier_prefix, parsed.indent)
+            if key not in qualifiers_emitted:
                 new_lines.append(
-                    f"# Narrative: {prefix}docs/narratives/{narrative_id}"
-                    f" - {narrative_description}"
+                    f"{parsed.indent}# Narrative: {parsed.qualifier_prefix}"
+                    f"docs/narratives/{narrative_id} - {narrative_description}"
                 )
-                qualifiers_emitted.add(prefix)
+                qualifiers_emitted.add(key)
             # Skip this chunk line (don't add to new_lines)
             continue
 

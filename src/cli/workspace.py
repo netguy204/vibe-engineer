@@ -195,11 +195,13 @@ def init(scan, exclude, yes, workspace_dir):
 # Stated on every run, clean or not. The case study's damage was silent
 # misresolution, so a report that implied total coverage would recreate the
 # failure it exists to prevent.
+#
+# Chunk: docs/chunks/backref_indented_comments - Indentation no longer limits the scan
 SCAN_CAVEAT = (
-    "Note: only backreference comments starting at column 0 are scanned, so "
-    "indented\n      comments inside classes and functions are invisible to this "
-    "report. A clean\n      run means every column 0 reference resolves, not every "
-    "reference."
+    "Note: a backreference is scanned wherever it is indented, but it must be a "
+    "comment\n      on its own line — a reference trailing after code on the same "
+    "line is not\n      seen. `org/repo` targets are reported unverified rather "
+    "than resolved."
 )
 
 
@@ -285,9 +287,10 @@ def validate(output_format, workspace_dir):
     unknown-qualifier, missing-target, malformed-qualifier, or
     unresolvable-frontmatter. Exits nonzero on any defect, so CI can gate on it.
 
-    Two limits are deliberate. Only backreference comments starting at column 0
-    are scanned, so indented comments are not covered — a clean run means every
-    column 0 reference resolves, not every reference. And `org/repo` targets are
+    Two limits are deliberate. A backreference must be a comment on its own
+    line: indentation is unrestricted, but a reference trailing after code on
+    the same line is not scanned, because a grammar loose enough to find it is
+    loose enough to match prose about references. And `org/repo` targets are
     reported as unverified rather than checked, because resolving them needs
     network or cache state, and a gate whose verdict depends on a warm cache is
     not a gate.
