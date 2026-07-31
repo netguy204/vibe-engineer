@@ -766,6 +766,80 @@ def test_qualified_code_paths_entry_is_unverified(tmp_path):
     assert unverified.reference == "acme/hub::src/w.py"
 
 
+# Chunk: docs/chunks/crossref_glob_refs - Glob file parts error only on empty expansion
+def test_matching_glob_code_paths_entry_is_clean(tmp_path):
+    """A code_paths glob matching existing files is a verified reference."""
+    make_workspace(tmp_path, {"lib": "packages/lib"})
+    lib = tmp_path / "packages" / "lib"
+    for name in ("alpha", "beta"):
+        source(lib / "tasks" / name / "Dockerfile", "FROM scratch")
+    declared_paths_chunk(lib, "widget", code_paths=("tasks/*/Dockerfile",))
+
+    report = validate(tmp_path)
+
+    assert report.defects == ()
+
+
+def test_empty_glob_code_paths_entry_is_unresolvable_frontmatter(tmp_path):
+    """A glob matching nothing in the member tree is a defect naming the pattern."""
+    make_workspace(tmp_path, {"lib": "packages/lib"})
+    declared_paths_chunk(
+        tmp_path / "packages" / "lib", "widget", code_paths=("tasks/*/Dockerfile",)
+    )
+
+    report = validate(tmp_path)
+
+    (defect,) = of_class(report, FixClass.UNRESOLVABLE_FRONTMATTER)
+    assert defect.reference == "tasks/*/Dockerfile"
+    assert "glob pattern" in defect.message
+    assert "matches nothing" in defect.message
+
+
+def test_matching_glob_code_reference_is_clean(tmp_path):
+    """A code_references file part may be a glob pattern with matches."""
+    make_workspace(tmp_path, {"lib": "packages/lib"})
+    lib = tmp_path / "packages" / "lib"
+    source(lib / "tasks" / "alpha" / "Dockerfile", "FROM scratch")
+    code_ref_chunk(lib, "widget", "tasks/*/Dockerfile")
+
+    report = validate(tmp_path)
+
+    assert report.defects == ()
+    assert report.unverified == ()
+
+
+def test_empty_glob_code_reference_is_unresolvable_frontmatter(tmp_path):
+    """An empty glob expansion in a code_references file part is a defect."""
+    make_workspace(tmp_path, {"lib": "packages/lib"})
+    code_ref_chunk(tmp_path / "packages" / "lib", "widget", "tasks/*/Dockerfile")
+
+    report = validate(tmp_path)
+
+    (defect,) = of_class(report, FixClass.UNRESOLVABLE_FRONTMATTER)
+    assert defect.reference == "tasks/*/Dockerfile"
+    assert "matches nothing" in defect.message
+
+
+def test_symbol_anchor_on_glob_pattern_is_unverified(tmp_path):
+    """Symbols are not checked across glob expansions: unverified, not passed.
+
+    The anchor must be neither silently passed (hiding a stale symbol) nor
+    spuriously failed (the symbol may live in only one of the matches).
+    """
+    make_workspace(tmp_path, {"lib": "packages/lib"})
+    lib = tmp_path / "packages" / "lib"
+    source(lib / "pkgs" / "alpha" / "handler.py", "class Handler:", "    pass")
+    source(lib / "pkgs" / "beta" / "handler.py", "class Other:", "    pass")
+    code_ref_chunk(lib, "widget", "pkgs/*/handler.py#Handler")
+
+    report = validate(tmp_path)
+
+    assert report.defects == ()
+    (unverified,) = report.unverified
+    assert unverified.reference == "pkgs/*/handler.py#Handler"
+    assert "glob" in unverified.reason
+
+
 @pytest.mark.parametrize("status", ["FUTURE", "IMPLEMENTING", "HISTORICAL", "SUPERSEDED"])
 def test_non_owning_chunk_statuses_are_exempt_from_path_checks(tmp_path, status):
     """Parity with the single-tree check: FUTURE/IMPLEMENTING chunks list files

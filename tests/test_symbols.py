@@ -509,3 +509,66 @@ class TestCheckReferenceTarget:
         assert error is None
         assert warning is not None
         assert "src/broken.py" in warning
+
+
+# Chunk: docs/chunks/crossref_glob_refs - Glob file parts in reference existence checking
+class TestCheckReferenceTargetGlobs:
+    """Glob file parts are patterns: error only when the expansion is empty."""
+
+    def _make_packages(self, tmp_path: Path) -> None:
+        for name in ("alpha", "beta"):
+            pkg = tmp_path / "packages" / "tasks" / name
+            pkg.mkdir(parents=True)
+            (pkg / "Dockerfile").write_text("FROM scratch\n")
+
+    def test_matching_glob_is_clean(self, tmp_path: Path):
+        """A pattern matching existing files is a verified reference."""
+        from symbols import check_reference_target
+
+        self._make_packages(tmp_path)
+        assert check_reference_target(tmp_path, "packages/tasks/*/Dockerfile") == (
+            None,
+            None,
+        )
+
+    def test_empty_glob_is_error(self, tmp_path: Path):
+        """A pattern matching nothing is an error naming the pattern."""
+        from symbols import check_reference_target
+
+        error, warning = check_reference_target(tmp_path, "packages/tasks/*/Dockerfile")
+        assert error is not None
+        assert "packages/tasks/*/Dockerfile" in error
+        assert warning is None
+
+    def test_symbol_anchor_on_glob_is_warning(self, tmp_path: Path):
+        """Symbols are not checked across expansions: uncheckable, not passed."""
+        from symbols import check_reference_target
+
+        pkg = tmp_path / "packages" / "alpha"
+        pkg.mkdir(parents=True)
+        (pkg / "handler.py").write_text("class Handler:\n    pass\n")
+
+        error, warning = check_reference_target(
+            tmp_path, "packages/*/handler.py#Handler"
+        )
+        assert error is None
+        assert warning is not None
+        assert "Handler" in warning
+        assert "not checked" in warning
+
+    def test_question_mark_and_bracket_patterns_are_globs(self, tmp_path: Path):
+        """All three glob magic characters mark a file part as a pattern."""
+        from symbols import is_glob_pattern
+
+        assert is_glob_pattern("src/*.py")
+        assert is_glob_pattern("src/mod?.py")
+        assert is_glob_pattern("src/[ab].py")
+        assert not is_glob_pattern("src/plain.py")
+
+    def test_malformed_pattern_is_empty_expansion_error(self, tmp_path: Path):
+        """A malformed pattern degrades to the empty-glob error, not a crash."""
+        from symbols import check_reference_target
+
+        error, warning = check_reference_target(tmp_path, "/absolute/*.py")
+        assert error is not None
+        assert warning is None

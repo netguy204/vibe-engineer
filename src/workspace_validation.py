@@ -83,6 +83,7 @@ from frontmatter import parse_frontmatter
 from models import ArtifactType, ChunkFrontmatter, ChunkStatus, SubsystemFrontmatter
 from project import find_enclosing_tree as find_governing_tree
 from source_files import enumerate_source_files
+from symbols import expand_glob, is_glob_pattern
 from task import TaskChunkError
 from workspace import (
     Workspace,
@@ -820,6 +821,7 @@ class _Validator:
             )
 
     # Chunk: docs/chunks/crossref_workspace_parity - Directory targets, code_paths, status gating
+    # Chunk: docs/chunks/crossref_glob_refs - Glob file parts error only on empty expansion
     def check_code_references(
         self, member: str, artifact_type: ArtifactType, artifact_dir: Path
     ) -> None:
@@ -833,6 +835,11 @@ class _Validator:
           package directory" is a legitimate reference.
         - Both declared-path fields are checked; ``code_paths`` must not rot
           invisibly in workspace mode.
+        - File parts containing glob magic are patterns: they expand against
+          the member root and are a defect only when the expansion is empty,
+          so "this applies uniformly across N packages" does not require
+          enumerating N paths. Symbol anchors on patterns are unverified,
+          not silently passed.
         - Chunks are checked only in ACTIVE/COMPOSITE status. FUTURE and
           IMPLEMENTING chunks legitimately list files they expect to create,
           and HISTORICAL/SUPERSEDED chunks keep archaeological references to
@@ -863,12 +870,13 @@ class _Validator:
         rel_path = self.relative(main_file)
         member_root = self.member_indexes[member].root
 
-        def resolve_path(reference: str, file_part: str, field_name: str) -> Path | None:
+        def resolve_path(reference: str, file_part: str, field_name: str) -> list[Path]:
             """Shared path resolution for both declared-path fields.
 
-            Returns the existing target path, or None after recording the
-            unverified/defect disposition — so both fields get identical
-            qualified-reference routing and existence semantics.
+            Returns the existing target paths (one element for a concrete
+            path, every match for a glob pattern), or an empty list after
+            recording the unverified/defect disposition — so both fields get
+            identical qualified-reference routing and existence semantics.
             """
             if "::" in file_part:
                 self.unverified.append(
@@ -883,7 +891,22 @@ class _Validator:
                         ),
                     )
                 )
-                return None
+                return []
+            if is_glob_pattern(file_part):
+                matches = expand_glob(member_root, file_part)
+                if not matches:
+                    self.report_defect(
+                        fix_class=FixClass.UNRESOLVABLE_FRONTMATTER,
+                        path=rel_path,
+                        line=_find_line(content, reference),
+                        reference=reference,
+                        message=(
+                            f"{field_name} glob pattern '{file_part}' matches "
+                            f"nothing in tree '{member}'"
+                        ),
+                        member=member,
+                    )
+                return matches
             target = member_root / file_part
             if not target.exists():
                 self.report_defect(
@@ -897,8 +920,8 @@ class _Validator:
                     ),
                     member=member,
                 )
-                return None
-            return target
+                return []
+            return [target]
 
         for path in code_paths:
             resolve_path(path, path, "code_paths")
@@ -906,8 +929,27 @@ class _Validator:
         for symbolic in frontmatter.code_references:
             ref = symbolic.ref
             file_part, _, symbol_path = ref.partition("#")
-            target = resolve_path(ref, file_part, "code_references")
-            if target is None or not symbol_path or not target.is_file():
+            targets = resolve_path(ref, file_part, "code_references")
+            if not targets or not symbol_path:
+                continue
+            if is_glob_pattern(file_part):
+                # A symbol cannot be attributed to one file of a pattern's
+                # expansion; report it as unverified rather than silently
+                # passing or spuriously failing.
+                self.unverified.append(
+                    UnverifiedReference(
+                        path=rel_path,
+                        line=_find_line(content, ref),
+                        reference=ref,
+                        reason=(
+                            "symbol anchor on a glob pattern; symbols are not "
+                            "checked across glob expansions"
+                        ),
+                    )
+                )
+                continue
+            target = targets[0]
+            if not target.is_file():
                 continue
             try:
                 target_content = target.read_text()

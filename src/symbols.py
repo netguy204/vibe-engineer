@@ -150,7 +150,37 @@ def parse_reference(
     return project, file_and_symbol, None
 
 
+# Chunk: docs/chunks/crossref_glob_refs - Glob patterns in reference file parts
+_GLOB_MAGIC = re.compile(r"[*?\[]")
+
+
+def is_glob_pattern(file_part: str) -> bool:
+    """Return True when a reference file part is a glob pattern.
+
+    A file part containing glob magic (``*``, ``?``, ``[``) declares a
+    *shape* of paths ("this applies uniformly across everything matching
+    this pattern") rather than one literal path.
+    """
+    return bool(_GLOB_MAGIC.search(file_part))
+
+
+# Chunk: docs/chunks/crossref_glob_refs - Shared glob expansion for path validators
+def expand_glob(root: Path, pattern: str) -> list[Path]:
+    """Expand a glob pattern against a project root.
+
+    Returns the sorted matches. Malformed patterns (absolute paths, bad
+    bracket syntax) degrade to an empty list — every validator treats an
+    empty expansion as an error naming the pattern, which points the
+    operator at the bad pattern instead of crashing the validator.
+    """
+    try:
+        return sorted(root.glob(pattern))
+    except (ValueError, NotImplementedError, IndexError, re.error):
+        return []
+
+
 # Chunk: docs/chunks/crossref_generator_verify - Shared reference-existence check
+# Chunk: docs/chunks/crossref_glob_refs - Glob file parts: error only on empty expansion
 def check_reference_target(
     project_dir: Path, ref: str
 ) -> tuple[str | None, str | None]:
@@ -176,9 +206,27 @@ def check_reference_target(
         - (None, None): verified, or not symbol-checkable (non-Python file
           symbol anchors are skipped; honest UNCHECKED reporting for those
           belongs to crossref_unchecked_anchors).
+
+    Glob file parts (``packages/tasks/*/Dockerfile``) are patterns, not
+    literal paths: an empty expansion is an error, a non-empty expansion is
+    verified, and a symbol anchor on a pattern is uncheckable (warning).
     """
     qualified_ref = qualify_ref(ref, ".")
     _, file_path, symbol_path = parse_reference(qualified_ref)
+
+    if is_glob_pattern(file_path):
+        if not expand_glob(project_dir, file_path):
+            return (
+                f"Glob pattern matches nothing: {file_path} (ref: {ref})",
+                None,
+            )
+        if symbol_path is not None:
+            return (
+                None,
+                f"Symbol anchor '{symbol_path}' on glob pattern {file_path} "
+                f"is not checked across expansions (ref: {ref})",
+            )
+        return (None, None)
 
     full_path = project_dir / file_path
     if not full_path.exists():

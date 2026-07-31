@@ -158,6 +158,54 @@ class TestCompleteReferenceGate:
         assert result.exit_code == 0
         assert _chunk_status(chunk_path) == "ACTIVE"
 
+    # Chunk: docs/chunks/crossref_glob_refs - Gate accepts matching globs, rejects empty ones
+    def test_matching_glob_declarations_complete(self, cli_runner, temp_project):
+        """Glob entries with matches pass the gate in both declared-path fields."""
+        chunk_path = _create_chunk(cli_runner, temp_project)
+        for name in ("alpha", "beta"):
+            pkg = temp_project / "packages" / "tasks" / name
+            pkg.mkdir(parents=True)
+            (pkg / "Dockerfile").write_text("FROM scratch\n")
+        _write_goal(
+            chunk_path,
+            code_paths=["packages/tasks/*/Dockerfile"],
+            code_references=[{"ref": "packages/tasks/*/Dockerfile"}],
+        )
+
+        result = cli_runner.invoke(
+            cli, ["chunk", "complete", "my-chunk", "--project-dir", str(temp_project)]
+        )
+        assert result.exit_code == 0
+        assert _chunk_status(chunk_path) == "ACTIVE"
+
+    def test_blocks_on_empty_glob_code_path(self, cli_runner, temp_project):
+        """A glob matching nothing blocks completion; status unchanged."""
+        chunk_path = _create_chunk(cli_runner, temp_project)
+        _write_goal(chunk_path, code_paths=["packages/tasks/*/Dockerfile"])
+
+        result = cli_runner.invoke(
+            cli, ["chunk", "complete", "my-chunk", "--project-dir", str(temp_project)]
+        )
+        assert result.exit_code != 0
+        assert "packages/tasks/*/Dockerfile" in result.output
+        assert "matches nothing" in result.output
+        assert _chunk_status(chunk_path) == "IMPLEMENTING"
+
+    def test_blocks_on_empty_glob_code_reference(self, cli_runner, temp_project):
+        """An empty glob in a code_references file part blocks completion."""
+        chunk_path = _create_chunk(cli_runner, temp_project)
+        _write_goal(
+            chunk_path,
+            code_references=[{"ref": "packages/tasks/*/Dockerfile"}],
+        )
+
+        result = cli_runner.invoke(
+            cli, ["chunk", "complete", "my-chunk", "--project-dir", str(temp_project)]
+        )
+        assert result.exit_code != 0
+        assert "packages/tasks/*/Dockerfile" in result.output
+        assert _chunk_status(chunk_path) == "IMPLEMENTING"
+
     def test_empty_declarations_still_complete(self, cli_runner, temp_project):
         """Empty code_paths and code_references pass the gate."""
         chunk_path = _create_chunk(cli_runner, temp_project)

@@ -10,170 +10,168 @@ to hand to an agent.
 
 ## Approach
 
-<!--
-How will you build this? Describe the strategy at a high level.
-What patterns or techniques will you use?
-What existing code will you build on?
+Introduce a single shared glob-expansion helper and route every path-existence
+check that validates chunk-declared paths (`code_paths` and the file part of
+`code_references`) through it. The helper lives in `src/symbols.py` alongside
+`check_reference_target`, which is already the shared existence check for
+reference-emitting flows — this keeps "what counts as present" defined in one
+place.
 
-Reference docs/trunk/DECISIONS.md entries where relevant.
-If this approach represents a new significant decision, ask the user
-if we should add it to DECISIONS.md and reference it here.
+Semantics (fixed by the chunk goal):
 
-Always include tests in your implementation plan and adhere to
-docs/trunk/TESTING_PHILOSOPHY.md in your planning.
+- A file part containing glob magic (`*`, `?`, `[`) is a **pattern**, not a
+  literal path.
+- Validators expand the pattern against the project/member root with
+  `pathlib.Path.glob` and **error only when the expansion is empty**.
+- A non-empty expansion is a verified reference. No per-match existence
+  bookkeeping — the pattern itself is the declared intent ("this applies
+  uniformly across everything matching this shape").
+- Symbol anchors on glob refs (`pkg/*/mod.py#Symbol`) are **not** checked
+  across the expansion. They are reported as uncheckable (a warning in
+  `check_reference_target`, an `UnverifiedReference` in workspace validation)
+  rather than silently passed — honest reporting, consistent with the
+  narrative's crossref_unchecked_anchors direction, without new resolution
+  logic.
 
-Remember to update code_paths in the chunk's GOAL.md (e.g., docs/chunks/crossref_glob_refs/GOAL.md)
-with references to the files that you expect to touch.
--->
+Four sites change, identified by the wave-1 handoffs:
+
+1. `src/integrity.py#IntegrityValidator::_validate_chunk_file_paths` — the
+   `check()` closure (single-tree `ve validate`).
+2. `src/workspace_validation.py#check_code_references` — the `resolve_path`
+   closure (workspace mode). The parity contract documented on this function
+   ("the two validators cannot teach contradictory lessons") extends to glob
+   semantics.
+3. `src/chunk_validation.py#validate_chunk_references_exist` — the completion
+   gate's `code_paths` loop (its `code_references` loop already delegates to
+   `check_reference_target`).
+4. `src/symbols.py#check_reference_target` — the shared existence check used
+   by the completion gate, chunk validation, and subsystem validation.
+
+Pattern expansion uses `Path.glob`, wrapped so malformed patterns (absolute
+paths, bad syntax) degrade to "no matches" — which surfaces as the empty-glob
+error, pointing the operator at the bad pattern rather than crashing.
+
+Tests follow docs/trunk/TESTING_PHILOSOPHY.md: behavior-level tests against
+the public validator entry points (`IntegrityValidator.validate`,
+`WorkspaceValidator`, `validate_chunk_references_exist`,
+`check_reference_target`), exercising both the matching-glob (passes) and
+empty-glob (errors) cases, plus the symbol-anchor-on-glob disposition.
+
+Documentation: `docs/trunk/SPEC.md` "Code Reference Format" gains the glob
+form so the frontmatter contract is written down where the reference syntax
+is specified.
 
 ## Subsystem Considerations
 
-<!--
-Before designing your implementation, check docs/subsystems/ for relevant
-cross-cutting patterns.
-
-QUESTIONS TO CONSIDER:
-- Does this chunk touch any existing subsystem's scope?
-- Will this chunk implement part of a subsystem (contribute code) or use it
-  (depend on it)?
-- Did you discover code during exploration that should be part of a subsystem
-  but doesn't follow its patterns?
-
-If no subsystems are relevant, delete this section.
-
-WHEN SUBSYSTEMS ARE RELEVANT:
-List each relevant subsystem with its status and your relationship:
-- **docs/subsystems/validation** (DOCUMENTED): This chunk USES the validation
-  subsystem to check input
-- **docs/subsystems/error_handling** (REFACTORING): This chunk IMPLEMENTS a
-  new error type following the subsystem's patterns
-
-HOW SUBSYSTEM STATUS AFFECTS YOUR WORK:
-
-DOCUMENTED subsystems: The subsystem's patterns are captured but deviations are not
-being actively fixed. If you discover code that deviates from the subsystem's
-patterns, add it to the subsystem's Known Deviations section. Do NOT prioritize
-fixing those deviations—your chunk has its own goals.
-
-REFACTORING subsystems: The subsystem is being actively consolidated. If your chunk
-work touches code that deviates from the subsystem's patterns, attempt to bring it
-into compliance as part of your work. This is "opportunistic improvement"—improve
-what you touch, but don't expand scope to fix unrelated deviations.
-
-WHEN YOU DISCOVER DEVIATING CODE:
-- Add it to the subsystem's Known Deviations section
-- Note whether you will address it (REFACTORING status + relevant to your work)
-  or leave it for future work (DOCUMENTED status or outside your chunk's scope)
-
-Example:
-- **Discovered deviation**: src/legacy/parser.py#validate_input does its own
-  validation instead of using the validation subsystem
-  - Added to docs/subsystems/validation Known Deviations
-  - Action: Will not address (subsystem is DOCUMENTED; deviation outside chunk scope)
--->
+- **docs/subsystems/workflow_artifacts** (DOCUMENTED): This chunk IMPLEMENTS
+  part of the validation surface of the workflow-artifact lifecycle
+  (`src/symbols.py` carries this subsystem's backreference). No deviations
+  discovered; the change follows the existing shared-check pattern
+  (`check_reference_target` as the single arbiter of existence).
 
 ## Sequence
 
-<!--
-Ordered steps to implement this chunk. Each step should be:
-- Small enough to reason about in isolation
-- Large enough to be meaningful
-- Clear about its inputs and outputs
+### Step 1: Shared glob helpers in src/symbols.py
 
-This sequence is your contract with yourself (and with agents).
-Work through it in order. Don't skip ahead.
+Add two module-level functions next to `check_reference_target`:
 
-Example:
+- `is_glob_pattern(file_part: str) -> bool` — true when the string contains
+  glob magic (`*`, `?`, `[`).
+- `expand_glob(root: Path, pattern: str) -> list[Path]` — `sorted(root.glob(pattern))`,
+  with `ValueError`/`NotImplementedError`/`IndexError` degraded to `[]`
+  (absolute or malformed patterns count as matching nothing).
 
-### Step 1: Define the SegmentHeader struct
+Backreference: `# Chunk: docs/chunks/crossref_glob_refs`.
 
-Create the struct that represents a segment's header with fields for:
-- magic number (4 bytes)
-- version (2 bytes)
-- segment_id (8 bytes)
-- message_count (4 bytes)
-- checksum (4 bytes)
+### Step 2: Glob support in check_reference_target
 
-Location: src/segment/format.rs
+In `src/symbols.py#check_reference_target`, after parsing the reference:
+if `is_glob_pattern(file_path)`:
 
-### Step 2: Implement header serialization
+- empty expansion → error: the pattern matches nothing.
+- non-empty expansion with a symbol anchor → warning: symbol anchors on glob
+  patterns are not checked across expansions.
+- non-empty expansion, no symbol → `(None, None)` (verified).
 
-Add `to_bytes()` and `from_bytes()` methods to SegmentHeader.
-Use little-endian encoding per SPEC.md Section 3.1.
+Update the docstring's contract description. This automatically extends glob
+support to the completion gate's `code_references` loop and to subsystem
+`code_references` validation.
 
-### Step 3: ...
+### Step 3: Glob support in the integrity validator
 
----
+In `src/integrity.py#IntegrityValidator::_validate_chunk_file_paths`, the
+`check()` closure branches on `is_glob_pattern(path)`: expand against
+`self.project_dir`; empty expansion appends an `IntegrityError` whose message
+says the glob matched nothing (distinct from the moved/renamed message for
+concrete paths); non-empty expansion passes. Docstring notes the glob
+semantics.
 
-**BACKREFERENCE COMMENTS**
+### Step 4: Glob support in the workspace validator
 
-When implementing code, add backreference comments to help future agents trace
-code back to its governing documentation.
+In `src/workspace_validation.py#check_code_references`:
 
-**Valid backreference types:**
-- `# Subsystem: docs/subsystems/<name>` - For architectural patterns
-- `# Chunk: docs/chunks/<name>` - For implementation work
+- Change the `resolve_path` closure to return `list[Path]` (empty list =
+  disposition already recorded). Glob file parts expand against
+  `member_root`; empty expansion reports the same
+  `UNRESOLVABLE_FRONTMATTER` defect class with a glob-specific message.
+  Concrete paths keep current behavior, returning a one-element list.
+- In the `code_references` loop, when the file part is a glob and a symbol
+  anchor is present, append an `UnverifiedReference` (reason: symbol anchors
+  on glob patterns are not checked across expansions) instead of running the
+  symbol scan. Non-glob refs keep the existing symbol check on the single
+  resolved target.
+- Extend the parity docstring to name glob expansion as part of the shared
+  contract.
 
-Place comments at the appropriate level:
-- **Module-level**: If this code implements the subsystem/chunk's core functionality
-- **Class-level**: If this class is part of the pattern
-- **Method-level**: If this method implements a specific behavior
+### Step 5: Glob support in the completion gate's code_paths loop
 
-Format (place immediately before the symbol):
-```
-# Subsystem: docs/subsystems/workflow_artifacts - Workflow artifact manager pattern
-# Chunk: docs/chunks/auth_refactor - Authentication system redesign
-```
+In `src/chunk_validation.py#validate_chunk_references_exist`, the
+`code_paths` loop mirrors Step 3: glob entries expand against
+`chunks.project_dir`, erroring only on empty expansion. (The
+`code_references` loop is already covered via Step 2.)
 
-Do NOT add narrative backreferences. Narratives decompose into chunks; reference
-the implementing chunk instead.
+### Step 6: Tests
 
-**Task context note**: In multi-project tasks, always use local paths (e.g.,
-`docs/chunks/chunk_name`) for chunk backreferences, not paths to the external
-artifact repo. Each project has `external.yaml` pointers that resolve to the
-actual chunk content.
--->
+- `tests/test_symbols.py`: `check_reference_target` with a matching glob
+  (no error), an empty glob (error), and a glob + symbol anchor (warning).
+- `tests/test_integrity.py`: ACTIVE chunk with a matching glob in
+  `code_paths` and in a `code_references` file part → no errors; empty glob
+  → error naming the pattern.
+- `tests/test_workspace_validation.py`: matching glob passes, empty glob is
+  a defect, glob + symbol anchor lands in unverified.
+- `tests/test_chunk_complete_gate.py`: completion gate accepts a matching
+  glob in `code_paths`/`code_references`, rejects an empty one.
+
+### Step 7: Documentation
+
+Add the glob-pattern form to `docs/trunk/SPEC.md` "Code Reference Format"
+(pattern syntax, empty-expansion-is-error rule, symbol anchors uncheckable on
+patterns). SPEC.md is not template-rendered, so a direct edit is correct.
+
+### Step 8: Full test suite + validate
+
+`uv run pytest tests/` and `uv run ve validate` both clean.
 
 ## Dependencies
 
-<!--
-What must exist before this chunk can be implemented?
-- Other chunks that must be complete
-- External libraries to add
-- Infrastructure or configuration
-
-If there are no dependencies, delete this section.
--->
+- `crossref_workspace_parity` (ACTIVE, merged): established the shared
+  `resolve_path` closure and the two-validator parity contract this chunk
+  extends.
+- `crossref_generator_verify` (ACTIVE, merged): established
+  `check_reference_target` and the completion gate this chunk routes globs
+  through.
 
 ## Risks and Open Questions
 
-<!--
-What might go wrong? What are you unsure about?
-Being explicit about uncertainty helps you (and agents) know where to
-be careful and when to stop and ask questions.
-
-Example:
-- fsync behavior may differ across filesystems; need to verify on ext4 and APFS
-- Unclear whether concurrent reads during write are safe; may need mutex
-- Performance target is aggressive; may need to iterate on buffer sizes
--->
+- `Path.glob` behavior varies slightly across Python versions for malformed
+  patterns; the try/except degradation to "no matches" makes every variant
+  surface as the empty-glob error, which names the pattern.
+- Symbol anchors on glob refs could plausibly mean "present in every match";
+  we deliberately do not resolve them (reported as uncheckable instead),
+  because the goal fixes error conditions to empty expansion only, and
+  cross-expansion symbol semantics belong to a future chunk if field evidence
+  demands them.
 
 ## Deviations
 
-<!--
-POPULATE DURING IMPLEMENTATION, not at planning time.
-
-When reality diverges from the plan, document it here:
-- What changed?
-- Why?
-- What was the impact?
-
-Minor deviations (renamed a function, used a different helper) don't need
-documentation. Significant deviations (changed the approach, skipped a step,
-added steps) do.
-
-Example:
-- Step 4: Originally planned to use std::fs::rename for atomic swap.
-  Testing revealed this isn't atomic across filesystems. Changed to
-  write-fsync-rename-fsync sequence per platform best practices.
--->
+<!-- Populated during implementation. -->

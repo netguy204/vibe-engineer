@@ -959,6 +959,73 @@ class TestIntegrityValidatorFilePaths:
         _, errors = self._file_path_errors(temp_project)
         assert len(errors) == 1
 
+    # Chunk: docs/chunks/crossref_glob_refs - Glob entries error only on empty expansion
+    def test_matching_glob_code_path_is_clean(self, temp_project):
+        """A code_paths glob matching existing files is a verified reference."""
+        make_ve_initialized_git_repo(temp_project)
+        for name in ("alpha", "beta"):
+            pkg = temp_project / "packages" / "tasks" / name
+            pkg.mkdir(parents=True)
+            (pkg / "Dockerfile").write_text("FROM scratch\n")
+        self._make_chunk(
+            temp_project,
+            "uniform",
+            status="ACTIVE",
+            code_paths=["packages/tasks/*/Dockerfile"],
+        )
+
+        result, errors = self._file_path_errors(temp_project)
+        assert errors == []
+        assert result.success is True
+
+    def test_empty_glob_code_path_errors(self, temp_project):
+        """A code_paths glob matching nothing is an error naming the pattern."""
+        make_ve_initialized_git_repo(temp_project)
+        self._make_chunk(
+            temp_project,
+            "hollow",
+            status="ACTIVE",
+            code_paths=["packages/tasks/*/Dockerfile"],
+        )
+
+        result, errors = self._file_path_errors(temp_project)
+        assert result.success is False
+        assert len(errors) == 1
+        assert errors[0].target == "packages/tasks/*/Dockerfile"
+        assert "matches nothing" in errors[0].message
+
+    def test_matching_glob_code_reference_is_clean(self, temp_project):
+        """A code_references file part may be a glob pattern with matches."""
+        make_ve_initialized_git_repo(temp_project)
+        pkg = temp_project / "packages" / "alpha"
+        pkg.mkdir(parents=True)
+        (pkg / "handler.py").write_text("class Handler:\n    pass\n")
+        self._make_chunk(
+            temp_project,
+            "uniform_ref",
+            status="ACTIVE",
+            code_references=[{"ref": "packages/*/handler.py"}],
+        )
+
+        _, errors = self._file_path_errors(temp_project)
+        assert errors == []
+
+    def test_empty_glob_code_reference_errors(self, temp_project):
+        """An empty glob expansion in a code_references file part is an error."""
+        make_ve_initialized_git_repo(temp_project)
+        self._make_chunk(
+            temp_project,
+            "hollow_ref",
+            status="ACTIVE",
+            code_references=[{"ref": "packages/*/handler.py#Handler"}],
+        )
+
+        _, errors = self._file_path_errors(temp_project)
+        assert len(errors) == 1
+        assert errors[0].target == "packages/*/handler.py"
+        assert "code_references" in errors[0].message
+        assert "matches nothing" in errors[0].message
+
 
 class TestIntegrityValidatorCLI:
     """Tests for the ve validate CLI command."""
