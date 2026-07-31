@@ -150,6 +150,69 @@ def parse_reference(
     return project, file_and_symbol, None
 
 
+# Chunk: docs/chunks/crossref_reexport_absence - Re-export-only names are absent
+def name_is_reexport_only(content: str, name: str) -> bool | None:
+    """Decide whether `name` is only *bound* in this Python source, not defined.
+
+    A name whose every whole-word occurrence sits inside an `import`/`from …
+    import` statement or an `__all__` string-list statement is a re-export:
+    the definition lives in another file, and a reference anchored here is
+    silently wrong (the `# noqa: F401` field case). This is the one class of
+    occurrence the conservative whole-word scan provably misreads, so it is
+    the one class this predicate reclassifies.
+
+    Returns:
+        - True: occurrences exist and every one falls inside an import
+          statement span or a *simple* statement (assignment, augmented
+          assignment, expression such as ``__all__.append(...)``) that
+          mentions ``__all__``. Compound statements (``if``, ``try``, …) are
+          deliberately not excludable spans, so real code guarded by an
+          ``__all__`` test can never be misread as absent.
+        - False: at least one occurrence lives outside those spans (a
+          definition, an assignment, a call, a docstring, a comment off the
+          import lines) — the conservative default — or the name never
+          occurs at all.
+        - None: undecidable — `name` is not an identifier, or the content is
+          not parseable Python. Callers fall back to whole-word semantics so
+          unparseable files never gain new errors.
+
+    Line spans (``lineno..end_lineno``) are deliberately the unit of
+    exclusion: a ``# noqa`` comment on an import line is part of the
+    re-export idiom, and multi-line parenthesized imports are covered.
+    """
+    if not name.isidentifier():
+        return None
+    try:
+        tree = ast.parse(content)
+    except (SyntaxError, ValueError):
+        return None
+
+    excluded_spans: list[tuple[int, int]] = []
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import | ast.ImportFrom):
+            excluded_spans.append((node.lineno, node.end_lineno or node.lineno))
+        elif isinstance(node, ast.Assign | ast.AnnAssign | ast.AugAssign | ast.Expr):
+            mentions_all = any(
+                isinstance(inner, ast.Name) and inner.id == "__all__"
+                for inner in ast.walk(node)
+            )
+            if mentions_all:
+                excluded_spans.append((node.lineno, node.end_lineno or node.lineno))
+
+    pattern = re.compile(rf"\b{re.escape(name)}\b")
+    occurrence_lines = [
+        line_number
+        for line_number, line in enumerate(content.splitlines(), start=1)
+        if pattern.search(line)
+    ]
+    if not occurrence_lines:
+        return False
+    return all(
+        any(start <= line_number <= end for start, end in excluded_spans)
+        for line_number in occurrence_lines
+    )
+
+
 # Chunk: docs/chunks/crossref_generator_verify - Shared reference-existence check
 def check_reference_target(
     project_dir: Path, ref: str
@@ -166,9 +229,10 @@ def check_reference_target(
 
     Returns:
         Tuple of (error, warning):
-        - error: the target is provably absent — the file does not exist, or
+        - error: the target is provably absent — the file does not exist,
           the symbol is neither defined nor mentioned in a parseable Python
-          file.
+          file, or every mention of it sits inside import/`__all__`
+          re-export statements (the definition lives in another file).
         - warning: the target is uncheckable — a Python file that could not
           be parsed, or a name that occurs in the file without being a
           def/class definition (module-level constants are legitimate
@@ -187,39 +251,51 @@ def check_reference_target(
     if symbol_path is None:
         return (None, None)
 
-    symbols = extract_symbols(full_path)
-    if not symbols:
-        if str(file_path).endswith(".py"):
-            return (
-                None,
-                f"Could not extract symbols from {file_path} (ref: {ref})",
-            )
+    if not str(file_path).endswith(".py"):
         # Non-Python files can't have symbol validation
         return (None, None)
 
-    if symbol_path not in symbols:
-        # AST extraction only indexes functions and classes. A reference to a
-        # module-level constant is legitimate, so before declaring provable
-        # absence, check whether the name occurs as a whole word anywhere in
-        # the file. Present-but-not-a-definition is uncheckable (warning);
-        # absent entirely is an invented or deleted name (error).
-        leaf = symbol_path.rsplit("::", 1)[-1]
-        try:
-            content = full_path.read_text()
-        except (OSError, UnicodeDecodeError):
-            content = ""
-        if re.search(rf"\b{re.escape(leaf)}\b", content):
-            return (
-                None,
-                f"Symbol {symbol_path} is not a def/class definition in "
-                f"{file_path}; the name occurs but cannot be verified (ref: {ref})",
-            )
+    symbols = extract_symbols(full_path)
+    if symbol_path in symbols:
+        return (None, None)
+
+    # AST extraction only indexes functions and classes. A reference to a
+    # module-level constant is legitimate, so before declaring provable
+    # absence, check whether the name occurs as a whole word anywhere in
+    # the file — but an occurrence confined to import/`__all__` re-export
+    # statements is *bound here, not defined here*, and counts as absent.
+    # Present-but-not-a-definition is uncheckable (warning); absent
+    # entirely, or re-export-only, is an invented, deleted, or relocated
+    # name (error). Unparseable Python stays a warning, never an error.
+    leaf = symbol_path.rsplit("::", 1)[-1]
+    try:
+        content = full_path.read_text()
+        ast.parse(content)
+    except (OSError, UnicodeDecodeError, SyntaxError, ValueError):
+        # Unreadable or unparseable Python is uncheckable, never provably
+        # absent: warning, not error.
+        return (
+            None,
+            f"Could not extract symbols from {file_path} (ref: {ref})",
+        )
+    if not re.search(rf"\b{re.escape(leaf)}\b", content):
         return (
             f"Symbol not found: {symbol_path} in {file_path} (ref: {ref})",
             None,
         )
-
-    return (None, None)
+    # Chunk: docs/chunks/crossref_reexport_absence - Re-export-only mention gates
+    if name_is_reexport_only(content, leaf):
+        return (
+            f"Symbol {symbol_path} appears only in import/__all__ re-export "
+            f"statements in {file_path}; the definition lives in another "
+            f"file (ref: {ref})",
+            None,
+        )
+    return (
+        None,
+        f"Symbol {symbol_path} is not a def/class definition in "
+        f"{file_path}; the name occurs but cannot be verified (ref: {ref})",
+    )
 
 
 def qualify_ref(ref: str, project: str) -> str:

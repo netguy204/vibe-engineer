@@ -57,10 +57,12 @@ def exists(name, start_dir, output_format):
 
     NAME may be a path (`src/mod.py`), a bare symbol (`RealThing`), or a
     `file#symbol` reference fragment (`src/mod.py#RealThing::compute`).
-    Matches are reported in three classes: path matches ("still there"),
-    same-name-elsewhere matches ("moved"), and symbol matches in source
-    content. Absence is reported with the scanned scope and file counts, so
-    "not found" is evidence, not silence.
+    Matches are reported in four classes: path matches ("still there"),
+    same-name-elsewhere matches ("moved"), symbol matches in source content,
+    and re-export mentions (Python files where the name appears only in
+    import/`__all__` statements — the definition lives elsewhere). Absence
+    is reported with the scanned scope and file counts, so "not found" is
+    evidence, not silence.
 
     Exits 0 when anything matched, 1 when absent.
     """
@@ -85,6 +87,11 @@ def exists(name, start_dir, output_format):
         _render_section(
             "Symbol matches",
             [f"{m.path}:{m.line}  {m.text}" for m in report.symbol_matches],
+        )
+        # Chunk: docs/chunks/crossref_reexport_absence - Re-export mentions rendered apart
+        _render_section(
+            "Re-export mentions (definition elsewhere?)",
+            [f"{m.path}:{m.line}  {m.text}" for m in report.reexport_matches],
         )
         if not report.found:
             click.echo(f"Absent: 0 matches for '{report.query}'.")

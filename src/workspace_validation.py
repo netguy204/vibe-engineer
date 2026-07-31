@@ -83,6 +83,7 @@ from frontmatter import parse_frontmatter
 from models import ArtifactType, ChunkFrontmatter, ChunkStatus, SubsystemFrontmatter
 from project import find_enclosing_tree as find_governing_tree
 from source_files import enumerate_source_files
+from symbols import name_is_reexport_only
 from task import TaskChunkError
 from workspace import (
     Workspace,
@@ -335,21 +336,40 @@ def _find_line(content: str, needle: str) -> int | None:
 
 
 # Chunk: docs/chunks/federation_global_validator - Conservative symbol existence check
-def _symbol_is_absent(content: str, symbol_path: str) -> str | None:
-    """Return the missing symbol name, or None if it may still exist.
+# Chunk: docs/chunks/crossref_reexport_absence - Re-export-only mentions are absent
+def _symbol_is_absent(
+    content: str, symbol_path: str, *, is_python: bool = False
+) -> tuple[str, str] | None:
+    """Return (missing name, reason clause), or None if the symbol may exist.
 
     "Cheaply checkable" read conservatively: only the last `::` component is
     considered, and absence is only claimed when the name appears *nowhere* in
-    the file as a whole word. A name mentioned in a call, a string, or a
-    dynamic definition keeps the validator quiet. These are gating errors, so a
-    false positive costs far more than a missed rename.
+    the file as a whole word — or, for Python files, appears *only* inside
+    import/`__all__` re-export statements, where the name is bound but its
+    definition lives in another file (the `# noqa: F401` field case). A name
+    mentioned in a call, a string, or a dynamic definition keeps the validator
+    quiet, and unparseable Python falls back to the whole-word scan. These are
+    gating errors, so a false positive costs far more than a missed rename.
+
+    The reason clause distinguishes the two absences so the defect message can
+    point at the right fix: a vanished name was probably renamed or removed; a
+    re-export-only name needs the reference repointed at the defining file.
     """
     name = symbol_path.split("::")[-1].strip()
     if not name or not name.isidentifier():
         return None
-    if re.search(rf"\b{re.escape(name)}\b", content):
-        return None
-    return name
+    if not re.search(rf"\b{re.escape(name)}\b", content):
+        return (
+            name,
+            "appears nowhere in it; the symbol was probably renamed or removed",
+        )
+    if is_python and name_is_reexport_only(content, name):
+        return (
+            name,
+            "appears only in import/__all__ re-export statements; "
+            "the definition lives in another file",
+        )
+    return None
 
 
 # Chunk: docs/chunks/federation_global_validator - Workspace-wide validation
@@ -880,16 +900,18 @@ class _Validator:
                 target_content = target.read_text()
             except (OSError, UnicodeDecodeError):
                 continue
-            missing = _symbol_is_absent(target_content, symbol_path)
-            if missing is not None:
+            absent = _symbol_is_absent(
+                target_content, symbol_path, is_python=target.suffix == ".py"
+            )
+            if absent is not None:
+                missing, reason = absent
                 self.report_defect(
                     fix_class=FixClass.UNRESOLVABLE_FRONTMATTER,
                     path=rel_path,
                     line=_find_line(content, ref),
                     reference=ref,
                     message=(
-                        f"'{file_part}' exists but the name '{missing}' appears "
-                        f"nowhere in it; the symbol was probably renamed or removed"
+                        f"'{file_part}' exists but the name '{missing}' {reason}"
                     ),
                     member=member,
                 )

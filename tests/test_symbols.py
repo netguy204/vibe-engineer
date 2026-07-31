@@ -509,3 +509,153 @@ class TestCheckReferenceTarget:
         assert error is None
         assert warning is not None
         assert "src/broken.py" in warning
+
+
+# Chunk: docs/chunks/crossref_reexport_absence - Re-export-only names are absent
+class TestNameIsReexportOnly:
+    """Decision table for the shared re-export-only predicate.
+
+    Success criterion: a name whose every whole-word occurrence sits inside
+    import statements or `__all__` string-list statements is decidably
+    "bound here, not defined here"; anything else stays conservative.
+    """
+
+    def test_plain_import_only_is_true(self):
+        from symbols import name_is_reexport_only
+
+        assert name_is_reexport_only("import Bar\n", "Bar") is True
+
+    def test_from_import_with_noqa_comment_is_true(self):
+        """The `# noqa: F401` field case: comment on the import line is covered."""
+        from symbols import name_is_reexport_only
+
+        content = "from ._impl import Bar  # noqa: F401\n"
+        assert name_is_reexport_only(content, "Bar") is True
+
+    def test_origin_name_of_aliased_import_is_true(self):
+        from symbols import name_is_reexport_only
+
+        content = "from x import Bar as Baz\n"
+        assert name_is_reexport_only(content, "Bar") is True
+
+    def test_multiline_parenthesized_import_is_true(self):
+        from symbols import name_is_reexport_only
+
+        content = "from x import (\n    Foo,\n    Bar,\n)\n"
+        assert name_is_reexport_only(content, "Bar") is True
+
+    def test_dunder_all_list_is_true(self):
+        from symbols import name_is_reexport_only
+
+        assert name_is_reexport_only('__all__ = ["Bar", "Foo"]\n', "Bar") is True
+
+    def test_dunder_all_augmented_and_append_are_true(self):
+        from symbols import name_is_reexport_only
+
+        assert name_is_reexport_only('__all__ += ["Bar"]\n', "Bar") is True
+        assert name_is_reexport_only('__all__.append("Bar")\n', "Bar") is True
+
+    def test_import_plus_real_definition_is_false(self):
+        """A local definition alongside the import keeps the name present."""
+        from symbols import name_is_reexport_only
+
+        content = "from x import Bar\n\n\nclass Bar:\n    pass\n"
+        assert name_is_reexport_only(content, "Bar") is False
+        content = "from x import Bar\nBar = compat_shim(Bar)\n"
+        assert name_is_reexport_only(content, "Bar") is False
+
+    def test_usage_docstring_and_offline_comment_are_false(self):
+        from symbols import name_is_reexport_only
+
+        assert name_is_reexport_only("result = Bar()\n", "Bar") is False
+        assert name_is_reexport_only('"""Uses Bar heavily."""\n', "Bar") is False
+        assert name_is_reexport_only("# Bar lives elsewhere\nx = 1\n", "Bar") is False
+
+    def test_compound_statement_mentioning_dunder_all_is_false(self):
+        """`if "Bar" in __all__:` guarding real code must not exclude the body."""
+        from symbols import name_is_reexport_only
+
+        content = 'if "Bar" in __all__:\n    Bar = make()\n'
+        assert name_is_reexport_only(content, "Bar") is False
+
+    def test_unparseable_content_is_none(self):
+        from symbols import name_is_reexport_only
+
+        assert name_is_reexport_only("def broken(:\n    Bar\n", "Bar") is None
+
+    def test_non_identifier_name_is_none(self):
+        from symbols import name_is_reexport_only
+
+        assert name_is_reexport_only("import Bar\n", "steps[Seed]") is None
+
+    def test_name_that_never_occurs_is_false(self):
+        """Callers establish occurrence first; True is reserved for re-exports."""
+        from symbols import name_is_reexport_only
+
+        assert name_is_reexport_only("import Foo\n", "Bar") is False
+
+
+# Chunk: docs/chunks/crossref_reexport_absence - Gate treats re-export-only as absent
+class TestCheckReferenceTargetReexports:
+    """check_reference_target dispositions for re-export-only names.
+
+    Success criterion: `pkg/__init__.py#Bar` where `Bar` is only re-exported
+    gates as an error naming the cause, while genuinely-present names and
+    unparseable files keep their current dispositions.
+    """
+
+    def test_reexport_only_name_is_error(self, tmp_path: Path):
+        from symbols import check_reference_target
+
+        pkg = tmp_path / "pkg"
+        pkg.mkdir()
+        (pkg / "__init__.py").write_text(
+            "from ._impl import Bar  # noqa: F401\n"
+        )
+
+        error, warning = check_reference_target(tmp_path, "pkg/__init__.py#Bar")
+        assert error is not None
+        assert "Bar" in error
+        assert "import" in error or "__all__" in error
+        assert warning is None
+
+    def test_dunder_all_only_name_is_error(self, tmp_path: Path):
+        from symbols import check_reference_target
+
+        src = tmp_path / "src"
+        src.mkdir()
+        (src / "mod.py").write_text('__all__ = ["Gadget"]\n')
+
+        error, warning = check_reference_target(tmp_path, "src/mod.py#Gadget")
+        assert error is not None
+        assert "Gadget" in error
+
+    def test_reexport_plus_fallback_assignment_is_warning(self, tmp_path: Path):
+        """try/except ImportError fallback idioms stay uncheckable, not absent."""
+        from symbols import check_reference_target
+
+        src = tmp_path / "src"
+        src.mkdir()
+        (src / "mod.py").write_text(
+            "try:\n"
+            "    from fast import Bar\n"
+            "except ImportError:\n"
+            "    Bar = None\n"
+        )
+
+        error, warning = check_reference_target(tmp_path, "src/mod.py#Bar")
+        assert error is None
+        assert warning is not None
+
+    def test_parseable_file_with_no_defs_and_absent_name_is_error(self, tmp_path: Path):
+        """Defines-nothing is no longer conflated with unparseable."""
+        from symbols import check_reference_target
+
+        src = tmp_path / "src"
+        src.mkdir()
+        (src / "mod.py").write_text("import os\n")
+
+        error, warning = check_reference_target(tmp_path, "src/mod.py#Ghost")
+        assert error is not None
+        assert "Ghost" in error
+        assert warning is None
