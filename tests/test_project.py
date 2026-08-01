@@ -537,6 +537,93 @@ class TestMagicMarkers:
         assert "AGENTS.md" in result.created
 
 
+# Chunk: docs/chunks/claudemd_symlink_notice - init announces the AGENTS.md/CLAUDE.md arrangement
+class TestInitAgentsMdNotices:
+    """init() reports what happened to AGENTS.md and CLAUDE.md via notices."""
+
+    MARKER_START = "<!-- VE:MANAGED:START -->"
+    MARKER_END = "<!-- VE:MANAGED:END -->"
+
+    def _arrangement_notices(self, result):
+        """Notices about the AGENTS.md/CLAUDE.md arrangement."""
+        return [
+            n for n in result.notices if "AGENTS.md" in n or "CLAUDE.md" in n
+        ]
+
+    def test_fresh_init_announces_created_arrangement(self, temp_project):
+        """Fresh init emits one notice naming AGENTS.md and the symlink."""
+        result = Project(temp_project).init()
+
+        notices = self._arrangement_notices(result)
+        assert len(notices) == 1
+        assert "Created AGENTS.md" in notices[0]
+        assert "CLAUDE.md is a symlink" in notices[0]
+
+    def test_conversion_announces_filetype_change(self, temp_project):
+        """Converting a regular CLAUDE.md announces the symlink conversion."""
+        claude_md = temp_project / "CLAUDE.md"
+        claude_md.write_text(
+            f"# My Project\n\n{self.MARKER_START}\nOld\n{self.MARKER_END}\n"
+        )
+
+        result = Project(temp_project).init()
+
+        notices = self._arrangement_notices(result)
+        assert len(notices) == 1
+        assert "Converted CLAUDE.md to a symlink" in notices[0]
+        assert "file-type change" in notices[0]
+
+    def test_reinit_announces_managed_block_update(self, temp_project):
+        """Re-init announces the in-place managed block update."""
+        project = Project(temp_project)
+        project.init()
+
+        result = project.init()
+
+        notices = self._arrangement_notices(result)
+        assert len(notices) == 1
+        assert "VE-managed block" in notices[0]
+        assert "in place" in notices[0]
+
+    def test_symlink_creation_for_existing_agents_md_is_announced(
+        self, temp_project
+    ):
+        """Creating just the symlink (markerless AGENTS.md) is announced."""
+        agents_md = temp_project / "AGENTS.md"
+        agents_md.write_text("# Custom AGENTS.md\n\nNo markers here.\n")
+
+        result = Project(temp_project).init()
+
+        notices = self._arrangement_notices(result)
+        assert notices == ["Created CLAUDE.md as a symlink to AGENTS.md."]
+
+    def test_repointed_symlink_is_announced(self, temp_project):
+        """A CLAUDE.md symlink pointing elsewhere is repointed and announced."""
+        project = Project(temp_project)
+        project.init()
+        claude_md = temp_project / "CLAUDE.md"
+        other = temp_project / "OTHER.md"
+        other.write_text("elsewhere\n")
+        claude_md.unlink()
+        claude_md.symlink_to("OTHER.md")
+
+        result = project.init()
+
+        assert any(
+            "Repointed the CLAUDE.md symlink" in n for n in result.notices
+        )
+
+    def test_notices_do_not_change_existing_reporting(self, temp_project):
+        """Notices are additive: created/skipped reporting is unchanged."""
+        project = Project(temp_project)
+        first = project.init()
+        second = project.init()
+
+        assert "AGENTS.md" in first.created
+        assert "AGENTS.md" in second.created  # update-in-place still 'created'
+        assert "AGENTS.md" not in second.skipped
+
+
 class TestProjectInitIdempotency:
     """Tests for Project.init() idempotency.
 

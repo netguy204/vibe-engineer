@@ -28,6 +28,10 @@ def init(project_dir):
     for path in result.removed:
         click.echo(f"Removed {path}")
 
+    # Chunk: docs/chunks/claudemd_symlink_notice - Announce the AGENTS.md/CLAUDE.md arrangement
+    for notice in result.notices:
+        click.echo(notice)
+
     if result.skipped:
         click.echo(f"Skipped {len(result.skipped)} existing file(s)")
 

@@ -256,6 +256,9 @@ class InitResult:
     warnings: list[str] = field(default_factory=list)
     # Chunk: docs/chunks/plugin_legacy_migration - Paths removed by legacy-layout migration
     removed: list[str] = field(default_factory=list)
+    # Chunk: docs/chunks/claudemd_symlink_notice - Informational lines about what init did
+    # (arrangement announcements), distinct from warnings (problems) and created (paths).
+    notices: list[str] = field(default_factory=list)
 
 
 # Chunk: docs/chunks/init_skill_symlink_migration - VE-generated file detection for symlink migration
@@ -570,6 +573,15 @@ class Project:
         agents_file = self.project_dir / "AGENTS.md"
         claude_file = self.project_dir / "CLAUDE.md"
 
+        # Chunk: docs/chunks/claudemd_symlink_notice - Track which arrangement
+        # outcome occurred so the run can announce it (output-only; no branch
+        # below changes behavior).
+        converted_claude = False
+        created_fresh = False
+        updated_in_place = False
+        symlink_created = False
+        symlink_repointed = False
+
         # Render the template
         context = TemplateContext()
         rendered = render_template(
@@ -583,11 +595,13 @@ class Project:
         # Rename it to AGENTS.md before proceeding
         if claude_file.exists() and not claude_file.is_symlink() and not agents_file.exists():
             claude_file.rename(agents_file)
+            converted_claude = True
 
         if not agents_file.exists():
             # Case A: Fresh init - write AGENTS.md with markers
             agents_file.write_text(rendered)
             result.created.append("AGENTS.md")
+            created_fresh = True
         else:
             # Cases C/D: AGENTS.md exists - check for markers and update
             existing_content = agents_file.read_text()
@@ -614,6 +628,7 @@ class Project:
                     )
                     agents_file.write_text(new_content)
                     result.created.append("AGENTS.md")
+                    updated_in_place = True
 
         # Ensure CLAUDE.md symlink exists and points to AGENTS.md
         if claude_file.is_symlink():
@@ -621,8 +636,10 @@ class Project:
             if claude_file.resolve() != agents_file.resolve():
                 claude_file.unlink()
                 claude_file.symlink_to("AGENTS.md")
+                symlink_repointed = True
         elif not claude_file.exists():
             claude_file.symlink_to("AGENTS.md")
+            symlink_created = True
         # else: claude_file exists as regular file AND agents_file exists
         # This shouldn't happen after the rename logic above, but if both
         # exist as regular files, leave them alone and warn
@@ -631,6 +648,33 @@ class Project:
                 "Both AGENTS.md and CLAUDE.md exist as regular files. "
                 "CLAUDE.md should be a symlink to AGENTS.md."
             )
+
+        # Chunk: docs/chunks/claudemd_symlink_notice - Announce the arrangement
+        # this run produced. Exactly one arrangement line per run; standalone
+        # symlink lines appear only when the arrangement line does not already
+        # imply them. The conversion notice names the git file-type change so
+        # the 'T' in git status is never a surprise.
+        if converted_claude:
+            result.notices.append(
+                "Converted CLAUDE.md to a symlink to AGENTS.md; its content now "
+                "lives in AGENTS.md (git status will show a file-type change)."
+            )
+        elif created_fresh:
+            result.notices.append(
+                "Created AGENTS.md (canonical agent instructions); "
+                "CLAUDE.md is a symlink to it."
+            )
+        else:
+            if updated_in_place:
+                result.notices.append(
+                    "Updated the VE-managed block in AGENTS.md in place."
+                )
+            if symlink_created:
+                result.notices.append(
+                    "Created CLAUDE.md as a symlink to AGENTS.md."
+                )
+        if symlink_repointed:
+            result.notices.append("Repointed the CLAUDE.md symlink to AGENTS.md.")
 
         return result
 
@@ -722,6 +766,7 @@ class Project:
             result.skipped.extend(sub_result.skipped)
             result.warnings.extend(sub_result.warnings)
             result.removed.extend(sub_result.removed)
+            result.notices.extend(sub_result.notices)
 
         return result
 

@@ -1,179 +1,97 @@
 
 
-<!--
-This document captures HOW you'll achieve the chunk's GOAL.
-It should be specific enough that each step is a reasonable unit of work
-to hand to an agent.
--->
-
 # Implementation Plan
 
 ## Approach
 
-<!--
-How will you build this? Describe the strategy at a high level.
-What patterns or techniques will you use?
-What existing code will you build on?
+`Project._init_agents_md` (src/project.py) already distinguishes the four
+arrangement outcomes internally (fresh create, pre-migration CLAUDE.md
+conversion, managed-block update in place, symlink creation/repair) but
+collapses them into `created`/`skipped` entries that never mention the
+CLAUDE.md symlink. The fix is output-only:
 
-Reference docs/trunk/DECISIONS.md entries where relevant.
-If this approach represents a new significant decision, ask the user
-if we should add it to DECISIONS.md and reference it here.
+1. Add a `notices: list[str]` field to `InitResult` — informational lines
+   about what an init run did, distinct from `warnings` (problems) and
+   `created` (file paths).
+2. In `_init_agents_md`, record which outcome occurred while the existing
+   logic runs (boolean flags at the existing branch points), then append
+   human-readable notice lines at the end of the method. No branch
+   conditions, file operations, or template-rendering lines change — the
+   concurrent `template_workspace_awareness` chunk owns the rendering side
+   of this function, so the diff stays on result-reporting lines.
+3. Aggregate `notices` in `Project.init()` alongside the other result lists.
+4. Print notices in the `init` CLI command (src/cli/init_cmd.py) after the
+   Created/Removed lines.
 
-Always include tests in your implementation plan and adhere to
-docs/trunk/TESTING_PHILOSOPHY.md in your planning.
+Notice wording per outcome (exactly one arrangement line per run, plus a
+symlink line only when it is not already implied):
 
-Remember to update code_paths in the chunk's GOAL.md (e.g., docs/chunks/claudemd_symlink_notice/GOAL.md)
-with references to the files that you expect to touch.
--->
+- **Conversion** (pre-migration regular CLAUDE.md renamed + symlinked):
+  `Converted CLAUDE.md to a symlink to AGENTS.md; its content now lives in
+  AGENTS.md (git status will show a file-type change).` — this is the
+  field-reported surprise 'T' typechange, so the notice names it.
+- **Fresh create**: `Created AGENTS.md (canonical agent instructions);
+  CLAUDE.md is a symlink to it.`
+- **Managed-block update**: `Updated the VE-managed block in AGENTS.md in
+  place.`
+- **Symlink created for an existing AGENTS.md** (not subsumed by the two
+  cases above): `Created CLAUDE.md as a symlink to AGENTS.md.`
+- **Symlink repointed** (existing CLAUDE.md symlink targeted elsewhere):
+  `Repointed the CLAUDE.md symlink to AGENTS.md.`
 
-## Subsystem Considerations
+Existing reporting is untouched: `created`/`skipped`/`warnings` keep their
+current contents (the existing test
+`test_reinit_reports_updated_not_skipped` asserting `"AGENTS.md" in
+result.created` on update stays green).
 
-<!--
-Before designing your implementation, check docs/subsystems/ for relevant
-cross-cutting patterns.
-
-QUESTIONS TO CONSIDER:
-- Does this chunk touch any existing subsystem's scope?
-- Will this chunk implement part of a subsystem (contribute code) or use it
-  (depend on it)?
-- Did you discover code during exploration that should be part of a subsystem
-  but doesn't follow its patterns?
-
-If no subsystems are relevant, delete this section.
-
-WHEN SUBSYSTEMS ARE RELEVANT:
-List each relevant subsystem with its status and your relationship:
-- **docs/subsystems/validation** (DOCUMENTED): This chunk USES the validation
-  subsystem to check input
-- **docs/subsystems/error_handling** (REFACTORING): This chunk IMPLEMENTS a
-  new error type following the subsystem's patterns
-
-HOW SUBSYSTEM STATUS AFFECTS YOUR WORK:
-
-DOCUMENTED subsystems: The subsystem's patterns are captured but deviations are not
-being actively fixed. If you discover code that deviates from the subsystem's
-patterns, add it to the subsystem's Known Deviations section. Do NOT prioritize
-fixing those deviations—your chunk has its own goals.
-
-REFACTORING subsystems: The subsystem is being actively consolidated. If your chunk
-work touches code that deviates from the subsystem's patterns, attempt to bring it
-into compliance as part of your work. This is "opportunistic improvement"—improve
-what you touch, but don't expand scope to fix unrelated deviations.
-
-WHEN YOU DISCOVER DEVIATING CODE:
-- Add it to the subsystem's Known Deviations section
-- Note whether you will address it (REFACTORING status + relevant to your work)
-  or leave it for future work (DOCUMENTED status or outside your chunk's scope)
-
-Example:
-- **Discovered deviation**: src/legacy/parser.py#validate_input does its own
-  validation instead of using the validation subsystem
-  - Added to docs/subsystems/validation Known Deviations
-  - Action: Will not address (subsystem is DOCUMENTED; deviation outside chunk scope)
--->
+Tests follow docs/trunk/TESTING_PHILOSOPHY.md: unit tests on
+`Project.init()` result contents for each arrangement outcome, plus a CLI
+test asserting the conversion line reaches `ve init` output.
 
 ## Sequence
 
-<!--
-Ordered steps to implement this chunk. Each step should be:
-- Small enough to reason about in isolation
-- Large enough to be meaningful
-- Clear about its inputs and outputs
+### Step 1: InitResult.notices
 
-This sequence is your contract with yourself (and with agents).
-Work through it in order. Don't skip ahead.
+Add `notices: list[str] = field(default_factory=list)` to `InitResult` in
+src/project.py with a chunk backreference comment, and extend the
+aggregation loop in `Project.init()` to carry it.
 
-Example:
+### Step 2: Record outcomes in _init_agents_md
 
-### Step 1: Define the SegmentHeader struct
+Set flags at the existing branch points (conversion rename, fresh write,
+in-place marker rewrite, symlink create, symlink repoint) and append the
+notice lines listed above at the end of the method, with a chunk
+backreference. No file-operation or rendering lines change.
 
-Create the struct that represents a segment's header with fields for:
-- magic number (4 bytes)
-- version (2 bytes)
-- segment_id (8 bytes)
-- message_count (4 bytes)
-- checksum (4 bytes)
+### Step 3: Print notices in the CLI
 
-Location: src/segment/format.rs
+In src/cli/init_cmd.py `init`, after the Created/Removed loops, echo each
+`result.notices` entry, with a chunk backreference.
 
-### Step 2: Implement header serialization
+### Step 4: Tests
 
-Add `to_bytes()` and `from_bytes()` methods to SegmentHeader.
-Use little-endian encoding per SPEC.md Section 3.1.
+tests/test_project.py — new test class covering:
+- fresh init emits the created-arrangement notice naming the symlink;
+- pre-migration CLAUDE.md emits the conversion notice mentioning the
+  file-type change, and not the fresh-create notice;
+- re-init emits the managed-block-updated notice;
+- existing AGENTS.md without markers and no CLAUDE.md emits only the
+  symlink-created notice;
+- notices list stays empty of duplicates (one arrangement line per run).
 
-### Step 3: ...
-
----
-
-**BACKREFERENCE COMMENTS**
-
-When implementing code, add backreference comments to help future agents trace
-code back to its governing documentation.
-
-**Valid backreference types:**
-- `# Subsystem: docs/subsystems/<name>` - For architectural patterns
-- `# Chunk: docs/chunks/<name>` - For implementation work
-
-Place comments at the appropriate level:
-- **Module-level**: If this code implements the subsystem/chunk's core functionality
-- **Class-level**: If this class is part of the pattern
-- **Method-level**: If this method implements a specific behavior
-
-Format (place immediately before the symbol):
-```
-# Subsystem: docs/subsystems/workflow_artifacts - Workflow artifact manager pattern
-# Chunk: docs/chunks/auth_refactor - Authentication system redesign
-```
-
-Do NOT add narrative backreferences. Narratives decompose into chunks; reference
-the implementing chunk instead.
-
-**Task context note**: In multi-project tasks, always use local paths (e.g.,
-`docs/chunks/chunk_name`) for chunk backreferences, not paths to the external
-artifact repo. Each project has `external.yaml` pointers that resolve to the
-actual chunk content.
--->
-
-## Dependencies
-
-<!--
-What must exist before this chunk can be implemented?
-- Other chunks that must be complete
-- External libraries to add
-- Infrastructure or configuration
-
-If there are no dependencies, delete this section.
--->
+tests/test_init.py — CLI-level assertions that the conversion line and the
+fresh-create line appear in `ve init` output.
 
 ## Risks and Open Questions
 
-<!--
-What might go wrong? What are you unsure about?
-Being explicit about uncertainty helps you (and agents) know where to
-be careful and when to stop and ask questions.
-
-Example:
-- fsync behavior may differ across filesystems; need to verify on ext4 and APFS
-- Unclear whether concurrent reads during write are safe; may need mutex
-- Performance target is aggressive; may need to iterate on buffer sizes
--->
+- Merge surface with `template_workspace_awareness`: both chunks touch
+  `_init_agents_md`. Mitigated by not touching the `TemplateContext` /
+  `render_template` lines at the top of the method and keeping additions to
+  flag assignments and end-of-method notice appends.
+- `Updated the VE-managed block in AGENTS.md in place.` will now print on
+  every re-init. That is the goal's explicit request (name what happened),
+  not noise.
 
 ## Deviations
 
-<!--
-POPULATE DURING IMPLEMENTATION, not at planning time.
-
-When reality diverges from the plan, document it here:
-- What changed?
-- Why?
-- What was the impact?
-
-Minor deviations (renamed a function, used a different helper) don't need
-documentation. Significant deviations (changed the approach, skipped a step,
-added steps) do.
-
-Example:
-- Step 4: Originally planned to use std::fs::rename for atomic swap.
-  Testing revealed this isn't atomic across filesystems. Changed to
-  write-fsync-rename-fsync sequence per platform best practices.
--->
+(Populated during implementation if reality diverges from the plan.)
