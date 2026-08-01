@@ -198,6 +198,42 @@ class TestProjectInit:
         claude_content = (temp_project / "CLAUDE.md").read_text()
         assert agents_content == claude_content
 
+    # Chunk: docs/chunks/template_workspace_awareness - Workspace detection through ve init
+    def test_init_single_tree_agents_md_matches_golden(self, temp_project):
+        """Outside a workspace, init() writes exactly the pre-chunk AGENTS.md bytes."""
+        import pathlib as _pathlib
+
+        golden = (
+            _pathlib.Path(__file__).parent / "fixtures" / "agents_md_single_tree.md"
+        ).read_text()
+        project = Project(temp_project)
+        project.init()
+        assert (temp_project / "AGENTS.md").read_text() == golden
+
+    # Chunk: docs/chunks/template_workspace_awareness - Workspace detection through ve init
+    def test_init_in_workspace_renders_workspace_aware_agents_md(self, temp_project):
+        """A project under a .ve-workspace.yaml gets the workspace-aware managed block."""
+        (temp_project / ".ve-workspace.yaml").write_text("members: {}\n")
+        member_dir = temp_project / "packages" / "member"
+        member_dir.mkdir(parents=True)
+        project = Project(member_dir)
+        project.init()
+        content = (member_dir / "AGENTS.md").read_text()
+        assert "### Working Across VE Trees in This Workspace" in content
+        assert "uvx --from vibe-engineer ve workspace validate" in content
+        assert "uvx --from vibe-engineer ve validate" not in content
+        assert "docs/trunk/DELETIONS.md" in content
+
+    # Chunk: docs/chunks/template_workspace_awareness - Workspace detection through ve init
+    def test_init_at_workspace_root_renders_workspace_aware_agents_md(self, temp_project):
+        """A tree that itself holds the manifest is governed by it too."""
+        (temp_project / ".ve-workspace.yaml").write_text("members: {}\n")
+        project = Project(temp_project)
+        project.init()
+        content = (temp_project / "AGENTS.md").read_text()
+        assert "### Working Across VE Trees in This Workspace" in content
+        assert "uvx --from vibe-engineer ve workspace validate" in content
+
     def test_init_reports_created_files(self, temp_project):
         """init() reports all created files in result."""
         project = Project(temp_project)

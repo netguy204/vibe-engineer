@@ -1,17 +1,60 @@
 ---
-status: FUTURE
+status: ACTIVE
 ticket: null
 parent_chunk: null
-code_paths: []
-code_references: []
+code_paths:
+- src/templates/claude/AGENTS.md.jinja2
+- src/templates/claude/CLAUDE.md.jinja2
+- src/template_system.py
+- src/project.py
+- tests/test_template_system.py
+- tests/test_project.py
+- tests/fixtures/agents_md_single_tree.md
+- tests/fixtures/claude_md_single_tree.md
+code_references:
+- ref: src/templates/claude/AGENTS.md.jinja2
+  implements: "Workspace-aware managed block: qualified member::docs/... form, peer\
+    \ pointers with the 1-reader/2+-readers rule, workspace-validate rename mandate,\
+    \ code_references guidance, deletion ledger pointer \u2014 all gated on project.in_workspace"
+- ref: src/templates/claude/CLAUDE.md.jinja2
+  implements: Lockstep mirror of the workspace-aware managed block in AGENTS.md.jinja2
+- ref: src/template_system.py#TemplateContext
+  implements: in_workspace flag with an inert False default so single-tree renders
+    are unchanged
+- ref: src/template_system.py#render_template
+  implements: Always supplies a default TemplateContext so templates can test project.in_workspace
+    without guards
+- ref: src/project.py#Project::_init_agents_md
+  implements: Workspace detection via find_workspace_root threaded into the template
+    context
+- ref: tests/test_template_system.py#TestWorkspaceAwareAgentsTemplate
+  implements: Golden-fixture byte-identity pin for single-tree renders plus workspace-content
+    assertions
+- ref: tests/test_project.py#TestProjectInit::test_init_single_tree_agents_md_matches_golden
+  implements: ve init outside a workspace writes exactly the pre-chunk AGENTS.md bytes
+- ref: tests/test_project.py#TestProjectInit::test_init_in_workspace_renders_workspace_aware_agents_md
+  implements: ve init under a .ve-workspace.yaml renders the workspace-aware managed
+    block
+- ref: tests/test_project.py#TestProjectInit::test_init_at_workspace_root_renders_workspace_aware_agents_md
+  implements: A tree holding the manifest itself is treated as in-workspace
 narrative: init_trust
 investigation: null
 subsystems: []
 friction_entries: []
 depends_on: []
-created_after: ["crossref_absence_evidence", "crossref_artifact_id_cap", "crossref_defect_line_anchor", "crossref_generator_verify", "crossref_glob_refs", "crossref_pointer_guard", "crossref_reexport_absence", "crossref_refactor_move", "crossref_unchecked_anchors", "crossref_workspace_parity", "federation_member_refs"]
+created_after:
+- crossref_absence_evidence
+- crossref_artifact_id_cap
+- crossref_defect_line_anchor
+- crossref_generator_verify
+- crossref_glob_refs
+- crossref_pointer_guard
+- crossref_reexport_absence
+- crossref_refactor_move
+- crossref_unchecked_anchors
+- crossref_workspace_parity
+- federation_member_refs
 ---
-
 <!--
 ╔══════════════════════════════════════════════════════════════════════════════╗
 ║  DO NOT DELETE THIS COMMENT BLOCK until the chunk complete command is run.   ║
@@ -249,50 +292,29 @@ describing multiple independent states, split into separate chunks.
 
 ## Success Criteria
 
-<!--
-How will you know this chunk is done? Be specific and verifiable.
-Reference relevant sections of docs/trunk/SPEC.md where applicable.
+- A single-tree render of `claude/AGENTS.md.jinja2` (and `CLAUDE.md.jinja2`)
+  is byte-identical to the pre-chunk output, pinned by a golden-fixture test
+  checked into `tests/fixtures/`.
+- With a workspace manifest present (detected via `find_workspace_root`), the
+  rendered "File Moves and Renames" mandate prescribes
+  `uvx --from vibe-engineer ve workspace validate`, never the single-tree
+  `uvx --from vibe-engineer ve validate`.
+- The workspace render demonstrates the member-qualified `member::docs/...`
+  backreference form and names `ve workspace list` as the source of member
+  names.
+- The workspace render documents peer pointers (`ve external point`, `tree:`
+  intra-workspace vs `repo:` cross-repository) and preserves in spirit
+  verbatim the rule: one reader in a tree qualifies in place; two or more
+  readers get one pointer and the references stay bare.
+- The workspace render documents `code_references` (with `#Symbol::method`
+  anchors and `implements:` prose) as preferred over legacy `code_paths`.
+- The workspace render points at `ve deletion record` /
+  `docs/trunk/DELETIONS.md` for gone-target references.
+- `Project._init_agents_md` threads workspace detection through
+  `TemplateContext`; `ve init` inside a manifest-bearing directory produces
+  the workspace-aware AGENTS.md, and outside one produces today's file
+  exactly (integration tests in `tests/test_project.py`).
+- Genericized prose: no field-report tree counts, CI job names, or package
+  examples from the raw material.
+- `uv run pytest tests/` and `uv run ve validate` are clean.
 
-Example:
-- SegmentWriter correctly encodes messages per SPEC.md Section 3.2
-- fsync is called after each write, satisfying durability guarantee
-- Write throughput meets SPEC.md performance requirements (>50K msg/sec)
-- All tests in TESTS.md pass
--->
-
-## Relationship to Parent
-
-<!--
-DELETE THIS SECTION if parent_chunk is null.
-
-If this chunk modifies work from a previous chunk, explain:
-- What deficiency or change prompted this work?
-- What from the parent chunk remains valid?
-- What is being changed and why?
-
-This context helps agents understand the delta and avoid breaking
-invariants established by the parent.
--->
-
-## Rejected Ideas
-
-<!-- DELETE THIS SECTION when the goal is confirmed if there were no rejected
-ideas.
-
-This is where the back-and-forth between the agent and the operator is recorded
-so that future agents understand why we didn't do something.
-
-If there were rejected ideas in the development of this GOAL with the operator,
-list them here with the reason they were rejected.
-
-Example:
-
-### Store the queue in redis
-
-We could store the queue in redis instead of a file. This would allow us to scale the queue to multiple nodes.
-
-Rejected because: The queue has no meaning outside the current session.
-
----
-
--->

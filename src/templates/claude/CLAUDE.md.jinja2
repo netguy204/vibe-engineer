@@ -3,6 +3,7 @@
 {# Chunk: docs/chunks/claudemd_magic_markers - Template with magic markers wrapping VE-managed content #}
 {# Chunk: docs/chunks/code_to_docs_backrefs - Code Backreferences section documenting the convention #}
 {# Chunk: docs/chunks/plugin_init_slimdown - Managed block reduced to project-doc pointers; commands documented by the Claude Code plugin #}
+{# Chunk: docs/chunks/template_workspace_awareness - Workspace-aware managed block gated on project.in_workspace; single-tree renders are byte-identical -#}
 <!-- VE:MANAGED:START -->
 # Vibe Engineering Workflow
 
@@ -94,6 +95,100 @@ that looks right. When in doubt, walk up from the file until you find
 
 References that cross a tree boundary must say so explicitly rather than relying
 on this rule.
+{%- if project.in_workspace %}
+
+### Working Across VE Trees in This Workspace
+
+This repository is a **federated VE workspace**: `.ve-workspace.yaml` registers
+the member VE trees that share it. The section above explains how a *bare*
+reference resolves — against the nearest enclosing tree. This section covers
+what it does not: how to write a reference that crosses a tree boundary, and
+how to check your work.
+
+#### Crossing a Tree Boundary
+
+A bare reference cannot name another tree's artifact. Use the qualified form —
+the member name from `.ve-workspace.yaml`, then `::`, then the tree-relative
+path:
+
+```python
+# Subsystem: core::docs/subsystems/retry_policy - Retry budget contract
+# Chunk: billing::docs/chunks/invoice_rounding - Rounding rules for totals
+```
+
+Run `ve workspace list` for the member names. A bare reference to a foreign
+artifact is a misrouted reference: it resolves from *some* working directory,
+which is why it survives review, and from another it silently lands in a
+different, real artifact.
+
+#### One Reader Qualifies; Several Readers Get a Pointer
+
+Count the references in the *governing tree* that name the same foreign
+artifact:
+
+- **One** — qualify it in place, as above.
+- **Two or more** — record the dependency once with a peer pointer, and leave
+  the references bare:
+
+```bash
+ve external point <member> docs/subsystems/<name> \
+  --why "one line on what this tree depends on in the target" \
+  --project-dir <path/to/this/tree>
+```
+
+That writes an `external.yaml` carrying `tree:` (an intra-workspace pointer).
+The `repo:` form is for genuinely external repositories and cannot be verified
+offline. Both are documented in `docs/trunk/EXTERNAL.md`.
+
+#### Validate with `ve workspace validate`, Not `ve validate`
+
+```bash
+ve workspace validate
+```
+
+`ve validate` is the single-tree validator. Run at the workspace root, it
+treats every member tree as one project and reports structural errors that are
+not real. `ve workspace validate` checks every reference in every member tree
+— including the qualified and pointer forms above — and a reference you leave
+broken blocks whoever validates next, not just you.
+
+#### `code_references` over `code_paths`
+
+Artifact frontmatter supports two forms, and both are validated:
+
+```yaml
+code_paths:                    # legacy: bare paths, no symbol anchor
+  - src/billing/invoice.py
+
+code_references:               # preferred
+  - ref: src/billing/invoice.py#Invoice::total
+    implements: rounding happens once, at the total, never per line item
+```
+
+Prefer `code_references`: the `#Symbol::method` anchor makes the claim
+checkable, and `implements:` records *what intent the code carries*, so a
+future reader can tell whether a refactor kept it. Add entries for code that
+still guards live intent — not for every file a chunk happened to touch.
+
+#### Removing Code Is Not a Frontmatter Edit
+
+Chunks guard **present-tense intent**; a removal is a historical action, so it
+does not get quietly dropped from frontmatter. Record it:
+
+```bash
+ve exists <name>               # gather the absence evidence first
+ve deletion record "<reference>" \
+  --location "docs/chunks/<chunk>/GOAL.md:<line>" \
+  --by "<operator who authorized it>" \
+  --reason "<why the intent no longer exists>" \
+  --evidence "<what ve exists reported>"
+```
+
+The grant lands in `docs/trunk/DELETIONS.md`, so a removal leaves a record
+instead of a silent hole. `--by` names the **operator who authorized** the
+deletion, not you — if nobody has, that is the escalation. Never delete a
+reference just to make the validator pass.
+{%- endif %}
 
 {# Chunk: docs/chunks/crossref_rename_integrity - Rename-integrity mandate #}
 ### File Moves and Renames
@@ -108,8 +203,15 @@ rename, not a follow-up, regardless of how narrowly the rename was requested.
 After any move, validate (works without installing `ve`):
 
 ```bash
-uvx --from vibe-engineer ve validate
+{% if project.in_workspace %}uvx --from vibe-engineer ve workspace validate{% else %}uvx --from vibe-engineer ve validate{% endif %}
 ```
+{%- if project.in_workspace %}
+
+With `.ve-workspace.yaml` present, do **not** run the single-tree
+`ve validate` at the workspace root: it treats every member tree as one
+project and reports phantom structural errors. `ve workspace validate` is
+this repository's validator.
+{%- endif %}
 
 Fix all reported stale paths before considering the rename done. If `uvx` is
 unavailable, grep the repository for the old path and update every hit.
