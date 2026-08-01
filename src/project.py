@@ -570,8 +570,15 @@ class Project:
         agents_file = self.project_dir / "AGENTS.md"
         claude_file = self.project_dir / "CLAUDE.md"
 
-        # Render the template
-        context = TemplateContext()
+        # Render the template.
+        # Chunk: docs/chunks/template_workspace_awareness - Workspace detection
+        # gates the workspace-aware managed block: a tree at or under a
+        # .ve-workspace.yaml gets instructions for its actual working
+        # arrangement (qualified references, peer pointers, the workspace
+        # validator); a single tree renders byte-identically to before.
+        context = TemplateContext(
+            in_workspace=find_workspace_root(self.project_dir) is not None
+        )
         rendered = render_template(
             "claude",
             "AGENTS.md.jinja2",

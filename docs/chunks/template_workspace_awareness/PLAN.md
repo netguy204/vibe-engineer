@@ -10,170 +10,167 @@ to hand to an agent.
 
 ## Approach
 
-<!--
-How will you build this? Describe the strategy at a high level.
-What patterns or techniques will you use?
-What existing code will you build on?
+Thread a single boolean — "does this project sit in a workspace?" — from
+`Project._init_agents_md` through `TemplateContext` into the `claude`
+template collection, and gate every piece of workspace-aware content on it
+with Jinja2 whitespace control chosen so that the `False` branch renders
+byte-for-byte what the template renders today.
 
-Reference docs/trunk/DECISIONS.md entries where relevant.
-If this approach represents a new significant decision, ask the user
-if we should add it to DECISIONS.md and reference it here.
+Three moving parts:
 
-Always include tests in your implementation plan and adhere to
-docs/trunk/TESTING_PHILOSOPHY.md in your planning.
+1. **Context**: `TemplateContext` gains an `in_workspace: bool = False`
+   field. Because `as_dict()` exposes the context as `project`, templates
+   read it as `project.in_workspace`. The default keeps every other call
+   site (`_init_trunk`, `_init_reviewers`, plugin render, tests) unchanged.
 
-Remember to update code_paths in the chunk's GOAL.md (e.g., docs/chunks/template_workspace_awareness/GOAL.md)
-with references to the files that you expect to touch.
--->
+2. **Detection**: `Project._init_agents_md` calls
+   `find_workspace_root(self.project_dir)` (already imported in
+   `src/project.py` from `src/workspace.py`) and sets
+   `in_workspace=result is not None`. A tree that *is* the workspace root
+   also gets `True` — the manifest governs it too.
+
+3. **Template**: `src/templates/claude/AGENTS.md.jinja2` (and its
+   near-duplicate `CLAUDE.md.jinja2`, kept in lockstep) gains:
+   - a `### Working Across VE Trees in This Workspace` section inserted
+     after "Resolving a Backreference: Nearest Enclosing Tree" (whose last
+     line — "references that cross a tree boundary must say so explicitly"
+     — it completes), genericized from the field-written raw material,
+     with subsections for: the member-qualified `member::docs/...` form,
+     peer pointers (`ve external point`, `tree:` vs `repo:`) with the
+     1-reader-qualify / 2+-readers-pointer rule preserved in spirit
+     verbatim, `ve workspace validate` over `ve validate`,
+     `code_references` (with `#Symbol::method` anchors and `implements:`
+     prose) preferred over legacy `code_paths`, and `ve deletion record` /
+     `docs/trunk/DELETIONS.md` for gone-target references.
+   - the rename-mandate fix (highest priority): the "File Moves and
+     Renames" bash block prescribes
+     `uvx --from vibe-engineer ve workspace validate` when
+     `project.in_workspace`, with a short paragraph explaining why the
+     single-tree validator must not be run at a workspace root.
+
+**Byte-identity technique**: conditional blocks use `{%- if ... %}` /
+`{%- endif %}` so the skipped branch leaves no whitespace residue; the
+in-block command swap uses an inline
+`{% if %}...{% else %}...{% endif %}` on the command line itself. The new
+chunk backreference comment uses `-#}` so it emits nothing. This is pinned
+by golden-fixture tests: the exact bytes of today's render (captured from
+the pre-change template) are checked into `tests/fixtures/` and the
+single-tree render is asserted equal to them.
+
+Testing follows docs/trunk/TESTING_PHILOSOPHY.md: template-level tests in
+`tests/test_template_system.py` (golden pin + workspace-content
+assertions), integration tests in `tests/test_project.py` (`ve init`
+inside/outside a manifest-bearing directory).
 
 ## Subsystem Considerations
 
-<!--
-Before designing your implementation, check docs/subsystems/ for relevant
-cross-cutting patterns.
-
-QUESTIONS TO CONSIDER:
-- Does this chunk touch any existing subsystem's scope?
-- Will this chunk implement part of a subsystem (contribute code) or use it
-  (depend on it)?
-- Did you discover code during exploration that should be part of a subsystem
-  but doesn't follow its patterns?
-
-If no subsystems are relevant, delete this section.
-
-WHEN SUBSYSTEMS ARE RELEVANT:
-List each relevant subsystem with its status and your relationship:
-- **docs/subsystems/validation** (DOCUMENTED): This chunk USES the validation
-  subsystem to check input
-- **docs/subsystems/error_handling** (REFACTORING): This chunk IMPLEMENTS a
-  new error type following the subsystem's patterns
-
-HOW SUBSYSTEM STATUS AFFECTS YOUR WORK:
-
-DOCUMENTED subsystems: The subsystem's patterns are captured but deviations are not
-being actively fixed. If you discover code that deviates from the subsystem's
-patterns, add it to the subsystem's Known Deviations section. Do NOT prioritize
-fixing those deviations—your chunk has its own goals.
-
-REFACTORING subsystems: The subsystem is being actively consolidated. If your chunk
-work touches code that deviates from the subsystem's patterns, attempt to bring it
-into compliance as part of your work. This is "opportunistic improvement"—improve
-what you touch, but don't expand scope to fix unrelated deviations.
-
-WHEN YOU DISCOVER DEVIATING CODE:
-- Add it to the subsystem's Known Deviations section
-- Note whether you will address it (REFACTORING status + relevant to your work)
-  or leave it for future work (DOCUMENTED status or outside your chunk's scope)
-
-Example:
-- **Discovered deviation**: src/legacy/parser.py#validate_input does its own
-  validation instead of using the validation subsystem
-  - Added to docs/subsystems/validation Known Deviations
-  - Action: Will not address (subsystem is DOCUMENTED; deviation outside chunk scope)
--->
+- **docs/subsystems/template_system** (status: see subsystem doc): this
+  chunk USES the unified template rendering subsystem —
+  `TemplateContext` + `render_template` — and extends the context dataclass
+  in the pattern already established (optional fields with inert
+  defaults). No deviations discovered.
 
 ## Sequence
 
-<!--
-Ordered steps to implement this chunk. Each step should be:
-- Small enough to reason about in isolation
-- Large enough to be meaningful
-- Clear about its inputs and outputs
+### Step 1: Capture golden fixtures of today's renders
 
-This sequence is your contract with yourself (and with agents).
-Work through it in order. Don't skip ahead.
+Before touching the template, render `claude/AGENTS.md.jinja2` and
+`claude/CLAUDE.md.jinja2` with a default `TemplateContext` and check the
+exact output into `tests/fixtures/agents_md_single_tree.md` and
+`tests/fixtures/claude_md_single_tree.md`. These are the byte-identity
+regression targets.
 
-Example:
+### Step 2: Add `in_workspace` to TemplateContext
 
-### Step 1: Define the SegmentHeader struct
+`src/template_system.py`: add `in_workspace: bool = False` to the
+`TemplateContext` dataclass with a docstring note that the AGENTS.md
+template keys workspace-aware content off it. No change to `as_dict()` or
+`render_template` signatures is needed — the field rides through
+`project.in_workspace`.
 
-Create the struct that represents a segment's header with fields for:
-- magic number (4 bytes)
-- version (2 bytes)
-- segment_id (8 bytes)
-- message_count (4 bytes)
-- checksum (4 bytes)
+### Step 3: Detect the workspace in Project._init_agents_md
 
-Location: src/segment/format.rs
+`src/project.py`: in `_init_agents_md`, build the context as
+`TemplateContext(in_workspace=find_workspace_root(self.project_dir) is not None)`.
+Add a chunk backreference comment.
 
-### Step 2: Implement header serialization
+### Step 4: Make the templates workspace-aware
 
-Add `to_bytes()` and `from_bytes()` methods to SegmentHeader.
-Use little-endian encoding per SPEC.md Section 3.1.
+Edit `src/templates/claude/AGENTS.md.jinja2` and mirror the same edits in
+`CLAUDE.md.jinja2`:
 
-### Step 3: ...
+- Insert the workspace section (see Approach) between the
+  Nearest-Enclosing-Tree section and "File Moves and Renames", wrapped in
+  `{%- if project.in_workspace %}` … `{%- endif %}`.
+- Swap the rename-mandate command inline:
+  `{% if project.in_workspace %}uvx --from vibe-engineer ve workspace validate{% else %}uvx --from vibe-engineer ve validate{% endif %}`,
+  plus a conditional explanatory paragraph after the code block.
+- Genericize the raw material: no tree counts, no CI job names, no
+  reporter package names; command syntax verified against the current CLI
+  (`ve external point MEMBER ARTIFACT --why`, `ve deletion record
+  REFERENCE --location --by --reason --evidence`, `ve workspace list`,
+  `ve workspace validate`, `ve exists`).
 
----
+### Step 5: Template-level tests
 
-**BACKREFERENCE COMMENTS**
+`tests/test_template_system.py`, new test class:
 
-When implementing code, add backreference comments to help future agents trace
-code back to its governing documentation.
+- single-tree render (default context, and explicit
+  `in_workspace=False`) is byte-identical to the golden fixtures — both
+  templates;
+- workspace render prescribes `uvx --from vibe-engineer ve workspace
+  validate` in the rename mandate and does not prescribe the single-tree
+  command;
+- workspace render demonstrates the qualified `member::docs/...` form and
+  points at `ve workspace list`;
+- workspace render documents `ve external point`, `tree:` vs `repo:`, and
+  states the 1-reader-qualify / 2+-readers-pointer rule;
+- workspace render prefers `code_references` with `#Symbol::method` /
+  `implements:` over `code_paths`;
+- workspace render points at `ve deletion record` and
+  `docs/trunk/DELETIONS.md`;
+- single-tree render contains none of the workspace-only content;
+- `TemplateContext()` defaults `in_workspace` to `False`.
 
-**Valid backreference types:**
-- `# Subsystem: docs/subsystems/<name>` - For architectural patterns
-- `# Chunk: docs/chunks/<name>` - For implementation work
+### Step 6: Integration tests through ve init
 
-Place comments at the appropriate level:
-- **Module-level**: If this code implements the subsystem/chunk's core functionality
-- **Class-level**: If this class is part of the pattern
-- **Method-level**: If this method implements a specific behavior
+`tests/test_project.py`:
 
-Format (place immediately before the symbol):
-```
-# Subsystem: docs/subsystems/workflow_artifacts - Workflow artifact manager pattern
-# Chunk: docs/chunks/auth_refactor - Authentication system redesign
-```
+- `init()` in a plain temp dir produces an AGENTS.md whose content equals
+  the golden fixture (full-file byte pin through the real code path);
+- `init()` in a project directory that sits under (or at) a
+  `.ve-workspace.yaml` produces an AGENTS.md containing the workspace
+  section and the workspace-validate mandate.
 
-Do NOT add narrative backreferences. Narratives decompose into chunks; reference
-the implementing chunk instead.
+### Step 7: Full test run and validation
 
-**Task context note**: In multi-project tasks, always use local paths (e.g.,
-`docs/chunks/chunk_name`) for chunk backreferences, not paths to the external
-artifact repo. Each project has `external.yaml` pointers that resolve to the
-actual chunk content.
--->
+`uv run pytest tests/` and `uv run ve validate` both clean. Update the
+chunk GOAL.md `code_references` at completion time.
 
 ## Dependencies
 
-<!--
-What must exist before this chunk can be implemented?
-- Other chunks that must be complete
-- External libraries to add
-- Infrastructure or configuration
-
-If there are no dependencies, delete this section.
--->
+None beyond code already merged: `find_workspace_root`
+(`src/workspace.py`) and the `ve workspace` / `ve external` / `ve
+deletion` CLI surfaces shipped in 0.4.0.
 
 ## Risks and Open Questions
 
-<!--
-What might go wrong? What are you unsure about?
-Being explicit about uncertainty helps you (and agents) know where to
-be careful and when to stop and ask questions.
-
-Example:
-- fsync behavior may differ across filesystems; need to verify on ext4 and APFS
-- Unclear whether concurrent reads during write are safe; may need mutex
-- Performance target is aggressive; may need to iterate on buffer sizes
--->
+- Jinja2 whitespace control is fiddly; the golden-fixture pin is the
+  guard. If a `{%-` strips one newline too many the test fails loudly.
+- `CLAUDE.md.jinja2` is not rendered by `Project._init_agents_md` (which
+  renders `AGENTS.md.jinja2` only) but is kept in lockstep so the two
+  templates cannot drift apart in meaning.
+- The golden fixtures pin *today's* bytes; future intentional template
+  changes must regenerate them deliberately. The fixture test docstring
+  says so.
 
 ## Deviations
 
-<!--
-POPULATE DURING IMPLEMENTATION, not at planning time.
-
-When reality diverges from the plan, document it here:
-- What changed?
-- Why?
-- What was the impact?
-
-Minor deviations (renamed a function, used a different helper) don't need
-documentation. Significant deviations (changed the approach, skipped a step,
-added steps) do.
-
-Example:
-- Step 4: Originally planned to use std::fs::rename for atomic swap.
-  Testing revealed this isn't atomic across filesystems. Changed to
-  write-fsync-rename-fsync sequence per platform best practices.
--->
+- Step 2 claimed `render_template` needed no change because the field would
+  "ride through" the context. Wrong for call sites that pass `context=None`
+  (three existing tests and any future caller): Jinja2's default `Undefined`
+  raises on `project.in_workspace` attribute access. `render_template` now
+  substitutes a default `TemplateContext()` when no context is given, so
+  templates can test `project.in_workspace` unguarded. `kwargs` still
+  override the context dict, so no call site changed behavior — pinned by
+  `test_single_tree_render_without_context_matches_golden`.

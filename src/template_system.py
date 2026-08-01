@@ -284,11 +284,18 @@ class TaskContext:
 
 
 # Subsystem: docs/subsystems/template_system - Unified template rendering
+# Chunk: docs/chunks/template_workspace_awareness - in_workspace flag gates workspace-aware template content
 @dataclass
 class TemplateContext:
     """Holds project-level context for template rendering.
 
     Only one active artifact (chunk, narrative, subsystem, investigation, or migration) can be set at a time.
+
+    `in_workspace` records whether the project sits in a federated workspace
+    (a `.ve-workspace.yaml` manifest at or above the project directory).
+    The claude AGENTS.md/CLAUDE.md templates key workspace-aware content off
+    it as `project.in_workspace`; the default False keeps single-tree
+    renders byte-identical to a context that never mentions workspaces.
     """
 
     active_chunk: ActiveChunk | None = None
@@ -296,6 +303,7 @@ class TemplateContext:
     active_subsystem: ActiveSubsystem | None = None
     active_investigation: ActiveInvestigation | None = None
     active_migration: ActiveMigration | None = None
+    in_workspace: bool = False
 
     def __post_init__(self):
         count = sum(
@@ -380,9 +388,14 @@ def render_template(
     env = get_environment(collection)
     template = env.get_template(template_name)
 
+    # Chunk: docs/chunks/template_workspace_awareness - A default context always
+    # rides along so templates can test `project.in_workspace` (and other
+    # context fields) without guarding against an undefined `project`.
+    if context is None:
+        context = TemplateContext()
+
     render_context = {}
-    if context:
-        render_context.update(context.as_dict())
+    render_context.update(context.as_dict())
     render_context.update(kwargs)
 
     return template.render(**render_context)
