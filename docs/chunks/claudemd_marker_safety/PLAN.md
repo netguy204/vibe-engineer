@@ -10,170 +10,168 @@ to hand to an agent.
 
 ## Approach
 
-<!--
-How will you build this? Describe the strategy at a high level.
-What patterns or techniques will you use?
-What existing code will you build on?
+Three coordinated changes, all centered on the marker contract between the
+`claude` templates (`src/templates/claude/AGENTS.md.jinja2`,
+`CLAUDE.md.jinja2`) and `parse_markers` / `Project._init_agents_md` in
+`src/project.py`:
 
-Reference docs/trunk/DECISIONS.md entries where relevant.
-If this approach represents a new significant decision, ask the user
-if we should add it to DECISIONS.md and reference it here.
+1. **Self-documenting markers.** The template's START/END lines become
+   annotated HTML comments that state the contract on the marker itself:
+   everything between them is regenerated and destroyed by `ve init`;
+   project content belongs above START or below END. `parse_markers` grows
+   regex-based recognition (`<!--\s*VE:MANAGED:START\b.*?-->`, non-greedy,
+   DOTALL) so both the historical bare form (`<!-- VE:MANAGED:START -->`)
+   and the annotated form parse. The bare constants `MARKER_START` /
+   `MARKER_END` remain exported (tests and the migration skill reference the
+   bare form), and all existing error messages are preserved. Because
+   in-place regeneration splices `rendered_parse.inside` (which includes the
+   marker lines), existing files with bare markers are upgraded to annotated
+   markers on their next `ve init` — additive, no migration needed.
 
-Always include tests in your implementation plan and adhere to
-docs/trunk/TESTING_PHILOSOPHY.md in your planning.
+2. **Seeded safe region on first write.** The template gains content
+   *outside* the markers: a short comment block above START (adapted in
+   spirit from the field-tested warning wording archived in the scratchpad
+   file named by GOAL.md — "this region is yours; the block below is
+   regenerated; two regions survive") and a one-line "project-specific
+   content goes here" comment below END. Because `_init_agents_md` splices
+   only the `inside` segment when updating an existing file, the seeded
+   regions land on fresh writes (Case A) and on the Case B rename path's
+   fresh content only when the file had no prior before/after — existing
+   files keep their own before/after untouched (designed preservation
+   behavior, unchanged).
 
-Remember to update code_paths in the chunk's GOAL.md (e.g., docs/chunks/claudemd_marker_safety/GOAL.md)
-with references to the files that you expect to touch.
--->
+3. **Warn instead of silently dropping.** In the valid-markers update
+   branch of `_init_agents_md`, compare the existing block against the
+   incoming render line-wise: strip lines, drop blanks, drop marker lines
+   (so the bare→annotated marker upgrade never warns), and if the existing
+   block contains lines the incoming render does not, append a warning to
+   `InitResult.warnings` naming AGENTS.md and telling the operator where the
+   content went (git history) and where it belongs (above START / below
+   END). Wording stays consistent with the `claudemd_symlink_notice` notice
+   vocabulary ("the VE-managed block in AGENTS.md").
+
+The wave-1 golden fixtures (`tests/fixtures/agents_md_single_tree.md`,
+`claude_md_single_tree.md`) pin the single-tree render byte-for-byte. This
+chunk changes the render deliberately, so the fixtures are regenerated
+exactly as the fixture-test docstring in `tests/test_template_system.py`
+prescribes: render with a default `TemplateContext` and overwrite the files;
+the assertion is never loosened.
+
+Out of scope, on purpose: `src/templates/package/AGENTS.md.jinja2` keeps its
+bare markers — that file lives entirely inside the managed block by design
+(opting into a full tree replaces it wholesale), and its scaffold is a
+one-shot write, not a regeneration target. The `task` collection's AGENTS.md
+has no markers at all.
+
+Testing follows docs/trunk/TESTING_PHILOSOPHY.md: behavior-level tests
+through `parse_markers` and `Project.init()`, no mocking of the filesystem.
 
 ## Subsystem Considerations
 
-<!--
-Before designing your implementation, check docs/subsystems/ for relevant
-cross-cutting patterns.
-
-QUESTIONS TO CONSIDER:
-- Does this chunk touch any existing subsystem's scope?
-- Will this chunk implement part of a subsystem (contribute code) or use it
-  (depend on it)?
-- Did you discover code during exploration that should be part of a subsystem
-  but doesn't follow its patterns?
-
-If no subsystems are relevant, delete this section.
-
-WHEN SUBSYSTEMS ARE RELEVANT:
-List each relevant subsystem with its status and your relationship:
-- **docs/subsystems/validation** (DOCUMENTED): This chunk USES the validation
-  subsystem to check input
-- **docs/subsystems/error_handling** (REFACTORING): This chunk IMPLEMENTS a
-  new error type following the subsystem's patterns
-
-HOW SUBSYSTEM STATUS AFFECTS YOUR WORK:
-
-DOCUMENTED subsystems: The subsystem's patterns are captured but deviations are not
-being actively fixed. If you discover code that deviates from the subsystem's
-patterns, add it to the subsystem's Known Deviations section. Do NOT prioritize
-fixing those deviations—your chunk has its own goals.
-
-REFACTORING subsystems: The subsystem is being actively consolidated. If your chunk
-work touches code that deviates from the subsystem's patterns, attempt to bring it
-into compliance as part of your work. This is "opportunistic improvement"—improve
-what you touch, but don't expand scope to fix unrelated deviations.
-
-WHEN YOU DISCOVER DEVIATING CODE:
-- Add it to the subsystem's Known Deviations section
-- Note whether you will address it (REFACTORING status + relevant to your work)
-  or leave it for future work (DOCUMENTED status or outside your chunk's scope)
-
-Example:
-- **Discovered deviation**: src/legacy/parser.py#validate_input does its own
-  validation instead of using the validation subsystem
-  - Added to docs/subsystems/validation Known Deviations
-  - Action: Will not address (subsystem is DOCUMENTED; deviation outside chunk scope)
--->
+- **docs/subsystems/template_system** (DOCUMENTED): this chunk USES the
+  rendering path (`render_template` with `TemplateContext`) unchanged; only
+  template content and the marker parser around it change. No deviations
+  discovered.
 
 ## Sequence
 
-<!--
-Ordered steps to implement this chunk. Each step should be:
-- Small enough to reason about in isolation
-- Large enough to be meaningful
-- Clear about its inputs and outputs
+### Step 1: Annotated marker recognition in parse_markers
 
-This sequence is your contract with yourself (and with agents).
-Work through it in order. Don't skip ahead.
+In `src/project.py`, add module-level compiled regexes for the annotated
+forms (a marker comment whose annotation may follow the token) and rewrite
+`parse_markers` to count/locate via `finditer` instead of exact-string
+`count`/`index`. Segment boundaries come from match spans: `before` ends at
+the START match start, `inside` runs through the END match end. Keep every
+existing error message byte-identical (they say "CLAUDE.md" — historical
+wording that tests assert on). Keep `MARKER_START`/`MARKER_END` constants.
 
-Example:
+Add tests in `tests/test_project.py` (extend the parse-level coverage):
+annotated START/END parse; mixed bare/annotated parse; prose that mentions
+`VE:MANAGED:START`/`END` mid-comment (the seeded preamble does exactly
+this) is not counted as a marker; malformed cases still error.
 
-### Step 1: Define the SegmentHeader struct
+### Step 2: Self-documenting markers and seeded regions in the templates
 
-Create the struct that represents a segment's header with fields for:
-- magic number (4 bytes)
-- version (2 bytes)
-- segment_id (8 bytes)
-- message_count (4 bytes)
-- checksum (4 bytes)
+Edit `src/templates/claude/AGENTS.md.jinja2` and mirror byte-for-byte in
+`src/templates/claude/CLAUDE.md.jinja2`:
 
-Location: src/segment/format.rs
+- Above START: a short HTML comment (adapted from the archived field
+  wording) saying this region is the operator's, the block below is
+  regenerated and destroys in-block edits, and both above-START and
+  below-END survive.
+- START marker annotated in place: regenerated by `ve init`, in-block
+  content is destroyed, project content goes above START or below END.
+- END marker annotated in place: end of the managed block, content below is
+  preserved.
+- Below END: one-line "project-specific content goes here" comment.
 
-### Step 2: Implement header serialization
+Add a `{# Chunk: docs/chunks/claudemd_marker_safety ... #}` template comment.
 
-Add `to_bytes()` and `from_bytes()` methods to SegmentHeader.
-Use little-endian encoding per SPEC.md Section 3.1.
+### Step 3: Discarded-content warning in _init_agents_md
 
-### Step 3: ...
+Add a private helper `_managed_block_lines(block) -> set[str]` (stripped,
+non-blank, non-marker lines) with a chunk backreference. In the
+valid-markers branch, compute
+`discarded = _managed_block_lines(existing inside) - _managed_block_lines(incoming inside)`;
+when non-empty, append a warning to `result.warnings` that names AGENTS.md,
+gives the count, says in-block content is destroyed on regeneration, and
+directs recovery from git history into the preserved regions. The write
+itself is unchanged — preservation of before/after is designed behavior and
+is now stated by the markers themselves and by this warning.
 
----
+### Step 4: Regenerate the golden fixtures
 
-**BACKREFERENCE COMMENTS**
+Render `AGENTS.md.jinja2` and `CLAUDE.md.jinja2` with a default
+`TemplateContext` and overwrite `tests/fixtures/agents_md_single_tree.md`
+and `tests/fixtures/claude_md_single_tree.md` — the deliberate regeneration
+the fixture docstring prescribes.
 
-When implementing code, add backreference comments to help future agents trace
-code back to its governing documentation.
+### Step 5: Update marker-shape assumptions in existing tests; add new ones
 
-**Valid backreference types:**
-- `# Subsystem: docs/subsystems/<name>` - For architectural patterns
-- `# Chunk: docs/chunks/<name>` - For implementation work
+- `tests/test_template_system.py::test_agents_md_template_has_managed_markers`:
+  assert the annotated prefix (`<!-- VE:MANAGED:START`) rather than the bare
+  full string.
+- `tests/test_project.py::TestMagicMarkers`: tests that `index()` the bare
+  marker inside a *freshly generated* file switch to locating segments via
+  `parse_markers`; tests that *construct* files with bare markers stay
+  bare (that is the compat guarantee under test).
 
-Place comments at the appropriate level:
-- **Module-level**: If this code implements the subsystem/chunk's core functionality
-- **Class-level**: If this class is part of the pattern
-- **Method-level**: If this method implements a specific behavior
+New behavior tests in `tests/test_project.py`:
 
-Format (place immediately before the symbol):
-```
-# Subsystem: docs/subsystems/workflow_artifacts - Workflow artifact manager pattern
-# Chunk: docs/chunks/auth_refactor - Authentication system redesign
-```
+- Fresh init seeds content outside the markers (non-empty `before` with the
+  safe-region comment; non-empty `after`).
+- Fresh render's markers are annotated (say "regenerated"/"destroyed").
+- Reinit of an untouched fresh file emits no discard warning (idempotent).
+- A file whose block is the current render wrapped in *bare* markers
+  regenerates without a discard warning (marker upgrade is not a discard)
+  and ends up with annotated markers.
+- A file with an operator line inside the block gets exactly one warning
+  naming AGENTS.md, and the line is gone from the file.
+- Existing before/after content is preserved on that same run (designed
+  behavior stated, not changed).
 
-Do NOT add narrative backreferences. Narratives decompose into chunks; reference
-the implementing chunk instead.
+### Step 6: Full suite and validation
 
-**Task context note**: In multi-project tasks, always use local paths (e.g.,
-`docs/chunks/chunk_name`) for chunk backreferences, not paths to the external
-artifact repo. Each project has `external.yaml` pointers that resolve to the
-actual chunk content.
--->
-
-## Dependencies
-
-<!--
-What must exist before this chunk can be implemented?
-- Other chunks that must be complete
-- External libraries to add
-- Infrastructure or configuration
-
-If there are no dependencies, delete this section.
--->
+`uv run pytest tests/` and `uv run ve validate` both clean. Confirm the
+legacy-migration tests in `tests/test_init.py` still pass (their first run
+now legitimately warns about the legacy in-block content; the
+second-run-clean assertion must still hold).
 
 ## Risks and Open Questions
 
-<!--
-What might go wrong? What are you unsure about?
-Being explicit about uncertainty helps you (and agents) know where to
-be careful and when to stop and ask questions.
-
-Example:
-- fsync behavior may differ across filesystems; need to verify on ext4 and APFS
-- Unclear whether concurrent reads during write are safe; may need mutex
-- Performance target is aggressive; may need to iterate on buffer sizes
--->
+- **False positives on template upgrades**: after this chunk, the first
+  regeneration following any template content change will warn about
+  dropped lines that were old *template* content, not operator content.
+  There is no local record of "what the template last produced", so the
+  warning wording hedges ("if you added content between the markers...").
+  The field reporter ranked silent destruction as the bug; a rare hedged
+  false alarm is the accepted cost.
+- **Regex over exact string**: non-greedy DOTALL comment matching could in
+  principle mis-span if an annotation contained `-->`; the templates we
+  ship never do, and bare markers are unaffected.
 
 ## Deviations
 
 <!--
 POPULATE DURING IMPLEMENTATION, not at planning time.
-
-When reality diverges from the plan, document it here:
-- What changed?
-- Why?
-- What was the impact?
-
-Minor deviations (renamed a function, used a different helper) don't need
-documentation. Significant deviations (changed the approach, skipped a step,
-added steps) do.
-
-Example:
-- Step 4: Originally planned to use std::fs::rename for atomic swap.
-  Testing revealed this isn't atomic across filesystems. Changed to
-  write-fsync-rename-fsync sequence per platform best practices.
 -->

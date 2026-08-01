@@ -6,6 +6,7 @@
 
 import os
 import pathlib
+import re
 from dataclasses import dataclass, field
 from datetime import date
 from typing import NamedTuple
@@ -26,9 +27,20 @@ from workspace import WORKSPACE_MANIFEST_NAME, find_workspace_root, suggest_memb
 
 
 # Chunk: docs/chunks/claudemd_magic_markers - Magic marker constants for START and END delimiters
-# Magic marker constants for CLAUDE.md managed content
+# Magic marker constants for CLAUDE.md managed content (the bare form)
 MARKER_START = "<!-- VE:MANAGED:START -->"
 MARKER_END = "<!-- VE:MANAGED:END -->"
+
+# Chunk: docs/chunks/claudemd_marker_safety - Annotated marker recognition
+# The template renders self-documenting markers: the marker comment carries
+# prose after the token stating what ve init will destroy and where project
+# content is safe. These patterns match both that annotated form and the
+# historical bare form above, so every existing AGENTS.md keeps parsing.
+# The token must open the comment — prose that merely *mentions*
+# VE:MANAGED:START mid-comment (as the seeded safe region above the block
+# does) is never counted as a marker.
+_MARKER_START_RE = re.compile(r"<!--\s*VE:MANAGED:START\b.*?-->", re.DOTALL)
+_MARKER_END_RE = re.compile(r"<!--\s*VE:MANAGED:END\b.*?-->", re.DOTALL)
 
 
 # Chunk: docs/chunks/federation_tree_discovery - Tree marker and boundary constants
@@ -181,14 +193,21 @@ class MarkerParseResult(NamedTuple):
 
 
 # Chunk: docs/chunks/claudemd_magic_markers - Marker detection and content segmentation logic
+# Chunk: docs/chunks/claudemd_marker_safety - Bare and annotated marker forms both parse
 def parse_markers(content: str) -> MarkerParseResult:
     """Parse magic markers from content.
+
+    Recognizes both the bare marker form (``<!-- VE:MANAGED:START -->``) and
+    the annotated form the template renders, where the marker comment carries
+    explanatory prose after the token.
 
     Returns a MarkerParseResult indicating whether valid markers exist and
     the content segments. If markers are malformed, returns an error message.
     """
-    start_count = content.count(MARKER_START)
-    end_count = content.count(MARKER_END)
+    start_matches = list(_MARKER_START_RE.finditer(content))
+    end_matches = list(_MARKER_END_RE.finditer(content))
+    start_count = len(start_matches)
+    end_count = len(end_matches)
 
     # No markers at all
     if start_count == 0 and end_count == 0:
@@ -225,11 +244,11 @@ def parse_markers(content: str) -> MarkerParseResult:
         )
 
     # Find positions
-    start_idx = content.index(MARKER_START)
-    end_idx = content.index(MARKER_END)
+    start_match = start_matches[0]
+    end_match = end_matches[0]
 
     # Wrong order
-    if end_idx < start_idx:
+    if end_match.start() < start_match.start():
         return MarkerParseResult(
             has_markers=False,
             before="",
@@ -239,13 +258,31 @@ def parse_markers(content: str) -> MarkerParseResult:
         )
 
     # Valid markers - split content
-    before = content[:start_idx]
-    inside = content[start_idx : end_idx + len(MARKER_END)]
-    after = content[end_idx + len(MARKER_END) :]
+    before = content[: start_match.start()]
+    inside = content[start_match.start() : end_match.end()]
+    after = content[end_match.end() :]
 
     return MarkerParseResult(
         has_markers=True, before=before, inside=inside, after=after, error=None
     )
+
+
+# Chunk: docs/chunks/claudemd_marker_safety - Line inventory for discard detection
+def _managed_block_lines(block: str) -> set[str]:
+    """The comparable content of a managed block: stripped, non-blank lines.
+
+    Marker lines themselves are excluded, so upgrading a bare marker to the
+    annotated self-documenting form is never reported as discarded content.
+    """
+    lines: set[str] = set()
+    for line in block.splitlines():
+        stripped = line.strip()
+        if not stripped:
+            continue
+        if _MARKER_START_RE.search(stripped) or _MARKER_END_RE.search(stripped):
+            continue
+        lines.add(stripped)
+    return lines
 
 
 @dataclass
@@ -630,12 +667,32 @@ class Project:
                         "AGENTS.md template does not contain markers (internal error)"
                     )
                 else:
+                    # Chunk: docs/chunks/claudemd_marker_safety - Dropping
+                    # in-block content is never silent. Content above START
+                    # and below END is preserved by design (stated on the
+                    # markers themselves); anything inside the block that the
+                    # incoming render does not contain is about to be
+                    # destroyed, so say so.
+                    discarded = _managed_block_lines(
+                        parse_result.inside
+                    ) - _managed_block_lines(rendered_parse.inside)
                     new_content = (
                         parse_result.before + rendered_parse.inside + parse_result.after
                     )
                     agents_file.write_text(new_content)
                     result.created.append("AGENTS.md")
                     updated_in_place = True
+                    if discarded:
+                        result.warnings.append(
+                            f"Discarded {len(discarded)} line(s) from the "
+                            "VE-managed block in AGENTS.md that are not part "
+                            "of the regenerated content. Anything added "
+                            "between the VE:MANAGED markers is destroyed on "
+                            "regeneration — recover the lines from git "
+                            "history and move them above the START marker or "
+                            "below the END marker; ve init preserves both "
+                            "regions."
+                        )
 
         # Ensure CLAUDE.md symlink exists and points to AGENTS.md
         if claude_file.is_symlink():

@@ -1128,6 +1128,7 @@ class TestVeConfig:
 class TestVeConfigInTemplates:
     """Tests for the AGENTS.md managed template content."""
 
+    # Chunk: docs/chunks/claudemd_marker_safety - Markers are annotated (self-documenting), so match the prefix
     def test_agents_md_template_has_managed_markers(self):
         """AGENTS.md template has VE:MANAGED markers for managed content."""
         from template_system import render_template
@@ -1136,8 +1137,8 @@ class TestVeConfigInTemplates:
             "claude",
             "AGENTS.md.jinja2",
         )
-        assert "<!-- VE:MANAGED:START -->" in result
-        assert "<!-- VE:MANAGED:END -->" in result
+        assert "<!-- VE:MANAGED:START" in result
+        assert "<!-- VE:MANAGED:END" in result
 
     def test_agents_md_template_no_development_section(self):
         """AGENTS.md template does not include Development section."""
@@ -1267,7 +1268,8 @@ class TestWorkspaceAwareAgentsTemplate:
         claude = self._render("CLAUDE.md.jinja2", in_workspace=True)
         marker = "### Working Across VE Trees in This Workspace"
         assert marker in agents and marker in claude
-        end = "<!-- VE:MANAGED:END -->"
+        # Chunk: docs/chunks/claudemd_marker_safety - END marker is annotated; match the prefix
+        end = "<!-- VE:MANAGED:END"
         assert agents[agents.index(marker) : agents.index(end)] == claude[
             claude.index(marker) : claude.index(end)
         ]

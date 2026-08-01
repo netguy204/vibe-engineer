@@ -1,5 +1,5 @@
 ---
-status: ACTIVE
+status: COMPLETED
 advances_trunk_goal: 'Required Properties: ''Following the workflow must maintain
   the health of documents over time and should not grow more difficult over time''
   — and the multi-tree corollary from ''Maintaining the referential integrity of documents
