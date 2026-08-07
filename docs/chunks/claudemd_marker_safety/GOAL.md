@@ -5,19 +5,14 @@ parent_chunk: null
 code_paths:
 - src/project.py
 - src/templates/claude/AGENTS.md.jinja2
-- src/templates/claude/CLAUDE.md.jinja2
 - tests/test_project.py
 - tests/test_template_system.py
 - tests/fixtures/agents_md_single_tree.md
-- tests/fixtures/claude_md_single_tree.md
 code_references:
 - ref: src/templates/claude/AGENTS.md.jinja2
   implements: 'Self-documenting VE:MANAGED markers (annotated START/END lines) and
     seeded safe regions outside them: a ''this region is yours'' comment above START
     and a ''project-specific content goes here'' line below END'
-- ref: src/templates/claude/CLAUDE.md.jinja2
-  implements: Lockstep mirror of the annotated markers and seeded safe regions in
-    AGENTS.md.jinja2
 - ref: src/project.py#parse_markers
   implements: Recognition of both the bare and the annotated marker forms, so every
     existing AGENTS.md keeps parsing

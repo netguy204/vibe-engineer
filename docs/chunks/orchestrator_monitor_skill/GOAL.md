@@ -5,7 +5,7 @@ parent_chunk: null
 code_paths:
 - src/templates/plugin/skills/orchestrator-monitor.md.jinja2
 - src/templates/plugin/skills/steward-watch.md.jinja2
-- src/templates/claude/CLAUDE.md.jinja2
+- src/templates/claude/AGENTS.md.jinja2
 code_references:
 - ref: skills/orchestrator-monitor/SKILL.md
   implements: "Orchestrator monitor slash command with status handler logic, loop setup, and lifecycle management (static plugin command)"

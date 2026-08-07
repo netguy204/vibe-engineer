@@ -26,7 +26,7 @@ The `docs/trunk/` directory contains the stable project documentation:
 - **DECISIONS.md** - Architectural decision records (ADRs) documenting significant choices and their rationale.
 - **TESTING_PHILOSOPHY.md** - The project's approach to testing and quality assurance.
 
-Read GOAL.md first to understand the project's purpose before making changes.
+Read GOAL.md first to understand the project's purpose before making changes. Then grep the whole repository for the nouns your task names — a customer, a table, a symbol. `docs/subsystems/`, `docs/investigations/` and code comments hold findings that `docs/trunk/` does not, and re-deriving one costs more than finding it.
 
 ## Chunks (`docs/chunks/`)
 

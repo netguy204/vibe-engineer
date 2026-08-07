@@ -12,7 +12,7 @@ The `docs/trunk/` directory contains the stable project documentation:
 - **DECISIONS.md** - Architectural decision records (ADRs) documenting significant choices and their rationale.
 - **TESTING_PHILOSOPHY.md** - The project's approach to testing and quality assurance.
 
-Read GOAL.md first to understand the project's purpose before making changes.
+Read GOAL.md first to understand the project's purpose before making changes. Then grep the whole repository for the nouns your task names — a customer, a table, a symbol. `docs/subsystems/`, `docs/investigations/` and code comments hold findings that `docs/trunk/` does not, and re-deriving one costs more than finding it.
 
 ## Chunks (`docs/chunks/`)
 
@@ -205,16 +205,24 @@ This is the vibe-engineer source repository. Many files are **rendered from Jinj
 
 ### Rendered Files and Their Sources
 
-| Rendered File | Source Template |
-|---------------|-----------------|
-| `CLAUDE.md` | `src/templates/claude/CLAUDE.md.jinja2` |
-| `.claude/commands/*.md` | `src/templates/commands/*.jinja2` |
+| Rendered File | Source Template | Re-render With |
+|---------------|-----------------|----------------|
+| `AGENTS.md` (VE-managed block only) | `src/templates/claude/AGENTS.md.jinja2` | `ve init` |
+| `skills/*/SKILL.md` | `src/templates/plugin/skills/*.md.jinja2` | `ve plugin render` |
+| `agents/*.md` | `src/templates/plugin/agents/*.jinja2` | `ve plugin render` |
+
+`CLAUDE.md` is **not** rendered — it is a symlink to `AGENTS.md`. There is no
+`CLAUDE.md.jinja2`; edits meant for the managed block go to
+`AGENTS.md.jinja2`, and `ve init` rewrites only the region between the
+`VE:MANAGED` markers. Content outside those markers, including this section,
+is hand-maintained and survives regeneration.
 
 ### Editing Workflow
 
 1. **Edit the source template** in `src/templates/`
-2. **Re-render** by running `ve init`
-3. **Verify** the rendered output matches expectations
+2. **Re-render** with the command named in the table above
+3. **Verify** the rendered output matches expectations — `git diff` the
+   rendered file, and confirm the change you intended is the change you got
 
 ### Why This Matters
 

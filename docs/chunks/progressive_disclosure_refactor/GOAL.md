@@ -3,11 +3,11 @@ status: ACTIVE
 ticket: null
 parent_chunk: null
 code_paths:
-- src/templates/claude/CLAUDE.md.jinja2
+- src/templates/claude/AGENTS.md.jinja2
 - docs/trunk/ORCHESTRATOR.md
 - docs/trunk/ARTIFACTS.md
 code_references:
-  - ref: src/templates/claude/CLAUDE.md.jinja2
+  - ref: src/templates/claude/AGENTS.md.jinja2
     implements: "Slim CLAUDE.md template with signpost pattern for progressive disclosure"
   - ref: docs/trunk/ARTIFACTS.md
     implements: "Extracted documentation for narratives, investigations, subsystems, friction log, and code backreferences"

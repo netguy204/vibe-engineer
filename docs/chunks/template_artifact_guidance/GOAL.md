@@ -3,9 +3,9 @@ status: ACTIVE
 ticket: null
 parent_chunk: null
 code_paths:
-- src/templates/claude/CLAUDE.md.jinja2
+- src/templates/claude/AGENTS.md.jinja2
 code_references:
-- ref: src/templates/claude/CLAUDE.md.jinja2
+- ref: src/templates/claude/AGENTS.md.jinja2
   implements: "Creating Artifacts section with artifact creation guidance"
 narrative: null
 investigation: null

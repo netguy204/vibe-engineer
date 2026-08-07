@@ -5,7 +5,7 @@ parent_chunk: null
 code_paths:
 - src/chunks.py
 - src/ve.py
-- src/templates/claude/CLAUDE.md.jinja2
+- src/templates/claude/AGENTS.md.jinja2
 - src/templates/plugin/skills/chunk-plan.md.jinja2
 - src/templates/plugin/skills/chunk-complete.md.jinja2
 - src/templates/plugin/skills/chunk-implement.md.jinja2

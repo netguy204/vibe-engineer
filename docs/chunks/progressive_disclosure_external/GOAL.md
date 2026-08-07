@@ -5,13 +5,13 @@ parent_chunk: null
 code_paths:
 - docs/trunk/EXTERNAL.md
 - docs/trunk/ARTIFACTS.md
-- src/templates/claude/CLAUDE.md.jinja2
+- src/templates/claude/AGENTS.md.jinja2
 code_references:
   - ref: docs/trunk/EXTERNAL.md
     implements: "Comprehensive external artifacts documentation for multi-repo workflows"
   - ref: docs/trunk/ARTIFACTS.md#external-artifacts
     implements: "Simplified external artifacts section with cross-reference to EXTERNAL.md"
-  - ref: src/templates/claude/CLAUDE.md.jinja2#Extended Artifacts
+  - ref: src/templates/claude/AGENTS.md.jinja2#Extended Artifacts
     implements: "Signpost directing agents to EXTERNAL.md when encountering external.yaml files"
 narrative: null
 investigation: claudemd_progressive_disclosure

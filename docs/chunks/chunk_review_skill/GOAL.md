@@ -4,7 +4,7 @@ ticket: null
 parent_chunk: null
 code_paths:
   - src/templates/plugin/skills/chunk-review.md.jinja2
-  - src/templates/claude/CLAUDE.md.jinja2
+  - src/templates/claude/AGENTS.md.jinja2
 code_references:
   - ref: skills/chunk-review/SKILL.md
     implements: "Complete chunk-review command with four-phase review workflow (static plugin command)"

@@ -3,10 +3,10 @@ status: ACTIVE
 ticket: null
 parent_chunk: null
 code_paths:
-  - src/templates/claude/CLAUDE.md.jinja2
+  - src/templates/claude/AGENTS.md.jinja2
   - src/templates/plugin/skills/discover-subsystems.md.jinja2
 code_references:
-  - ref: src/templates/claude/CLAUDE.md.jinja2
+  - ref: src/templates/claude/AGENTS.md.jinja2
     implements: "Orchestrator examples using plain ve commands for installed package usage"
   - ref: skills/discover-subsystems/SKILL.md
     implements: "Migration CLI examples using plain ve commands (static plugin command)"

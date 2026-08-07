@@ -4,7 +4,7 @@ ticket: null
 parent_chunk: null
 code_paths:
 - src/templates/plugin/skills/narrative-execute.md.jinja2
-- src/templates/claude/CLAUDE.md.jinja2
+- src/templates/claude/AGENTS.md.jinja2
 - skills/narrative-execute/SKILL.md
 - CLAUDE.md
 code_references:

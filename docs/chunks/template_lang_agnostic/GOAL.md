@@ -3,7 +3,7 @@ status: ACTIVE
 ticket: null
 parent_chunk: null
 code_paths:
-  - src/templates/claude/CLAUDE.md.jinja2
+  - src/templates/claude/AGENTS.md.jinja2
   - src/template_system.py
   - .ve-config.yaml
   - CLAUDE.md
@@ -12,7 +12,7 @@ code_references:
     implements: "Simplified VE config dataclass (removed is_ve_source_repo flag)"
   - ref: src/template_system.py#load_ve_config
     implements: "Config loader (no longer reads is_ve_source_repo)"
-  - ref: src/templates/claude/CLAUDE.md.jinja2
+  - ref: src/templates/claude/AGENTS.md.jinja2
     implements: "Language-agnostic CLAUDE.md template (no Development or Template Editing sections)"
 narrative: null
 investigation: null

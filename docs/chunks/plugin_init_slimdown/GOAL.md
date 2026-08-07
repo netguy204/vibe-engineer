@@ -7,7 +7,6 @@ code_paths:
 - src/task_init.py
 - src/template_system.py
 - src/templates/claude/AGENTS.md.jinja2
-- src/templates/claude/CLAUDE.md.jinja2
 - tests/test_project.py
 - tests/test_init.py
 - tests/test_task_init.py
@@ -30,8 +29,6 @@ code_references:
 - ref: src/templates/claude/AGENTS.md.jinja2
   implements: Managed block reduced to trunk-doc pointers, chunk conventions, and
     the Claude Code plugin pointer for commands
-- ref: src/templates/claude/CLAUDE.md.jinja2
-  implements: Parallel slimmed managed-block template kept content-identical to AGENTS.md.jinja2
 - ref: tests/test_project.py#TestProjectInit::test_init_creates_no_agents_skills_directory
   implements: 'Negative coverage: fresh init creates no .agents/ directory'
 - ref: tests/test_project.py#TestProjectInit::test_init_creates_no_claude_commands_directory

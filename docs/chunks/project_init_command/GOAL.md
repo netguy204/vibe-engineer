@@ -5,7 +5,7 @@ parent_chunk: null
 code_paths:
 - src/ve.py
 - src/project.py
-- src/templates/claude/CLAUDE.md.jinja2
+- src/templates/claude/AGENTS.md.jinja2
 code_references:
 - ref: src/project.py#InitResult
   implements: Tracks created/skipped/warnings for idempotent operations
@@ -17,7 +17,7 @@ code_references:
   implements: Renders AGENTS.md Jinja2 template to project root
 - ref: src/project.py#Project::init
   implements: Orchestrates all initialization, aggregates results
-- ref: src/templates/claude/CLAUDE.md.jinja2
+- ref: src/templates/claude/AGENTS.md.jinja2
   implements: Jinja2 template for CLAUDE.md explaining vibe engineering workflow to
     agents
 - ref: tests/test_project.py

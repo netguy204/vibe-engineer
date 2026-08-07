@@ -7,7 +7,7 @@ code_references:
   implements: Backreference guidance in chunk PLAN.md template
 - ref: src/templates/subsystem/OVERVIEW.md.jinja2
   implements: Backreference guidance in subsystem OVERVIEW.md template
-- ref: src/templates/claude/CLAUDE.md.jinja2
+- ref: src/templates/claude/AGENTS.md.jinja2
   implements: Code Backreferences section documenting the convention
 - ref: skills/chunk-update-references/SKILL.md
   implements: Backreference maintenance during reference reconciliation (static plugin command)

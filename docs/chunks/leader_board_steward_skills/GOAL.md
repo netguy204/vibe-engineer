@@ -7,7 +7,7 @@ code_paths:
 - src/templates/plugin/skills/steward-watch.md.jinja2
 - src/templates/plugin/skills/steward-send.md.jinja2
 - src/templates/plugin/skills/steward-changelog.md.jinja2
-- src/templates/claude/CLAUDE.md.jinja2
+- src/templates/claude/AGENTS.md.jinja2
 code_references:
   - ref: skills/steward-setup/SKILL.md
     implements: "Steward setup interview command - guides operator through SOP creation (static plugin command)"

@@ -4,7 +4,7 @@ ticket: null
 parent_chunk: null
 code_paths:
 - src/templates/plugin/skills/orchestrator-inject.md.jinja2
-- src/templates/claude/CLAUDE.md.jinja2
+- src/templates/claude/AGENTS.md.jinja2
 code_references:
   - ref: skills/orchestrator-inject/SKILL.md
     implements: "Slash command with pre-flight commit check and orchestrator injection workflow (static plugin command)"

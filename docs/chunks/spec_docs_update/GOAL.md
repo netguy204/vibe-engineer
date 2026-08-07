@@ -4,12 +4,12 @@ ticket: null
 parent_chunk: null
 code_paths:
 - docs/trunk/SPEC.md
-- src/templates/claude/CLAUDE.md.jinja2
+- src/templates/claude/AGENTS.md.jinja2
 code_references:
 - ref: docs/trunk/SPEC.md
   implements: Subsystem terminology, directory structure, frontmatter schema, status
     values, CLI commands, and guarantees
-- ref: src/templates/claude/CLAUDE.md.jinja2
+- ref: src/templates/claude/AGENTS.md.jinja2
   implements: Agent guidance for subsystems as an extended artifact type (command
     docs moved to the plugin)
 narrative: subsystem_documentation

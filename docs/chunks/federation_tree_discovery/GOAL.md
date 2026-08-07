@@ -6,7 +6,6 @@ code_paths:
 - src/project.py
 - src/cli/tree_discovery.py
 - src/cli/__init__.py
-- src/templates/claude/CLAUDE.md.jinja2
 - src/templates/claude/AGENTS.md.jinja2
 - tests/test_tree_discovery.py
 code_references:
@@ -37,8 +36,6 @@ code_references:
 - ref: src/templates/claude/AGENTS.md.jinja2
   implements: Nearest-enclosing-tree rule for bare backreferences in the rendered
     agent instructions
-- ref: src/templates/claude/CLAUDE.md.jinja2
-  implements: Nearest-enclosing-tree rule for bare backreferences (CLAUDE.md template)
 - ref: tests/test_tree_discovery.py
   implements: Nested-tree fixture proving inner-tree and between-trees resolution,
     boundary behavior, and that CLI commands act on the discovered tree

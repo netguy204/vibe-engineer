@@ -3,9 +3,9 @@ status: ACTIVE
 ticket: null
 parent_chunk: null
 code_paths:
-- src/templates/claude/CLAUDE.md.jinja2
+- src/templates/claude/AGENTS.md.jinja2
 code_references:
-- ref: src/templates/claude/CLAUDE.md.jinja2
+- ref: src/templates/claude/AGENTS.md.jinja2
   implements: "Chunk naming convention guidance section in CLAUDE.md template"
 narrative: null
 investigation: alphabetical_chunk_grouping

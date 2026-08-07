@@ -4,7 +4,7 @@ ticket: null
 parent_chunk: null
 code_paths:
 - src/templates/plugin/skills/validate-fix.md.jinja2
-- src/templates/claude/CLAUDE.md.jinja2
+- src/templates/claude/AGENTS.md.jinja2
 - tests/test_template_system.py
 code_references:
   - ref: skills/validate-fix/SKILL.md

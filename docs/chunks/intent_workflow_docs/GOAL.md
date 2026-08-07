@@ -3,13 +3,13 @@ status: ACTIVE
 ticket: null
 parent_chunk: null
 code_paths:
-  - src/templates/claude/CLAUDE.md.jinja2
+  - src/templates/claude/AGENTS.md.jinja2
   - src/templates/claude/AGENTS.md.jinja2
   - src/templates/plugin/skills/chunk-create.md.jinja2
   - docs/trunk/ARTIFACTS.md
   - README.md
 code_references:
-  - ref: src/templates/claude/CLAUDE.md.jinja2
+  - ref: src/templates/claude/AGENTS.md.jinja2
     implements: "Chunks section framing qualified for intent-bearing work"
   - ref: src/templates/claude/AGENTS.md.jinja2
     implements: "Mirror of CLAUDE.md.jinja2 intent-bearing framing for agent surfaces"

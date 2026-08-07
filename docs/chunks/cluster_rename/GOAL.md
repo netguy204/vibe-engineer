@@ -6,7 +6,7 @@ code_paths:
   - src/cluster_rename.py
   - src/cli/chunk.py
   - src/templates/plugin/skills/cluster-rename.md.jinja2
-  - src/templates/claude/CLAUDE.md.jinja2
+  - src/templates/claude/AGENTS.md.jinja2
   - tests/test_cluster_rename.py
 code_references:
   - ref: src/cluster_rename.py

@@ -4,20 +4,16 @@ ticket: null
 parent_chunk: null
 code_paths:
 - src/templates/claude/AGENTS.md.jinja2
-- src/templates/claude/CLAUDE.md.jinja2
 - src/template_system.py
 - src/project.py
 - tests/test_template_system.py
 - tests/test_project.py
 - tests/fixtures/agents_md_single_tree.md
-- tests/fixtures/claude_md_single_tree.md
 code_references:
 - ref: src/templates/claude/AGENTS.md.jinja2
   implements: "Workspace-aware managed block: qualified member::docs/... form, peer\
     \ pointers with the 1-reader/2+-readers rule, workspace-validate rename mandate,\
     \ code_references guidance, deletion ledger pointer \u2014 all gated on project.in_workspace"
-- ref: src/templates/claude/CLAUDE.md.jinja2
-  implements: Lockstep mirror of the workspace-aware managed block in AGENTS.md.jinja2
 - ref: src/template_system.py#TemplateContext
   implements: in_workspace flag with an inert False default so single-tree renders
     are unchanged

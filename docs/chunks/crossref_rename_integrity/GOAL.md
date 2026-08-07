@@ -5,7 +5,7 @@ parent_chunk: null
 code_paths:
   - src/integrity.py
   - src/templates/claude/AGENTS.md.jinja2
-  - src/templates/claude/CLAUDE.md.jinja2
+  - src/templates/claude/AGENTS.md.jinja2
   - src/templates/trunk/ARTIFACTS.md.jinja2
   - tests/test_integrity.py
   - AGENTS.md
@@ -17,7 +17,7 @@ code_references:
     implements: "Wires the chunk→file check into the per-chunk validation loop"
   - ref: src/templates/claude/AGENTS.md.jinja2
     implements: "Rename-integrity mandate (File Moves and Renames section) in the canonical managed template"
-  - ref: src/templates/claude/CLAUDE.md.jinja2
+  - ref: src/templates/claude/AGENTS.md.jinja2
     implements: "Same mandate in the legacy template, kept consistent"
   - ref: src/templates/trunk/ARTIFACTS.md.jinja2
     implements: "Code Backreferences pointer to the rename mandate and uvx validate invocation"

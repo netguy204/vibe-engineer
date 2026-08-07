@@ -22,7 +22,7 @@ code_paths:
 - src/templates/plugin/skills/narrative-create.md.jinja2
 - src/templates/plugin/skills/decision-create.md.jinja2
 - src/templates/plugin/skills/subsystem-discover.md.jinja2
-- src/templates/claude/CLAUDE.md.jinja2
+- src/templates/claude/AGENTS.md.jinja2
 - tests/test_template_system.py
 - tests/test_project.py
 - docs/subsystems/template_system/OVERVIEW.md

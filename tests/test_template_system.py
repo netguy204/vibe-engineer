@@ -1163,7 +1163,7 @@ class TestVeConfigInTemplates:
 
 # Chunk: docs/chunks/template_workspace_awareness - Workspace-aware managed block tests
 class TestWorkspaceAwareAgentsTemplate:
-    """Tests for workspace-aware content in the claude AGENTS.md/CLAUDE.md templates.
+    """Tests for workspace-aware content in the claude AGENTS.md template.
 
     The single-tree render is pinned byte-for-byte against golden fixtures in
     tests/fixtures/ captured before this chunk touched the templates. If a
@@ -1192,12 +1192,6 @@ class TestWorkspaceAwareAgentsTemplate:
         golden = (self.FIXTURES / "agents_md_single_tree.md").read_text()
         assert self._render("AGENTS.md.jinja2") == golden
         assert self._render("AGENTS.md.jinja2", in_workspace=False) == golden
-
-    def test_single_tree_claude_md_is_byte_identical_to_golden(self):
-        """A single-tree CLAUDE.md render matches the pre-chunk bytes exactly."""
-        golden = (self.FIXTURES / "claude_md_single_tree.md").read_text()
-        assert self._render("CLAUDE.md.jinja2") == golden
-        assert self._render("CLAUDE.md.jinja2", in_workspace=False) == golden
 
     def test_single_tree_render_without_context_matches_golden(self):
         """Call sites that pass no context at all still get the single-tree bytes."""
@@ -1262,17 +1256,10 @@ class TestWorkspaceAwareAgentsTemplate:
         ):
             assert marker not in result
 
-    def test_claude_md_workspace_render_matches_agents_md_managed_block(self):
-        """The two templates stay in lockstep for the workspace content."""
-        agents = self._render("AGENTS.md.jinja2", in_workspace=True)
-        claude = self._render("CLAUDE.md.jinja2", in_workspace=True)
-        marker = "### Working Across VE Trees in This Workspace"
-        assert marker in agents and marker in claude
-        # Chunk: docs/chunks/claudemd_marker_safety - END marker is annotated; match the prefix
-        end = "<!-- VE:MANAGED:END"
-        assert agents[agents.index(marker) : agents.index(end)] == claude[
-            claude.index(marker) : claude.index(end)
-        ]
+    # Chunk: docs/chunks/priorart_subject_search - CLAUDE.md.jinja2 deleted; AGENTS.md.jinja2
+    # is the only claude template ve init renders, so the former lockstep test
+    # (which pinned the two templates' workspace blocks to each other) is gone
+    # with it. CLAUDE.md reaches users as a symlink to AGENTS.md, not a render.
 
 
 class TestManagedClaudeMdMigrationTemplate:
