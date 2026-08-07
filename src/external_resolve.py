@@ -33,6 +33,7 @@ from external_refs import (
     detect_artifact_type_from_path,
     is_external_artifact,
     load_external_ref,
+    stamp_resolved,
 )
 from git_utils import get_current_sha
 from models import ArtifactType, ExternalArtifactRef
@@ -389,6 +390,11 @@ def resolve_artifact_task_directory(
     local_path = external_artifact_dir
     directory_contents = sorted([f.name for f in external_artifact_dir.iterdir() if f.is_file()])
 
+    # Chunk: docs/chunks/external_never_resolved - Stamp the local pointer, not the
+    # worktree copy: artifact_dir is this tree's external.yaml, external_artifact_dir
+    # is the far side's content.
+    stamp_resolved(artifact_dir)
+
     return ResolveResult(
         repo=ref.repo,
         artifact_type=artifact_type,
@@ -520,6 +526,12 @@ def resolve_artifact_single_repo(
         directory_contents = sorted([f.name for f in local_path.iterdir() if f.is_file()])
     else:
         directory_contents = []
+
+    # Chunk: docs/chunks/external_never_resolved - The read succeeded, so record that
+    # somebody has now looked. Stamped here rather than in the CLI so every caller
+    # that reaches this point contributes, and so the raises above skip it: a failed
+    # resolve must never advance the timestamp.
+    stamp_resolved(artifact_dir)
 
     return ResolveResult(
         repo=ref.repo,

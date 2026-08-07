@@ -20,7 +20,7 @@ from dataclasses import dataclass, field
 from typing import Literal, Protocol, TYPE_CHECKING
 
 from backreferences import parse_backreference
-from external_refs import is_external_artifact
+from external_refs import ARTIFACT_DIR_NAME, is_external_artifact, load_external_ref
 from friction import Friction
 from investigations import Investigations
 from models import ArtifactType, ChunkFrontmatter, ChunkStatus
@@ -359,6 +359,9 @@ class IntegrityValidator:
         chunk_backrefs_found = chunk_refs
         subsystem_backrefs_found = subsystem_refs
 
+        # 7. Report cross-repo pointers nobody has ever resolved
+        warnings.extend(self._validate_external_ever_resolved())
+
         return IntegrityResult(
             success=len(errors) == 0,
             backrefs_suppressed=backrefs_suppressed,
@@ -374,6 +377,62 @@ class IntegrityValidator:
             subsystem_backrefs_found=subsystem_backrefs_found,
             external_chunks_skipped=len(self._external_chunk_names),
         )
+
+    # Chunk: docs/chunks/external_never_resolved - Never-verified cross-repo pointers
+    def _validate_external_ever_resolved(self) -> list[IntegrityWarning]:
+        """Warn for `repo:` pointers that have never once resolved.
+
+        This reads only the local file. VE still declines to say whether a
+        cross-repository target *exists* — that needs network or cache state,
+        and per docs/trunk/EXTERNAL.md "a gate whose verdict depends on a warm
+        cache is not a gate." What it can say without leaving the disk is
+        whether anybody has ever successfully looked, which is what separates a
+        pointer that dangled from birth from one merely unverified today.
+
+        Peers are excluded: `ve workspace validate` already resolves them
+        structurally and reports a bad one as `missing-target`.
+
+        A warning, not an error: every pointer is unresolved from the moment it
+        is written until someone resolves it, so erroring would fail correct work.
+        """
+        warnings: list[IntegrityWarning] = []
+
+        for artifact_type in ArtifactType:
+            dir_name = ARTIFACT_DIR_NAME[artifact_type]
+            type_root = self.project_dir / "docs" / dir_name
+            if not type_root.is_dir():
+                continue
+
+            for artifact_dir in sorted(type_root.iterdir()):
+                if not artifact_dir.is_dir():
+                    continue
+                if not is_external_artifact(artifact_dir, artifact_type):
+                    continue
+                try:
+                    ref = load_external_ref(artifact_dir)
+                except Exception:
+                    # Malformed pointers are another check's business; a crash
+                    # here would take the whole validation run down with it.
+                    continue
+                if ref.is_peer or ref.last_resolved is not None:
+                    continue
+
+                source = f"docs/{dir_name}/{artifact_dir.name}/external.yaml"
+                warnings.append(
+                    IntegrityWarning(
+                        source=source,
+                        target=f"{ref.repo}::docs/{dir_name}/{ref.artifact_id}",
+                        link_type="external→never-resolved",
+                        message=(
+                            f"Cross-repo pointer to '{ref.repo}' has never resolved — "
+                            f"no successful read has ever been recorded, so this may "
+                            f"have dangled since it was written. Run "
+                            f"`ve external resolve {artifact_dir.name}` to verify it"
+                        ),
+                    )
+                )
+
+        return warnings
 
     # Chunk: docs/chunks/crossref_rename_integrity - File-existence check for chunk-declared paths
     # Chunk: docs/chunks/crossref_glob_refs - Glob entries error only on empty expansion

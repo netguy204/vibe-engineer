@@ -11,6 +11,8 @@ references across all workflow artifact types (chunks, narratives, investigation
 subsystems).
 """
 
+import re
+from datetime import datetime, timezone
 from pathlib import Path
 
 import yaml
@@ -125,6 +127,51 @@ def load_external_ref(path: Path) -> ExternalArtifactRef:
         data = yaml.safe_load(f)
 
     return ExternalArtifactRef.model_validate(data)
+
+
+# Chunk: docs/chunks/external_never_resolved - Stamp a cross-repo pointer that just resolved
+def stamp_resolved(path: Path, when: datetime | None = None) -> bool:
+    """Record that this pointer's target was just read successfully.
+
+    Only cross-repository (``repo:``) pointers are stamped. A peer (``tree:``)
+    pointer resolves through the workspace manifest against the same commit, so
+    it is either resolvable now or reported as ``missing-target``; there is no
+    "has anyone ever looked" question for it, and the model rejects the field.
+
+    The write is a targeted key update rather than a re-serialization of the
+    parsed model, so unknown keys and the author's field order survive.
+
+    Args:
+        path: Directory containing external.yaml.
+        when: Instant to record. Defaults to now, UTC.
+
+    Returns:
+        True if a stamp was written, False if this pointer takes no stamp.
+    """
+    ref_file = path / "external.yaml"
+    if not ref_file.exists():
+        return False
+
+    with open(ref_file) as f:
+        data = yaml.safe_load(f) or {}
+
+    # Peers take no stamp; neither does a pointer with no cross-repo target.
+    if data.get("tree") is not None or data.get("repo") is None:
+        return False
+
+    # Quoted: YAML resolves a bare timestamp to a datetime, and this field is a
+    # string. The model tolerates both on read; what we write is unambiguous.
+    stamp = f"'{(when or datetime.now(timezone.utc)).isoformat()}'"
+    text = ref_file.read_text()
+    pattern = re.compile(r"^last_resolved:.*$", re.MULTILINE)
+    if pattern.search(text):
+        text = pattern.sub(f"last_resolved: {stamp}", text, count=1)
+    else:
+        if text and not text.endswith("\n"):
+            text += "\n"
+        text += f"last_resolved: {stamp}\n"
+    ref_file.write_text(text)
+    return True
 
 
 # Chunk: docs/chunks/accept_full_artifact_paths - Flexible artifact path normalization

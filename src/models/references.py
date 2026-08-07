@@ -4,6 +4,7 @@
 # Chunk: docs/chunks/models_subpackage - References module
 
 import re
+from datetime import datetime
 from enum import StrEnum
 from typing import Literal
 
@@ -372,6 +373,8 @@ class ExternalArtifactRef(BaseModel):
     track: str | None = None  # Branch to follow (cross-repo only)
     pinned: str | None = None  # 40-char SHA (optional)
     created_after: list[str] = []  # Local causal ordering
+    # Chunk: docs/chunks/external_never_resolved - Has anybody ever read this target?
+    last_resolved: str | None = None  # UTC instant of the last successful resolve
 
     @field_validator("repo")
     @classmethod
@@ -421,6 +424,40 @@ class ExternalArtifactRef(BaseModel):
         """Validate artifact_id is a valid directory name."""
         return _require_valid_dir_name(v, "artifact_id")
 
+    # Chunk: docs/chunks/external_never_resolved - The stamp must be a real instant
+    @field_validator("last_resolved", mode="before")
+    @classmethod
+    def validate_last_resolved(cls, v: object) -> str | None:
+        """Validate last_resolved is an ISO-8601 instant.
+
+        The field's whole value is that its absence is meaningful, so a garbled
+        value must not be able to masquerade as a resolution that happened.
+
+        Runs in ``before`` mode because YAML resolves an unquoted timestamp to a
+        ``datetime`` rather than a string. `stamp_resolved` quotes what it
+        writes, but a hand-edited or `yaml.dump`-written pointer need not, and
+        rejecting those would be pedantry about quoting rather than about time.
+        """
+        if v is None:
+            return None
+        if isinstance(v, datetime):
+            return v.isoformat()
+        if not isinstance(v, str):
+            raise ValueError(
+                f"last_resolved must be an ISO-8601 instant string, got "
+                f"{type(v).__name__}"
+            )
+        stripped = v.strip()
+        try:
+            datetime.fromisoformat(stripped)
+        except ValueError as exc:
+            raise ValueError(
+                f"last_resolved must be an ISO-8601 instant (e.g. "
+                f"2026-08-07T11:14:08+00:00), got {v!r}. It is written by "
+                f"`ve external resolve`; do not hand-edit it"
+            ) from exc
+        return stripped
+
     # Chunk: docs/chunks/federation_peer_refs - tree xor repo, and tracklessness of peer refs
     @model_validator(mode="after")
     def validate_target(self) -> "ExternalArtifactRef":
@@ -446,6 +483,16 @@ class ExternalArtifactRef(BaseModel):
                         f"inside the same working copy, so it is already at the same "
                         f"commit as the tree pointing at it. Remove '{field}'"
                     )
+            # Chunk: docs/chunks/external_never_resolved - Peers have nothing to stamp
+            if self.last_resolved is not None:
+                raise ValueError(
+                    "'last_resolved' is invalid with 'tree': a peer reference "
+                    "resolves through the workspace manifest against the same "
+                    "commit, so it is either structurally resolvable right now or "
+                    "reported by `ve workspace validate` as missing-target. There "
+                    "is no 'has anyone ever looked' question to answer. "
+                    "Remove 'last_resolved'"
+                )
         return self
 
     # Chunk: docs/chunks/federation_peer_refs - Flavor predicate for callers

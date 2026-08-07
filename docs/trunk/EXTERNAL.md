@@ -65,11 +65,45 @@ why: Charts render realized savings from this baseline
 | `tree` | Peer only | Workspace member name from `.ve-workspace.yaml` |
 | `track` | Cross-repo only | Branch name to follow (usually `main`) |
 | `why` | No | One line: what this tree depends on in the target |
+| `last_resolved` | Written by VE | UTC instant of the last successful resolve |
 
 Exactly one of `repo` and `tree` must be present — a pointer with neither has no
 target, and a pointer with both has two. `track` (and the legacy `pinned`) are
 rejected alongside `tree`: a peer target is already at the same commit as the tree
-pointing at it, so there is nothing to pin.
+pointing at it, so there is nothing to pin. `last_resolved` is rejected alongside
+`tree` for the same reason — see below.
+
+### `last_resolved`: Has Anybody Ever Looked?
+
+`ve external resolve` writes `last_resolved` into a `repo:` pointer every time it
+reads the target successfully; a failed resolve leaves it untouched. Don't
+hand-edit it.
+
+`ve validate` reports a `repo:` pointer with **no** `last_resolved` as
+`external→never-resolved` — a warning, naming the `ve external resolve` command
+that clears it.
+
+This does not reopen the decision two sections below. VE still declines to say
+whether a cross-repository target *exists*, because that needs network or cache
+state. The never-resolved finding needs neither: *"no successful read has ever
+been recorded"* is a fact about the local file. VE does not claim the target is
+missing; it reports that nobody has ever checked.
+
+The distinction earns its keep because the two cases are not equally likely to be
+fine. A pointer created months ago that has never once resolved may have dangled
+**from birth** — the far side committed nothing, and nothing ever noticed.
+Such a directory is worse than absent when it is named for the subject someone is
+investigating: it is the most on-target hit their search returns, and it answers
+*"someone already looked at this and it went nowhere"* with more authority than
+finding nothing at all.
+
+It is a warning rather than an error because every pointer is never-resolved from
+the moment it is written until someone resolves it. An error would fail correctly
+created work, and a gate that fails correct work is one people learn to skip.
+
+Peer (`tree:`) pointers carry no `last_resolved`: they resolve through the
+manifest against the same commit, so `ve workspace validate` already answers the
+question structurally and reports a broken one as `missing-target`.
 
 ## Peer References (Same Repository)
 

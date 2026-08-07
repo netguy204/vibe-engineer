@@ -1635,9 +1635,13 @@ class TestIntegrityValidatorChunkSubsystemBidirectional:
         )
 
         result = validate_integrity(temp_project)
-        # Should pass with no warnings - external chunks don't have subsystems field
+        # Should pass with no bidirectional warning - external chunks don't have
+        # a subsystems field to check.
+        # Chunk: docs/chunks/external_never_resolved - Narrowed from "no warnings at
+        # all": the external.yaml this fixture writes is a cross-repo pointer nobody
+        # has resolved, which legitimately raises its own unrelated warning.
         assert result.success
-        assert len(result.warnings) == 0
+        assert [w for w in result.warnings if w.link_type == "chunk↔subsystem"] == []
         assert len(result.errors) == 0
 
     def test_multiple_subsystems_each_checked(self, temp_project):
