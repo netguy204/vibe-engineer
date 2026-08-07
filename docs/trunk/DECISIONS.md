@@ -450,3 +450,100 @@ under `${XDG_STATE_HOME:-$HOME/.local/state}/vibe-engineer`.
   provide the protection consent would.
 - *Auto-sync all installs on drift*: rejected — reinstalling a user-managed
   ve would be a surprising side effect.
+
+### DEC-014: One template source, two plugin ecosystems, three co-versioned manifests
+
+**Status**: Accepted (2026-08-07)
+
+**Context**: DEC-010 replaced per-project rendered `.agents/skills/` files
+with a Claude Code plugin. That was right for Claude Code users and a
+regression for everyone else: the operator's colleagues work in ve-initialized
+projects from Cursor, and full replacement narrowed them to the AGENTS.md
+pointer. The trunk goal's partial-adoption property — *"the tooling must
+remain effective even if not every engineer working in the project uses the
+workflow"* — makes that a defect, not a scoping choice.
+
+Cursor now has a plugin system that structurally mirrors Claude Code's:
+`.cursor-plugin/plugin.json`, a marketplace manifest, and skills as
+`skills/<name>/SKILL.md` — the same cross-agent format, such that a skill
+written for Claude loads in Cursor unchanged. What differs is the *idioms*:
+Claude Code preprocesses `` !`command` `` in a skill body and substitutes the
+output before the model reads it; Cursor has no equivalent. Claude's
+`allowed-tools` frontmatter and `$ARGUMENTS`/`$CLAUDE_PLUGIN_ROOT`
+placeholders have no Cursor counterpart either. The bodies are the same; the
+plumbing is not.
+
+**Decision**: The plugin ships to both ecosystems from a single template
+source. `src/templates/plugin/` holds each skill and agent body exactly once;
+the editor-specific idioms are factored into per-flavor partials at
+`partials/<flavor>/idioms.md.jinja2` implementing one shared macro interface;
+`ve plugin render --flavor {claude,cursor}` emits the committed build
+products; and drift tests fail the build when a committed render diverges
+from its template. The Claude flavor renders to the repo root (`skills/`,
+`agents/`), which Claude Code requires; the Cursor flavor renders to
+`.cursor-plugin/`.
+
+Consequently the co-versioning of DEC-011 extends from two artifacts to
+three: `pyproject.toml`, `.claude-plugin/plugin.json`, and
+`.cursor-plugin/plugin.json` carry the same version at every release, enforced
+by `tests/test_session_hook.py::TestVersionSource`. That test also asserts
+that *every* `*-plugin/plugin.json` in the repository is in the co-versioned
+set, so a third ecosystem cannot join without joining the policy.
+
+**A consequence worth stating plainly**: because both ecosystems discover
+plugin components by folder — `skills/`, `agents/`, `hooks/hooks.json` — and
+because this repository is simultaneously both plugins, the Cursor manifest
+MUST name its component paths explicitly. Cursor's spec is clear that a
+specified path replaces folder discovery, and if it did not, a silent Cursor
+manifest would serve Cursor users the Claude build product: probe lines
+arriving as literal `` !`...` `` text instead of command output, and a hooks
+file whose event names Cursor does not recognize. The overrides are load-
+bearing, not decorative; `tests/test_cursor_manifest.py::TestDiscoveryCollision`
+exists to stop someone from tidying them away.
+
+**Alternatives Considered**:
+- *Maintain the Cursor plugin as a separate hand-written set of files*:
+  rejected — it doubles the maintenance surface for 39 skills whose content
+  is identical, and the two copies would diverge on the first edit that
+  forgot one of them. The narrative's operator directive was explicit:
+  build the skills from templates with idioms substituted per flavor.
+- *Re-render into consuming projects for Cursor users*: rejected — this is
+  exactly what DEC-010 removed (update lag, repo pollution), and doing it
+  for one ecosystem while the other ships through a plugin manager would be
+  the worst of both.
+- *Ship only the Agent Plugins standard manifest (root `plugin.json`) and
+  rely on Cursor loading it unchanged*: rejected — the standard covers
+  skills and MCP servers only, so agents, commands, rules, and hooks would
+  be unavailable, and a root `plugin.json` in this repository would collide
+  conceptually with the Python packaging that already lives there.
+- *A separate repository per ecosystem*: rejected — co-versioning is only
+  cheap because everything releases together from one repo (DEC-011's
+  rationale), and splitting would reintroduce the version-range problem it
+  avoided.
+- *Let both flavors render to the repo root*: impossible rather than
+  rejected — they would write the same `skills/<name>/SKILL.md` and one
+  would clobber the other.
+
+**Consequences**:
+- Editing plugin content means editing a template and running
+  `ve plugin render` for both flavors; hand-editing a committed render is
+  caught by the drift test. This is a real change in workflow for anyone
+  used to editing `skills/*.md` directly.
+- Every release bumps three versions, not two. Plugin managers key update
+  detection on the manifest version, so a manifest left behind means that
+  ecosystem's users are never offered the update, with nothing else to
+  signal it.
+- Adding an idiom means adding a macro to *every* flavor partial. The macro
+  interface is enforced by a parity test rather than by convention.
+- A future third ecosystem is a new partial plus a new output root, not a
+  new copy of the content.
+- The Cursor manifest carries an explicitly empty `hooks` object until a
+  Cursor hook counterpart exists. Shipping no hooks is correct; shipping
+  Claude's would be wrong, and shipping nothing at all in the manifest would
+  ship Claude's by discovery.
+
+**Revisit If**: The two ecosystems' idioms diverge enough that shared bodies
+become contorted rather than merely parameterized (at which point the shared
+source is costing more than the duplication it prevents), Cursor and Claude
+Code converge on a single skill format that needs no substitution, or the
+plugin and the Python package stop releasing together.

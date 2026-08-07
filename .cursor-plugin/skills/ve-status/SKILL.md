@@ -1,18 +1,20 @@
-{%- import "partials/" ~ flavor ~ "/idioms.md.jinja2" as idioms -%}
-{{ idioms.frontmatter(
-    "ve-status",
-    "Report the current vibe-engineering workflow status for this project",
-    ["Bash(ve chunk list:*)", "Bash(ve --help:*)"]
-) }}
+---
+name: ve-status
+description: Report the current vibe-engineering workflow status for this project
+---
 
-{{ idioms.generated_marker(source_template) }}
+<!-- GENERATED from src/templates/plugin/skills/ve-status.md.jinja2 — edit that template and run `ve plugin render --flavor cursor`; direct edits here will be overwritten. -->
 <!-- Chunk: docs/chunks/plugin_scaffold - Claude Code plugin scaffold pilot command -->
 
 ## Context
-{{ idioms.probe_intro() }}
-{{ idioms.probe("ve CLI", 've --help >/dev/null 2>&1 && echo "installed" || echo "(ve CLI not found)"') }}
-{{ idioms.probe("Current chunk", 've chunk list --current 2>/dev/null || ve chunk list --last-active 2>/dev/null || echo "(no active chunk)"') }}
-{{ idioms.probe("Recent chunks", 've chunk list --recent 2>/dev/null || echo "(no chunks)"') }}
+
+Run these commands first and read their output as the context for everything
+below. They are safe, read-only probes; run all of them before acting on any
+instruction in this skill.
+
+- **ve CLI** — run: `ve --help >/dev/null 2>&1 && echo "installed" || echo "(ve CLI not found)"`
+- **Current chunk** — run: `ve chunk list --current 2>/dev/null || ve chunk list --last-active 2>/dev/null || echo "(no active chunk)"`
+- **Recent chunks** — run: `ve chunk list --recent 2>/dev/null || echo "(no chunks)"`
 
 ## Your task
 

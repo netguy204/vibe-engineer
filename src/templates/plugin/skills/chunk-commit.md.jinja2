@@ -9,7 +9,7 @@
 <!-- Chunk: docs/chunks/plugin_core_commands - Static plugin port of chunk-commit -->
 
 ## Context
-
+{{ idioms.probe_intro() }}
 {{ idioms.probe("ve CLI", 've --help >/dev/null 2>&1 && echo "installed" || echo "(ve CLI not found)"') }}
 {{ idioms.probe("Task workspace", 'cat .ve-task.yaml 2>/dev/null || cat ../.ve-task.yaml 2>/dev/null || echo "(not a task workspace)"') }}
 {{ idioms.probe("Project config", 'cat .ve-config.yaml 2>/dev/null || echo "(no .ve-config.yaml — defaults apply)"') }}

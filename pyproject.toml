@@ -79,6 +79,11 @@ show_missing = true
 
 [dependency-groups]
 dev = [
+    # Chunk: docs/chunks/dualplugin_cursor_scaffold - tests/test_cursor_manifest.py
+    # validates .cursor-plugin/ against the vendored upstream Cursor schemas.
+    # jsonschema also resolves transitively (claude-agent-sdk -> mcp); declared
+    # here because a test that depends on it should say so.
+    "jsonschema>=4.0",
     "pytest",
     "pytest-asyncio",
     "pytest-cov",

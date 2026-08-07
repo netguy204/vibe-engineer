@@ -5,14 +5,16 @@ Chunk: docs/chunks/dualplugin_template_source - Flavor-substitutable editor idio
 
 This file is the Claude half of the flavor-substitution interface: command
 templates import it as `{% import "partials/" ~ flavor ~ "/idioms.md.jinja2"
-as idioms %}`. A Cursor flavor (partials/cursor/idioms.md.jinja2, added by
-dualplugin_cursor_scaffold) must implement the same macro signatures:
+as idioms %}`. The Cursor flavor (partials/cursor/idioms.md.jinja2, added by
+dualplugin_cursor_scaffold) implements the same macro signatures:
 
   frontmatter(name, description, allowed_tools=None)
   generated_marker(source_template)
   probe(label, command)
+  probe_intro()                  -- framing for an ad-hoc probe block
   canonical_preamble()           -- task guidance via {% call %} body
   plugin_root()
+  arguments()                    -- where the operator's request lands
 
 All macros emit content WITHOUT a trailing newline; the calling template owns
 line structure.
@@ -33,9 +35,17 @@ description: {{ description }}
 - {{ label }}: !`{{ command }}`
 {%- endmacro -%}
 
+{#- Chunk: docs/chunks/dualplugin_cursor_scaffold - probe_intro is empty under
+    Claude: the harness substitutes each !`command` before the model reads
+    the file, so there is nothing to instruct it to run. The macro exists so
+    templates that build an ad-hoc probe block can carry the framing Cursor
+    needs without either flavor's body diverging. -#}
+{%- macro probe_intro() -%}
+{%- endmacro -%}
+
 {%- macro canonical_preamble() -%}
 ## Context
-
+{{ probe_intro() }}
 {{ probe("ve CLI", 've --help >/dev/null 2>&1 && echo "installed" || echo "(ve CLI not found)"') }}
 {{ probe("Task workspace", 'cat .ve-task.yaml 2>/dev/null || cat ../.ve-task.yaml 2>/dev/null || echo "(not a task workspace)"') }}
 {{ probe("Project config", 'cat .ve-config.yaml 2>/dev/null || echo "(no .ve-config.yaml — defaults apply)"') }}
@@ -70,4 +80,12 @@ Interpret the context above before following the instructions:
 
 {%- macro plugin_root() -%}
 ${CLAUDE_PLUGIN_ROOT}
+{%- endmacro -%}
+
+{#- Chunk: docs/chunks/dualplugin_cursor_scaffold - $ARGUMENTS is a Claude Code
+    slash-command placeholder: the harness substitutes the operator's argument
+    text before the model reads the file. Nothing substitutes it elsewhere, so
+    the literal token must not leak into another flavor's render. -#}
+{%- macro arguments() -%}
+$ARGUMENTS
 {%- endmacro -%}

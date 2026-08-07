@@ -19,6 +19,7 @@ committed renders in lockstep with the templates:
 
 import json
 import pathlib
+import re
 
 import pytest
 from click.testing import CliRunner
@@ -31,6 +32,9 @@ PILOT_TEMPLATES = [
     "skills/chunk-create.md.jinja2",
     "skills/ve-status.md.jinja2",
 ]
+
+# Chunk: docs/chunks/dualplugin_cursor_scaffold - Cursor render target
+CURSOR_TEMPLATES = list(plugin_render.FLAVOR_TEMPLATE_SUBSETS["cursor"])
 
 
 def _template_names() -> list[str]:
@@ -96,17 +100,41 @@ class TestCollectionLayout:
                 f"{name}: partials are include/import material, not outputs"
             )
 
-    def test_claude_idiom_partial_exists(self):
+    @pytest.mark.parametrize("flavor", plugin_render.FLAVORS)
+    def test_every_flavor_has_an_idiom_partial(self, flavor):
+        """The idiom partial IS the flavor: templates import
+        partials/<flavor>/idioms.md.jinja2 by name, so a flavor without one
+        fails at render time rather than at declaration time."""
         partial = (
             plugin_render.plugin_collection_dir()
             / "partials"
-            / "claude"
+            / flavor
             / "idioms.md.jinja2"
         )
         assert partial.is_file(), (
-            "the Claude idiom partial is the flavor-substitution point; "
-            "dualplugin_cursor_scaffold adds partials/cursor/ alongside it"
+            f"{flavor} is declared in FLAVORS but has no idiom partial"
         )
+
+    def test_flavors_implement_the_same_macro_interface(self):
+        """A template body is flavor-blind: it calls a macro and the partial
+        decides what that means. A macro present in one partial and missing
+        from another is a render-time crash for whichever flavor lacks it.
+
+        # Chunk: docs/chunks/dualplugin_cursor_scaffold - Idiom parity
+        """
+        partials = plugin_render.plugin_collection_dir() / "partials"
+        macros = {}
+        for flavor in plugin_render.FLAVORS:
+            text = (partials / flavor / "idioms.md.jinja2").read_text()
+            macros[flavor] = set(re.findall(r"{%-?\s*macro\s+(\w+)\s*\(", text))
+        reference = macros[plugin_render.DEFAULT_FLAVOR]
+        for flavor, names in macros.items():
+            assert names == reference, (
+                f"{flavor} idiom partial does not match the "
+                f"{plugin_render.DEFAULT_FLAVOR} interface; "
+                f"missing={sorted(reference - names)} "
+                f"extra={sorted(names - reference)}"
+            )
 
 
 @pytest.mark.parametrize("template_name", _template_names() or PILOT_TEMPLATES)
@@ -147,16 +175,86 @@ class TestDrift:
         assert not fresh.endswith("\n\n")
 
 
+@pytest.mark.parametrize("template_name", CURSOR_TEMPLATES)
+class TestCursorDrift:
+    """The Cursor flavor's committed renders, held to the same contract.
+
+    # Chunk: docs/chunks/dualplugin_cursor_scaffold - Cursor render drift coverage
+    """
+
+    def test_committed_render_matches_fresh_render(self, template_name):
+        committed = plugin_render.output_path(template_name, REPO_ROOT, "cursor")
+        assert committed.is_file(), (
+            f"{template_name} has no committed Cursor render at {committed}; "
+            "run `uv run ve plugin render --flavor cursor`"
+        )
+        fresh = plugin_render.render_plugin_template(template_name, "cursor")
+        assert committed.read_text() == fresh, (
+            f"{committed.relative_to(REPO_ROOT)} is out of sync with "
+            f"src/templates/plugin/{template_name} — run "
+            "`uv run ve plugin render --flavor cursor`."
+        )
+
+    def test_render_lands_under_the_cursor_plugin_dir(self, template_name):
+        """The two flavors must not write the same file. Claude Code requires
+        content at the repo root, so Cursor's render is what moves."""
+        cursor_out = plugin_render.output_path(template_name, REPO_ROOT, "cursor")
+        claude_out = plugin_render.output_path(template_name, REPO_ROOT, "claude")
+        assert cursor_out != claude_out
+        assert (REPO_ROOT / ".cursor-plugin") in cursor_out.parents
+
+    def test_flavors_differ(self, template_name):
+        """If the Cursor render were byte-identical to the Claude one, the
+        idiom substitution silently did nothing."""
+        assert plugin_render.render_plugin_template(
+            template_name, "cursor"
+        ) != plugin_render.render_plugin_template(template_name, "claude")
+
+    def test_carries_generated_marker(self, template_name):
+        fresh = plugin_render.render_plugin_template(template_name, "cursor")
+        assert plugin_render.GENERATED_MARKER_PREFIX in fresh
+        assert f"src/templates/plugin/{template_name}" in fresh
+        assert "AUTO-GENERATED" not in fresh
+
+
+class TestCursorScope:
+    """The Cursor pilot boundary is deliberate and should stay legible.
+
+    # Chunk: docs/chunks/dualplugin_cursor_scaffold - Pilot scope boundary
+    """
+
+    def test_cursor_renders_only_the_pilot(self):
+        selected = plugin_render.templates_for_flavor("cursor")
+        assert sorted(selected) == sorted(CURSOR_TEMPLATES)
+        assert len(selected) < len(plugin_render.templates_for_flavor("claude")), (
+            "the Cursor subset should be a strict subset while the full "
+            "surface is dualplugin_cursor_render's work"
+        )
+
+    def test_claude_renders_the_whole_collection(self):
+        assert plugin_render.templates_for_flavor("claude") == (
+            plugin_render.list_plugin_templates()
+        )
+
+    def test_subset_entries_name_real_templates(self):
+        """A stale subset entry would silently render nothing."""
+        known = set(plugin_render.list_plugin_templates())
+        for flavor, subset in plugin_render.FLAVOR_TEMPLATE_SUBSETS.items():
+            unknown = set(subset) - known
+            assert not unknown, f"{flavor} subset names missing templates: {unknown}"
+
+
 class TestMarkerConvention:
     def test_marker_prefix_avoids_legacy_header_string(self):
         assert "AUTO-GENERATED" not in plugin_render.GENERATED_MARKER_PREFIX
 
 
 class TestRenderCli:
-    def _scratch_plugin_repo(self, root: pathlib.Path) -> None:
-        manifest_dir = root / ".claude-plugin"
-        manifest_dir.mkdir()
-        (manifest_dir / "plugin.json").write_text(
+    def _scratch_plugin_repo(self, root: pathlib.Path, flavor: str = "claude") -> None:
+        relpath = plugin_render.flavor_manifest_relpath(flavor)
+        manifest = root.joinpath(*relpath.parts)
+        manifest.parent.mkdir(parents=True, exist_ok=True)
+        manifest.write_text(
             json.dumps({"name": "vibe-engineer", "version": "0.0.0"})
         )
 
@@ -166,6 +264,36 @@ class TestRenderCli:
             result = runner.invoke(cli, ["plugin", "render"])
             assert result.exit_code != 0
             assert ".claude-plugin/plugin.json" in result.output
+
+    def test_cursor_flavor_refuses_without_the_cursor_manifest(self):
+        """Each flavor guards on its own manifest. A repo that ships only the
+        Claude plugin must not have a .cursor-plugin/ tree scaffolded into it.
+
+        # Chunk: docs/chunks/dualplugin_cursor_scaffold - Per-flavor render guard
+        """
+        runner = CliRunner()
+        with runner.isolated_filesystem() as tmp:
+            self._scratch_plugin_repo(pathlib.Path(tmp), "claude")
+            result = runner.invoke(cli, ["plugin", "render", "--flavor", "cursor"])
+            assert result.exit_code != 0
+            assert ".cursor-plugin/plugin.json" in result.output
+            assert not (pathlib.Path(tmp) / ".cursor-plugin" / "skills").exists()
+
+    def test_renders_cursor_flavor_into_cursor_plugin_dir(self):
+        runner = CliRunner()
+        with runner.isolated_filesystem() as tmp:
+            root = pathlib.Path(tmp)
+            self._scratch_plugin_repo(root, "cursor")
+            result = runner.invoke(cli, ["plugin", "render", "--flavor", "cursor"])
+            assert result.exit_code == 0, result.output
+            for template_name in CURSOR_TEMPLATES:
+                out = plugin_render.output_path(template_name, root, "cursor")
+                assert out.is_file()
+                assert out.read_text() == plugin_render.render_plugin_template(
+                    template_name, "cursor"
+                )
+            # The pilot boundary: no Claude-flavored tree appears at the root.
+            assert not (root / "skills").exists()
 
     def test_renders_collection_into_skills(self):
         runner = CliRunner()
@@ -198,8 +326,12 @@ class TestRenderCli:
                 )
 
     def test_rejects_unknown_flavor(self):
+        """A flavor with no idiom partial must be rejected at the CLI, not
+        crash mid-render. "cursor" used to stand in for "unknown" here; it is
+        a real flavor now, so this uses one that is genuinely absent."""
+        assert "emacs" not in plugin_render.FLAVORS
         runner = CliRunner()
         with runner.isolated_filesystem() as tmp:
             self._scratch_plugin_repo(pathlib.Path(tmp))
-            result = runner.invoke(cli, ["plugin", "render", "--flavor", "cursor"])
+            result = runner.invoke(cli, ["plugin", "render", "--flavor", "emacs"])
             assert result.exit_code != 0

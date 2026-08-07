@@ -1,28 +1,57 @@
-{%- import "partials/" ~ flavor ~ "/idioms.md.jinja2" as idioms -%}
-{{ idioms.frontmatter(
-    "chunk-create",
-    "Create a new chunk of work and refine its goal. Use when the operator wants to start new intent-bearing work, chunk something, define a piece of work, or break work into a chunk.",
-    ["Bash(ve --help:*)", "Bash(cat:*)", "Bash(ve chunk create:*)", "Bash(ve chunk list:*)"]
-) }}
+---
+name: chunk-create
+description: Create a new chunk of work and refine its goal. Use when the operator wants to start new intent-bearing work, chunk something, define a piece of work, or break work into a chunk.
+---
 
-{{ idioms.generated_marker(source_template) }}
+<!-- GENERATED from src/templates/plugin/skills/chunk-create.md.jinja2 — edit that template and run `ve plugin render --flavor cursor`; direct edits here will be overwritten. -->
 <!-- Chunk: docs/chunks/plugin_runtime_context - Runtime context-detection pilot port of chunk-create -->
 <!-- Chunk: docs/chunks/intent_workflow_docs - Command description qualified to signal chunks are for intent-bearing work -->
 
-{% call idioms.canonical_preamble() -%}
+## Context
+
+Run these commands first and read their output as the context for everything
+below. They are safe, read-only probes; run all of them before acting on any
+instruction in this skill.
+
+- **ve CLI** — run: `ve --help >/dev/null 2>&1 && echo "installed" || echo "(ve CLI not found)"`
+- **Task workspace** — run: `cat .ve-task.yaml 2>/dev/null || cat ../.ve-task.yaml 2>/dev/null || echo "(not a task workspace)"`
+- **Project config** — run: `cat .ve-config.yaml 2>/dev/null || echo "(no .ve-config.yaml — defaults apply)"`
+
+## Runtime context
+
+Interpret the results of those probes before following the instructions:
+
+- **ve CLI**: The `ve` command is an installed CLI tool, not a file in the
+  repository. Do not search for it — run it directly in the terminal. If the
+  probe printed "(ve CLI not found)", tell the operator that the
+  vibe-engineer plugin requires the separately installed `ve` CLI, suggest
+  `uv tool install vibe-engineer` (or `pip install vibe-engineer`), and
+  stop.
+- **Uninitialized project**: If `ve` is installed but commands fail because
+  there is no `docs/chunks/` structure, tell the operator to run `ve init`
+  in the project root, then stop.
+- **Task workspace**: If the Task workspace probe printed YAML (keys
+  `external_artifact_repo` and `projects`) instead of "(not a task
+  workspace)", you are in a multi-project task workspace. Artifacts
+  (chunks, narratives, investigations) live in the external artifact repo
+  named by `external_artifact_repo`; code changes happen in the
+  participating `projects`. Command-specific task guidance appears below.
+- **Project config**: `.ve-config.yaml` holds project configuration.
+  Known keys: `cluster_subsystem_threshold` (default 5 — the cluster size
+  at which to suggest subsystem documentation). When the probe printed
+  "(no .ve-config.yaml — defaults apply)", use the defaults.
 - **If this is a task workspace** (the Task workspace context above shows
   `.ve-task.yaml` contents): this command creates artifacts in the external
   artifact repo named by `external_artifact_repo` in `.ve-task.yaml`. The
   chunk GOAL.md and PLAN.md will be created there. When implementing, code
   changes happen in the participating projects listed under `projects`, and
   external.yaml references allow projects to discover the external chunk.
-{%- endcall %}
 
 ## Instructions
 
 The operator wants to define a piece of work to do the following:
 
-{{ idioms.arguments() }}
+(Use the operator's request — the message that caused this skill to load — as the input here.)
 
 ---
 

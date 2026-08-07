@@ -20,7 +20,7 @@
 <!-- Chunk: docs/chunks/federation_validate_fix_skill - Workspace compliance loop -->
 
 ## Context
-
+{{ idioms.probe_intro() }}
 {{ idioms.probe("ve CLI", 've --help >/dev/null 2>&1 && echo "installed" || echo "(ve CLI not found)"') }}
 {{ idioms.probe("Workspace manifest", 'cat .ve-workspace.yaml 2>/dev/null || echo "(no .ve-workspace.yaml in this directory)"') }}
 {{ idioms.probe("Project config", 'cat .ve-config.yaml 2>/dev/null || echo "(no .ve-config.yaml — defaults apply)"') }}

@@ -27,7 +27,7 @@ code_references:
 - ref: tests/test_session_hook.py#TestHookRegistration
   implements: "Verifies hooks.json registers SessionStart and the hook script is executable"
 - ref: tests/test_session_hook.py#TestVersionSource
-  implements: "Verifies ve --version reports the package version and plugin.json stays co-versioned with pyproject.toml"
+  implements: "Verifies ve --version reports the package version and plugin.json stays co-versioned with pyproject.toml (DEC-011). Since dualplugin_cursor_scaffold this class also covers .cursor-plugin/plugin.json — DEC-014 extended co-versioning to all three manifests — so it is now co-owned with that chunk"
 narrative: claude_plugin_port
 investigation: null
 subsystems: []

@@ -1,0 +1,116 @@
+{#-
+Cursor idiom macros for the plugin template collection.
+
+Chunk: docs/chunks/dualplugin_cursor_scaffold - Cursor half of the flavor-substitution interface
+
+This file is the Cursor half of the interface whose Claude half is
+partials/claude/idioms.md.jinja2. Both implement the same five signatures,
+so a command template imports one or the other and never knows which:
+
+  frontmatter(name, description, allowed_tools=None)
+  generated_marker(source_template)
+  probe(label, command)
+  probe_intro()                  -- framing for an ad-hoc probe block
+  canonical_preamble()           -- task guidance via {% call %} body
+  plugin_root()
+  arguments()                    -- where the operator's request lands
+
+All macros emit content WITHOUT a trailing newline; the calling template owns
+line structure.
+
+THE ONE IDIOM THAT REALLY DIFFERS: context probes. Claude Code preprocesses
+`` !`command` `` in a skill body — the harness runs the command and splices
+its output in before the model reads the file. Cursor has no equivalent, so
+the same syntax would reach the model as literal text and every probe would
+silently report nothing. The Cursor macros keep the commands identical and
+move the execution to the agent: the preamble instructs it to run the probes
+first and read the results as its Context block. Same commands, same
+fallback chains, same interpretation guidance -- different actor.
+-#}
+{%- macro frontmatter(name, description, allowed_tools=None) -%}
+{#- allowed_tools is accepted and ignored: `allowed-tools` is Claude-only
+    frontmatter, and Cursor's skill format is name + description. The
+    parameter stays in the signature because call sites are shared between
+    flavors. -#}
+---
+name: {{ name }}
+description: {{ description }}
+---
+{%- endmacro -%}
+
+{%- macro generated_marker(source_template) -%}
+{#- Wording must keep starting with plugin_render.GENERATED_MARKER_PREFIX
+    ("<!-- GENERATED from ") so the drift test recognizes it, and must never
+    contain "AUTO-GENERATED", which src/project.py keys on to delete legacy
+    per-project renders. -#}
+<!-- GENERATED from {{ source_template }} — edit that template and run `ve plugin render --flavor cursor`; direct edits here will be overwritten. -->
+{%- endmacro -%}
+
+{%- macro probe(label, command) -%}
+- **{{ label }}** — run: `{{ command }}`
+{%- endmacro -%}
+
+{#- Framing for templates that build an ad-hoc probe block instead of calling
+    canonical_preamble(). Under Claude this renders empty, because the
+    harness has already substituted the probe output by the time the model
+    reads the file and there is nothing to instruct. Under Cursor the agent
+    is the one that must run them, so the instruction is the whole point.
+    Emits a leading blank line: call sites place it directly under a heading. -#}
+{%- macro probe_intro() %}
+Run these commands first and read their output as the context for everything
+below. They are safe, read-only probes; run all of them before acting on any
+instruction in this skill.
+{% endmacro -%}
+
+{%- macro canonical_preamble() -%}
+## Context
+{{ probe_intro() }}
+{{ probe("ve CLI", 've --help >/dev/null 2>&1 && echo "installed" || echo "(ve CLI not found)"') }}
+{{ probe("Task workspace", 'cat .ve-task.yaml 2>/dev/null || cat ../.ve-task.yaml 2>/dev/null || echo "(not a task workspace)"') }}
+{{ probe("Project config", 'cat .ve-config.yaml 2>/dev/null || echo "(no .ve-config.yaml — defaults apply)"') }}
+
+## Runtime context
+
+Interpret the results of those probes before following the instructions:
+
+- **ve CLI**: The `ve` command is an installed CLI tool, not a file in the
+  repository. Do not search for it — run it directly in the terminal. If the
+  probe printed "(ve CLI not found)", tell the operator that the
+  vibe-engineer plugin requires the separately installed `ve` CLI, suggest
+  `uv tool install vibe-engineer` (or `pip install vibe-engineer`), and
+  stop.
+- **Uninitialized project**: If `ve` is installed but commands fail because
+  there is no `docs/chunks/` structure, tell the operator to run `ve init`
+  in the project root, then stop.
+- **Task workspace**: If the Task workspace probe printed YAML (keys
+  `external_artifact_repo` and `projects`) instead of "(not a task
+  workspace)", you are in a multi-project task workspace. Artifacts
+  (chunks, narratives, investigations) live in the external artifact repo
+  named by `external_artifact_repo`; code changes happen in the
+  participating `projects`. Command-specific task guidance appears below.
+- **Project config**: `.ve-config.yaml` holds project configuration.
+  Known keys: `cluster_subsystem_threshold` (default 5 — the cluster size
+  at which to suggest subsystem documentation). When the probe printed
+  "(no .ve-config.yaml — defaults apply)", use the defaults.
+{%- if caller %}
+{{ caller() }}
+{%- endif %}
+{%- endmacro -%}
+
+{%- macro plugin_root() -%}
+{#- ${PLUGIN_ROOT} is the Agent Plugins standard token Cursor's own docs use
+    for the installed plugin directory. Verified in the mcp.json context
+    only; no template in this collection calls plugin_root() today, so this
+    is interface parity rather than shipped behavior. Confirm against a live
+    Cursor session before the first template depends on it. -#}
+${PLUGIN_ROOT}
+{%- endmacro -%}
+
+{#- Claude Code substitutes $ARGUMENTS with the operator's slash-command
+    argument text before the model reads the file. Cursor skills are
+    model-invoked from the conversation, so there is no argument string to
+    substitute and the literal token would ship as dead text. The request is
+    already in context; point the agent at it instead. -#}
+{%- macro arguments() -%}
+(Use the operator's request — the message that caused this skill to load — as the input here.)
+{%- endmacro -%}

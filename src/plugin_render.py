@@ -25,8 +25,9 @@ from template_system import render_template
 PLUGIN_COLLECTION = "plugin"
 
 # Flavors with an idiom partial at partials/<flavor>/idioms.md.jinja2.
-# dualplugin_cursor_scaffold adds "cursor".
-FLAVORS = ("claude",)
+FLAVORS = ("claude", "cursor")
+
+DEFAULT_FLAVOR = "claude"
 
 # Template subdirectory whose renders take the agentskills.io per-skill layout.
 SKILLS_KIND = "skills"
@@ -42,6 +43,42 @@ GENERATED_MARKER_PREFIX = "<!-- GENERATED from "
 
 # Presence of this file marks the plugin source repository (render target).
 PLUGIN_MANIFEST_RELPATH = pathlib.PurePosixPath(".claude-plugin/plugin.json")
+
+# Chunk: docs/chunks/dualplugin_cursor_scaffold - Cursor render target
+# Per-flavor manifest whose presence marks a valid render target. Each flavor
+# guards on its own manifest: rendering the cursor flavor into a repo that
+# only ships the Claude plugin would scaffold a .cursor-plugin/skills/ tree
+# nobody declared.
+FLAVOR_MANIFESTS = {
+    "claude": PLUGIN_MANIFEST_RELPATH,
+    "cursor": pathlib.PurePosixPath(".cursor-plugin/plugin.json"),
+}
+
+# Chunk: docs/chunks/dualplugin_cursor_scaffold - Flavor-specific output roots
+# Directory under repo_root that a flavor's renders live in. Claude's is the
+# repo root itself because Claude Code requires plugin content at the plugin
+# root (skills/, agents/). Cursor's cannot also be the repo root: the two
+# flavors would then write the same skills/<name>/SKILL.md and one would
+# clobber the other. Cursor's manifest names .cursor-plugin/ explicitly,
+# which per the Cursor spec replaces folder discovery — so Cursor reads the
+# Cursor render and never sees the Claude one.
+FLAVOR_OUTPUT_ROOTS = {
+    "claude": "",
+    "cursor": ".cursor-plugin",
+}
+
+# Chunk: docs/chunks/dualplugin_cursor_scaffold - Cursor pilot scope boundary
+# The Cursor flavor renders only these templates. dualplugin_cursor_scaffold
+# proves the render target and the Cursor idiom partial on two pilots;
+# rendering the full surface is dualplugin_cursor_render's job. That chunk
+# removes this restriction by deleting the entry below, at which point
+# templates_for_flavor returns the whole collection for every flavor.
+FLAVOR_TEMPLATE_SUBSETS = {
+    "cursor": (
+        "skills/chunk-create.md.jinja2",
+        "skills/ve-status.md.jinja2",
+    ),
+}
 
 
 def plugin_collection_dir() -> pathlib.Path:
@@ -68,26 +105,55 @@ def list_plugin_templates() -> list[str]:
     return names
 
 
-def output_path(template_name: str, repo_root: pathlib.Path) -> pathlib.Path:
+# Chunk: docs/chunks/dualplugin_cursor_scaffold - Per-flavor template subsets
+def templates_for_flavor(flavor: str = DEFAULT_FLAVOR) -> list[str]:
+    """List the collection templates a flavor renders.
+
+    Every flavor renders the whole collection unless FLAVOR_TEMPLATE_SUBSETS
+    restricts it. A subset entry is a deliberate, temporary scope boundary
+    (see the Cursor entry there), never a permanent difference in surface:
+    the point of the collection is that both flavors carry the same content.
+    """
+    names = list_plugin_templates()
+    subset = FLAVOR_TEMPLATE_SUBSETS.get(flavor)
+    if subset is None:
+        return names
+    allowed = set(subset)
+    return [name for name in names if name in allowed]
+
+
+def output_path(
+    template_name: str, repo_root: pathlib.Path, flavor: str = DEFAULT_FLAVOR
+) -> pathlib.Path:
     """Map a collection-relative template name to its committed render path.
 
     Skills land in the agentskills.io layout — one directory per skill, content
-    in SKILL.md — which is the portable shape a non-Claude harness can consume:
+    in SKILL.md — which is the portable shape a non-Claude harness can consume.
+    The flavor selects the output root (FLAVOR_OUTPUT_ROOTS), so the two
+    flavors never write the same file:
 
-    "skills/ve-status.md.jinja2"       -> <repo_root>/skills/ve-status/SKILL.md
-    "agents/chunk-executor.md.jinja2"  -> <repo_root>/agents/chunk-executor.md
+    claude, "skills/ve-status.md.jinja2"
+        -> <repo_root>/skills/ve-status/SKILL.md
+    claude, "agents/chunk-executor.md.jinja2"
+        -> <repo_root>/agents/chunk-executor.md
+    cursor, "skills/ve-status.md.jinja2"
+        -> <repo_root>/.cursor-plugin/skills/ve-status/SKILL.md
     """
     rel = template_name
     if rel.endswith(".jinja2"):
         rel = rel[: -len(".jinja2")]
     parts = pathlib.PurePosixPath(rel).parts
+    root = repo_root
+    output_root = FLAVOR_OUTPUT_ROOTS.get(flavor, "")
+    if output_root:
+        root = root / output_root
     if parts[0] == SKILLS_KIND:
         name = pathlib.PurePosixPath(parts[-1]).stem
-        return repo_root / SKILLS_KIND / name / "SKILL.md"
-    return repo_root.joinpath(*parts)
+        return root / SKILLS_KIND / name / "SKILL.md"
+    return root.joinpath(*parts)
 
 
-def render_plugin_template(template_name: str, flavor: str = "claude") -> str:
+def render_plugin_template(template_name: str, flavor: str = DEFAULT_FLAVOR) -> str:
     """Render one collection template in the given flavor.
 
     Passes the two-variable render contract every template relies on:
@@ -105,23 +171,32 @@ def render_plugin_template(template_name: str, flavor: str = "claude") -> str:
     return rendered.rstrip("\n") + "\n"
 
 
-def is_plugin_source_repo(repo_root: pathlib.Path) -> bool:
-    """True if repo_root is the plugin source repository (render target guard).
+def flavor_manifest_relpath(flavor: str = DEFAULT_FLAVOR) -> pathlib.PurePosixPath:
+    """Return the manifest whose presence marks a render target for `flavor`."""
+    return FLAVOR_MANIFESTS.get(flavor, PLUGIN_MANIFEST_RELPATH)
+
+
+def is_plugin_source_repo(
+    repo_root: pathlib.Path, flavor: str = DEFAULT_FLAVOR
+) -> bool:
+    """True if repo_root is the plugin source repository for `flavor`.
 
     `ve plugin render` must never scaffold a skills/ tree in a consuming
-    project; only the repo carrying .claude-plugin/plugin.json is a valid
-    render target.
+    project; only the repo carrying the flavor's plugin manifest
+    (.claude-plugin/plugin.json, .cursor-plugin/plugin.json) is a valid
+    render target for that flavor.
     """
-    return repo_root.joinpath(*PLUGIN_MANIFEST_RELPATH.parts).is_file()
+    relpath = flavor_manifest_relpath(flavor)
+    return repo_root.joinpath(*relpath.parts).is_file()
 
 
 def render_plugin_collection(
-    repo_root: pathlib.Path, flavor: str = "claude"
+    repo_root: pathlib.Path, flavor: str = DEFAULT_FLAVOR
 ) -> list[pathlib.Path]:
-    """Render every collection template into repo_root; return written paths."""
+    """Render the flavor's templates into repo_root; return written paths."""
     written = []
-    for template_name in list_plugin_templates():
-        out = output_path(template_name, repo_root)
+    for template_name in templates_for_flavor(flavor):
+        out = output_path(template_name, repo_root, flavor)
         out.parent.mkdir(parents=True, exist_ok=True)
         out.write_text(render_plugin_template(template_name, flavor))
         written.append(out)
