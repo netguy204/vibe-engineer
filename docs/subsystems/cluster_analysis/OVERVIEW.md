@@ -5,6 +5,8 @@ chunks:
     relationship: uses
   - chunk_id: chunks_decompose
     relationship: implements
+  - chunk_id: audit_corpus_health
+    relationship: implements
 code_references:
 - ref: src/cluster_analysis.py#ClusterInfo
   implements: Cluster data model with prefix, chunks, and characteristics
@@ -48,6 +50,18 @@ code_references:
 - ref: src/ve.py#suggest_prefix_cmd
   implements: CLI command for chunk prefix suggestion
   compliance: COMPLIANT
+- ref: src/cluster_analysis.py#partition_chunks
+  implements: Whole-corpus grouping under both the code-overlap and content-similarity relations
+  compliance: COMPLIANT
+- ref: src/cluster_analysis.py#_code_overlap_clusters
+  implements: Per-file overlapping cover with a fan-in ceiling excluding hub files
+  compliance: COMPLIANT
+- ref: src/cluster_analysis.py#PartitionResult
+  implements: Result dataclass carrying both relations, unclustered chunks, and skipped hub paths
+  compliance: COMPLIANT
+- ref: src/cli/chunk.py#partition
+  implements: CLI command exposing the corpus grouping as JSON for the audit-corpus skill
+  compliance: COMPLIANT
 created_after:
 - workflow_artifacts
 ---
@@ -56,10 +70,19 @@ created_after:
 
 ## Intent
 
-Help operators name chunks for semantic alphabetical clustering by
+Group chunks by what relates them, for two consumers.
+
+**Naming**: help operators name chunks for semantic alphabetical clustering by
 analyzing existing prefixes and suggesting names based on content similarity.
 Without this subsystem, chunk naming is ad-hoc and navigational structure degrades
 as the chunk count grows.
+
+**Auditing**: bound the cost of comparing chunks against each other. Redundancy
+between chunks is only detectable when two chunks are read together, and reading
+every pair is quadratic — intractable on a thousand-chunk corpus. The grouping is
+what makes a relational audit affordable, and computing it deterministically here
+rather than by agent judgment is what lets successive audits converge instead of
+reshuffling their findings.
 
 The key insight is that mid-sized semantic clusters (3-8 chunks) with domain-concept
 prefixes like `ordering_`, `taskdir_`, and `template_` produce coherent groupings
@@ -75,6 +98,8 @@ that aid filesystem navigation.
 - **Batch rename**: Rename multiple chunks sharing a prefix
 - **Backreference updates**: Update `# Chunk:` comments when renaming
 - **Naming guidance**: CLAUDE.md documentation for good naming practices
+- **Code-overlap grouping**: Group chunks by the files they claim, as an
+  overlapping cover with a fan-in ceiling on hub files
 
 ### Out of Scope
 

@@ -42,6 +42,7 @@ from validation import validate_identifier
 # in both directions, so a skill added or removed without updating it fails.
 KNOWN_EVENTS: frozenset[str] = frozenset(
     {
+        "audit-corpus",
         "audit-intent",
         "chunk-commit",
         "chunk-complete",

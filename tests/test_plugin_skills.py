@@ -183,6 +183,81 @@ class TestChunkCreateCommand:
         assert "ve chunk create" in body
 
 
+# Chunk: docs/chunks/audit_corpus_health - Corpus health audit skill
+class TestAuditCorpusSkill:
+    """The audit-corpus skill's load-bearing properties.
+
+    The skill is a prose artifact, so these are assertions about a document.
+    That is the thing being verified: the skill's behavior *is* its text, and
+    an agent reading it must find the axes defined, the partition named as the
+    grouping source, and the no-rewrite rule stated.
+    """
+
+    SKILL = SKILLS_DIR / "audit-corpus" / "SKILL.md"
+
+    def test_exists_with_frontmatter(self):
+        frontmatter = _parse_frontmatter(self.SKILL)
+        assert frontmatter["name"] == "audit-corpus"
+        assert frontmatter["description"]
+
+    def test_defines_all_four_audit_axes(self):
+        """Two runs only mean the same thing if the axes are pinned."""
+        body = self.SKILL.read_text().lower()
+        for axis in ("validity", "freshness", "accuracy", "redundancy"):
+            assert axis in body, f"audit-corpus must define the {axis} axis"
+
+    def test_takes_its_grouping_from_the_partition_command(self):
+        body = self.SKILL.read_text()
+        assert "ve chunk partition" in body, (
+            "the relational pass must consume the deterministic CLI grouping, "
+            "not a grouping the agent invents"
+        )
+
+    def test_delegates_validity_to_the_validator(self):
+        """Re-deriving reference integrity would eventually disagree with it."""
+        body = self.SKILL.read_text()
+        assert "ve validate" in body
+
+    def test_delegates_per_chunk_audit_to_the_intent_auditor_agent(self):
+        body = self.SKILL.read_text()
+        assert "intent-auditor" in body
+
+    def test_states_the_two_pass_structure_and_why(self):
+        """The locality argument is why the passes are partitioned differently."""
+        body = self.SKILL.read_text().lower()
+        assert "relational" in body and "local" in body
+
+    def test_forbids_rewriting_chunks(self):
+        """The no-rewrite rule is what makes the skill safe on a foreign corpus."""
+        body = self.SKILL.read_text()
+        assert "REPORT ONLY" in body, (
+            "the sub-agent task message must impose read-only explicitly, "
+            "because intent-auditor rewrites by default"
+        )
+
+    def test_reports_what_it_did_not_cover(self):
+        body = self.SKILL.read_text()
+        assert "unclustered" in body and "high_fan_in_paths" in body, (
+            "the audit's blind spots must reach the report; an unnamed blind "
+            "spot reads as ground that was covered"
+        )
+
+    def test_distinguishes_itself_from_audit_intent(self):
+        body = self.SKILL.read_text()
+        assert "audit-intent" in body
+
+    def test_names_the_per_tree_route_for_workspaces(self):
+        """`ve chunk partition` has no --workspace flag, so the skill has to
+        say how a member tree's clusters are obtained."""
+        body = self.SKILL.read_text()
+        assert "--project-dir" in body
+
+    def test_gives_an_interrupted_run_a_way_to_resume(self):
+        """A corpus large enough to need this skill will be interrupted."""
+        body = self.SKILL.read_text().lower()
+        assert "resum" in body
+
+
 def _extract_context_shell_lines(path) -> list[str]:
     """Pull the !`...` shell commands out of a command's Context block."""
     return re.findall(r"!`([^`]+)`", path.read_text())
