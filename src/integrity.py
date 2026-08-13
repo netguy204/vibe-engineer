@@ -19,14 +19,15 @@ import re
 from dataclasses import dataclass, field
 from typing import Literal, Protocol, TYPE_CHECKING
 
-from backreferences import CHUNK_BACKREF_PATTERN, SUBSYSTEM_BACKREF_PATTERN
-from external_refs import is_external_artifact
+from backreferences import parse_backreference
+from external_refs import ARTIFACT_DIR_NAME, is_external_artifact, load_external_ref
 from friction import Friction
 from investigations import Investigations
-from models import ArtifactType, ChunkFrontmatter
+from models import ArtifactType, ChunkFrontmatter, ChunkStatus
 from narratives import Narratives
 from source_files import enumerate_source_files
 from subsystems import Subsystems
+from symbols import expand_glob, is_glob_pattern
 
 if TYPE_CHECKING:
     from chunks import Chunks
@@ -92,6 +93,10 @@ class IntegrityResult:
     chunk_backrefs_found: int = 0
     subsystem_backrefs_found: int = 0
     external_chunks_skipped: int = 0
+    # Chunk: docs/chunks/validation_backref_allowlist - Suppression is reported, not silent
+    backrefs_suppressed: int = 0
+    # Chunk: docs/chunks/crossref_unchecked_anchors - Symbol anchors ve validate does not check
+    symbol_anchors_unchecked: int = 0
 
 
 # Chunk: docs/chunks/integrity_validate - Core integrity validator class
@@ -112,6 +117,10 @@ class IntegrityValidator:
             from project import Project
             project = Project(self.project_dir)
         self._project = project
+        # Chunk: docs/chunks/validation_backref_allowlist - Declared non-reference paths
+        from template_system import load_ve_config
+
+        self.ve_config = load_ve_config(self.project_dir)
         # Access managers via project properties
         self.chunks = self._project.chunks
         self.narratives = self._project.narratives
@@ -137,6 +146,10 @@ class IntegrityValidator:
         self._subsystem_chunks: dict[str, set[str]] = {}
         # Maps chunk_name -> set of file paths referenced in its code_references
         self._chunk_code_files: dict[str, set[str]] = {}
+        # Chunk: docs/chunks/crossref_unchecked_anchors - Symbol anchors this validator does not check
+        # `ve validate` verifies declared file parts only; every symbol anchor
+        # it walks past is unchecked here, and the count says so.
+        self._symbol_anchors_unchecked: int = 0
 
     def _build_artifact_index(self) -> None:
         """Build in-memory index of all existing artifacts.
@@ -278,6 +291,7 @@ class IntegrityValidator:
         """
         errors: list[IntegrityError] = []
         warnings: list[IntegrityWarning] = []
+        self._symbol_anchors_unchecked = 0
 
         # Build index of existing artifacts
         self._build_artifact_index()
@@ -301,6 +315,8 @@ class IntegrityValidator:
             chunk_errors, chunk_warnings = self._validate_chunk_outbound(chunk_name)
             errors.extend(chunk_errors)
             warnings.extend(chunk_warnings)
+            # Chunk: docs/chunks/crossref_rename_integrity - Stale declared paths fail loudly
+            errors.extend(self._validate_chunk_file_paths(chunk_name))
 
         # 2. Validate narrative → chunk references
         for narrative_name in self._narrative_names:
@@ -331,17 +347,28 @@ class IntegrityValidator:
         backref_errors, backref_warnings, files_count, chunk_refs, subsystem_refs = (
             self._validate_code_backreferences()
         )
+        # Chunk: docs/chunks/validation_backref_allowlist - Suppress declared non-references
+        backref_errors, backref_warnings, stale_entries, suppressed = (
+            self._apply_backreference_allowlist(backref_errors, backref_warnings)
+        )
         errors.extend(backref_errors)
         warnings.extend(backref_warnings)
-
-        # 7. Validate VE hook filenames against the known command vocabulary
-        warnings.extend(self._validate_hook_events())
+        warnings.extend(stale_entries)
+        backrefs_suppressed = suppressed
         files_scanned = files_count
         chunk_backrefs_found = chunk_refs
         subsystem_backrefs_found = subsystem_refs
 
+        # 7. Report cross-repo pointers nobody has ever resolved
+        warnings.extend(self._validate_external_ever_resolved())
+
+        # 8. Validate VE hook filenames against the known command vocabulary
+        warnings.extend(self._validate_hook_events())
+
         return IntegrityResult(
             success=len(errors) == 0,
+            backrefs_suppressed=backrefs_suppressed,
+            symbol_anchors_unchecked=self._symbol_anchors_unchecked,
             errors=errors,
             warnings=warnings,
             chunks_scanned=chunks_scanned,
@@ -398,6 +425,150 @@ class IntegrityValidator:
             )
 
         return warnings
+
+    # Chunk: docs/chunks/external_never_resolved - Never-verified cross-repo pointers
+    def _validate_external_ever_resolved(self) -> list[IntegrityWarning]:
+        """Warn for `repo:` pointers that have never once resolved.
+
+        This reads only the local file. VE still declines to say whether a
+        cross-repository target *exists* — that needs network or cache state,
+        and per docs/trunk/EXTERNAL.md "a gate whose verdict depends on a warm
+        cache is not a gate." What it can say without leaving the disk is
+        whether anybody has ever successfully looked, which is what separates a
+        pointer that dangled from birth from one merely unverified today.
+
+        Peers are excluded: `ve workspace validate` already resolves them
+        structurally and reports a bad one as `missing-target`.
+
+        A warning, not an error: every pointer is unresolved from the moment it
+        is written until someone resolves it, so erroring would fail correct work.
+        """
+        warnings: list[IntegrityWarning] = []
+
+        for artifact_type in ArtifactType:
+            dir_name = ARTIFACT_DIR_NAME[artifact_type]
+            type_root = self.project_dir / "docs" / dir_name
+            if not type_root.is_dir():
+                continue
+
+            for artifact_dir in sorted(type_root.iterdir()):
+                if not artifact_dir.is_dir():
+                    continue
+                if not is_external_artifact(artifact_dir, artifact_type):
+                    continue
+                try:
+                    ref = load_external_ref(artifact_dir)
+                except Exception:
+                    # Malformed pointers are another check's business; a crash
+                    # here would take the whole validation run down with it.
+                    continue
+                if ref.is_peer or ref.last_resolved is not None:
+                    continue
+
+                source = f"docs/{dir_name}/{artifact_dir.name}/external.yaml"
+                warnings.append(
+                    IntegrityWarning(
+                        source=source,
+                        target=f"{ref.repo}::docs/{dir_name}/{ref.artifact_id}",
+                        link_type="external→never-resolved",
+                        message=(
+                            f"Cross-repo pointer to '{ref.repo}' has never resolved — "
+                            f"no successful read has ever been recorded, so this may "
+                            f"have dangled since it was written. Run "
+                            f"`ve external resolve {artifact_dir.name}` to verify it"
+                        ),
+                    )
+                )
+
+        return warnings
+
+    # Chunk: docs/chunks/crossref_rename_integrity - File-existence check for chunk-declared paths
+    # Chunk: docs/chunks/crossref_glob_refs - Glob entries error only on empty expansion
+    def _validate_chunk_file_paths(self, chunk_name: str) -> list[IntegrityError]:
+        """Validate that a chunk's declared file paths exist on disk.
+
+        Applies only to ACTIVE and COMPOSITE chunks. FUTURE and IMPLEMENTING
+        chunks legitimately list files they expect to create, and HISTORICAL/
+        SUPERSEDED chunks keep archaeological references to code that may be
+        gone. A stale path on a chunk that currently owns intent is broken
+        addressing — an error, so a rename cannot silently strand the
+        references pointing at the old path.
+
+        Entries containing glob magic (``packages/tasks/*/Dockerfile``) are
+        patterns: they expand against the project root and error only when
+        the expansion is empty, so "this change applies uniformly across N
+        packages" is expressible without enumerating N paths that rot
+        independently.
+
+        Symbol anchors (``#Symbol``) are *not* checked here — only the file
+        part is. Every anchor walked past is counted in
+        ``_symbol_anchors_unchecked`` so the report can state what this
+        validator is not seeing (symbol checking runs in ``ve chunk
+        validate``, ``ve subsystem validate``, and ``ve workspace validate``).
+        """
+        errors: list[IntegrityError] = []
+
+        frontmatter = self.chunks.parse_chunk_frontmatter(chunk_name)
+        if frontmatter is None:
+            return errors
+        if frontmatter.status not in (ChunkStatus.ACTIVE, ChunkStatus.COMPOSITE):
+            return errors
+
+        seen: set[tuple[str, str]] = set()
+
+        def check(path: str, field_name: str) -> None:
+            key = (field_name, path)
+            if key in seen:
+                return
+            seen.add(key)
+            # Chunk: docs/chunks/federation_member_refs - Qualified entries defer to workspace validation
+            # A qualified file part (`member::path` or `org/repo::path`) names
+            # another tree or repository; checking it against this project root
+            # would invent a "does not exist" error for a reference that points
+            # elsewhere on purpose — the same deferral
+            # _validate_code_backreferences applies to qualified comments.
+            if "::" in path:
+                return
+            if is_glob_pattern(path):
+                if not expand_glob(self.project_dir, path):
+                    errors.append(
+                        IntegrityError(
+                            source=f"docs/chunks/{chunk_name}/GOAL.md",
+                            target=path,
+                            link_type="chunk→file",
+                            message=(
+                                f"{field_name} glob pattern '{path}' matches "
+                                "nothing — if the matching files were moved or "
+                                "renamed, update this pattern"
+                            ),
+                        )
+                    )
+                return
+            if not (self.project_dir / path).exists():
+                errors.append(
+                    IntegrityError(
+                        source=f"docs/chunks/{chunk_name}/GOAL.md",
+                        target=path,
+                        link_type="chunk→file",
+                        message=(
+                            f"{field_name} entry '{path}' does not exist — if the "
+                            "file was moved or renamed, update this reference"
+                        ),
+                    )
+                )
+
+        for path in frontmatter.code_paths or []:
+            check(path, "code_paths")
+
+        for ref in frontmatter.code_references or []:
+            # Extract file path from ref (format: file_path or file_path#symbol)
+            file_part, _, symbol_part = ref.ref.partition("#")
+            check(file_part, "code_references")
+            # Chunk: docs/chunks/crossref_unchecked_anchors - Anchors walked past are counted
+            if symbol_part:
+                self._symbol_anchors_unchecked += 1
+
+        return errors
 
     # Chunk: docs/chunks/integrity_bidirectional - Bidirectional checks for chunk↔narrative and chunk↔investigation
     def _validate_chunk_outbound(
@@ -686,6 +857,68 @@ class IntegrityValidator:
     # Chunk: docs/chunks/integrity_code_backrefs - Line-by-line scanning with line number tracking
     # Chunk: docs/chunks/integrity_bidirectional - Extended with code↔chunk bidirectional warnings
     # Chunk: docs/chunks/backref_language_agnostic - Language-agnostic source file enumeration
+    # Chunk: docs/chunks/federation_qualified_refs - Single-tree checks apply to bare refs only
+    # Chunk: docs/chunks/validation_backref_allowlist - Suppression is a separate pass
+    def _apply_backreference_allowlist(
+        self,
+        errors: list[IntegrityError],
+        warnings: list[IntegrityWarning],
+    ) -> tuple[list[IntegrityError], list[IntegrityWarning], list[IntegrityWarning], int]:
+        """Drop findings from declared non-reference paths.
+
+        A filter over completed findings rather than a branch inside the scan:
+        the scanner keeps reporting everything it sees, and suppression is one
+        reviewable step that can be tested on its own.
+
+        An entry that suppressed nothing comes back as a warning. That is the
+        whole reason this is not a bare list of globs — a suppression outliving
+        its cause is a defect waiting to be hidden, and the only way it stays
+        visible is if the validator says so unprompted.
+
+        Returns:
+            (kept_errors, kept_warnings, stale_entry_warnings, suppressed_count)
+        """
+        entries = self.ve_config.ignore_backreferences
+        if not entries:
+            return errors, warnings, [], 0
+
+        used: set[str] = set()
+
+        def covered(source: str) -> bool:
+            # source is "path:line"; the path may itself contain no colon on
+            # any platform VE supports, so rsplit is safe and cheap.
+            path = source.rsplit(":", 1)[0]
+            hit = False
+            for entry in entries:
+                if entry.matches(path):
+                    used.add(entry.path)
+                    hit = True
+            return hit
+
+        kept_errors = [e for e in errors if not covered(e.source)]
+        kept_warnings = [w for w in warnings if not covered(w.source)]
+        suppressed = (len(errors) - len(kept_errors)) + (
+            len(warnings) - len(kept_warnings)
+        )
+
+        stale = [
+            IntegrityWarning(
+                source=".ve-config.yaml",
+                target=entry.path,
+                link_type="allowlist→unused",
+                message=(
+                    f"validation.ignore_backreferences entry '{entry.path}' "
+                    f"suppressed nothing ({entry.reason}). Remove it, or correct "
+                    "the path — an entry that matches nothing today will hide a "
+                    "real reference the day something moves into its path."
+                ),
+            )
+            for entry in entries
+            if entry.path not in used
+        ]
+
+        return kept_errors, kept_warnings, stale, suppressed
+
     def _validate_code_backreferences(
         self,
     ) -> tuple[list[IntegrityError], list[IntegrityWarning], int, int, int]:
@@ -721,11 +954,19 @@ class IntegrityValidator:
 
             # Iterate line-by-line to track line numbers (1-indexed)
             for line_num, line in enumerate(content.splitlines(), start=1):
+                # A qualified reference (`member::docs/chunks/x`) names an artifact
+                # in another tree, so checking it against this tree's artifact names
+                # would invent errors for references that are pointing elsewhere on
+                # purpose. Qualified and malformed-qualifier references are reported
+                # by `ve workspace validate`, which can resolve them.
+                parsed = parse_backreference(line, line_number=line_num)
+                if parsed is None or not parsed.is_bare:
+                    continue
+
                 # Check for chunk backreferences
-                match = CHUNK_BACKREF_PATTERN.match(line)
-                if match:
+                if parsed.artifact_type == ArtifactType.CHUNK:
                     chunk_refs_found += 1
-                    chunk_id = match.group(1)
+                    chunk_id = parsed.artifact_id
                     # Check both local and external chunks - external chunks are valid
                     # targets for code backreferences (their directory exists locally)
                     is_local_chunk = chunk_id in self._chunk_names
@@ -756,10 +997,9 @@ class IntegrityValidator:
                     # External chunks: no bidirectional check (validated in home repo)
 
                 # Check for subsystem backreferences
-                match = SUBSYSTEM_BACKREF_PATTERN.match(line)
-                if match:
+                if parsed.artifact_type == ArtifactType.SUBSYSTEM:
                     subsystem_refs_found += 1
-                    subsystem_id = match.group(1)
+                    subsystem_id = parsed.artifact_id
                     if subsystem_id not in self._subsystem_names:
                         errors.append(
                             IntegrityError(

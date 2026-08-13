@@ -9,9 +9,15 @@ code_paths:
 - tests/test_entity_shutdown_cli.py
 code_references:
 - ref: src/entity_shutdown.py#run_consolidation
-  implements: "Read existing journal entries from disk and include them in consolidation; delete consolidated journal files after successful API call"
+  implements: Read existing journal entries from disk and include them in consolidation;
+    delete consolidated journal files after successful API call
 - ref: src/cli/entity.py#shutdown
-  implements: "Accept empty input ([] or blank) instead of rejecting it, enabling consolidation of existing journals only"
+  implements: Accept empty input ([] or blank) instead of rejecting it, enabling consolidation
+    of existing journals only
+- ref: tests/test_entity_shutdown.py
+  implements: Referenced by tests/test_entity_shutdown.py
+- ref: tests/test_entity_shutdown_cli.py
+  implements: Referenced by tests/test_entity_shutdown_cli.py
 narrative: null
 investigation: null
 subsystems: []
@@ -26,7 +32,6 @@ created_after:
 - entity_touch_command
 - orch_retry_single
 ---
-
 # Chunk Goal
 
 ## Minor Goal

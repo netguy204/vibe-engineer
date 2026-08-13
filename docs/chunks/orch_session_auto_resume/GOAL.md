@@ -8,14 +8,18 @@ code_paths:
 - tests/test_orchestrator_retry.py
 - tests/test_orchestrator_scheduler.py
 code_references:
-  - ref: src/orchestrator/retry.py#is_session_limit_error
-    implements: "Session limit error detection with reset time pattern matching"
-  - ref: src/orchestrator/retry.py#parse_reset_time
-    implements: "Reset time parsing with timezone conversion to UTC"
-  - ref: src/orchestrator/scheduler.py#Scheduler::_schedule_session_retry
-    implements: "Schedule retry at parsed reset time instead of exponential backoff"
-  - ref: src/orchestrator/scheduler.py#Scheduler::_handle_agent_result
-    implements: "Priority-ordered error handling: session limit → 5xx → NEEDS_ATTENTION"
+- ref: src/orchestrator/retry.py#is_session_limit_error
+  implements: Session limit error detection with reset time pattern matching
+- ref: src/orchestrator/retry.py#parse_reset_time
+  implements: Reset time parsing with timezone conversion to UTC
+- ref: src/orchestrator/scheduler.py#Scheduler::_schedule_session_retry
+  implements: Schedule retry at parsed reset time instead of exponential backoff
+- ref: src/orchestrator/scheduler.py#Scheduler::_handle_agent_result
+  implements: "Priority-ordered error handling: session limit \u2192 5xx \u2192 NEEDS_ATTENTION"
+- ref: tests/test_orchestrator_retry.py
+  implements: Session limit error detection and retry
+- ref: tests/test_orchestrator_scheduler.py
+  implements: Session limit retry scheduling tests
 narrative: null
 investigation: null
 subsystems:
@@ -30,7 +34,6 @@ created_after:
 - chunks_class_decouple
 - scheduler_decompose_methods
 ---
-
 # Auto-resume work units after session limit reset
 
 ## Minor Goal

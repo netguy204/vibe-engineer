@@ -8,9 +8,13 @@ code_paths:
 - tests/test_orchestrator_worktree.py
 code_references:
 - ref: src/orchestrator/worktree.py#WorktreeManager::_reap_worktree_processes
-  implements: "Core process-reaping logic: scan for processes in worktree path, SIGTERM → wait 5s → SIGKILL survivors"
+  implements: "Core process-reaping logic: scan for processes in worktree path, SIGTERM\
+    \ \u2192 wait 5s \u2192 SIGKILL survivors"
 - ref: src/orchestrator/worktree.py#WorktreeManager::_remove_worktree_from_repo
-  implements: "Integration point: calls _reap_worktree_processes before git worktree removal"
+  implements: 'Integration point: calls _reap_worktree_processes before git worktree
+    removal'
+- ref: tests/test_orchestrator_worktree.py
+  implements: Tests for process reaping before worktree removal
 narrative: null
 investigation: null
 subsystems: []
@@ -20,8 +24,6 @@ depends_on: []
 created_after:
 - wiki_identity_routing
 ---
-
-
 # Chunk Goal
 
 ## Minor Goal

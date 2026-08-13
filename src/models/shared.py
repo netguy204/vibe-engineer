@@ -9,9 +9,15 @@ from pydantic import BaseModel, field_validator
 from validation import validate_identifier
 
 
+# Chunk: docs/chunks/crossref_artifact_id_cap - Length capped by path legality, not 31
 def _require_valid_dir_name(value: str, field_name: str) -> str:
-    """Validate a directory name, raising ValueError if invalid."""
-    errors = validate_identifier(value, field_name, allow_dot=True, max_length=31)
+    """Validate a directory name, raising ValueError if invalid.
+
+    Length is bounded by the filesystem path-component limit (the
+    validate_identifier default), so ordinary descriptive artifact names of
+    any realistic length are representable.
+    """
+    errors = validate_identifier(value, field_name, allow_dot=True)
     if errors:
         raise ValueError("; ".join(errors))
     return value
@@ -47,6 +53,54 @@ def _require_valid_repo_ref(value: str, field_name: str) -> str:
         raise ValueError("; ".join(repo_errors))
 
     return value
+
+
+# Chunk: docs/chunks/federation_member_refs - One qualifier shape rule for comments and frontmatter
+def classify_qualifier_shape(qualifier: str) -> tuple[str, str | None]:
+    """Classify a ``::`` qualifier by shape alone.
+
+    The single authority for what a qualifier *is*, shared by the comment
+    grammar (``backreferences._classify_qualifier``) and the frontmatter
+    model (``models.references.SymbolicReference``) so the two cannot drift:
+
+    - no ``/``  → ``"member"``: another VE tree in the same workspace. The
+      shape is an identifier (dots allowed) with no length cap — how long a
+      member name may be is the workspace manifest's rule.
+    - one ``/`` → ``"repo"``: a GitHub-style ``org/repo`` reference to a
+      tree in another repository.
+    - anything else → ``"invalid"``, with a reason.
+
+    Existence is deliberately not checked here: a well-formed member
+    qualifier naming a tree that does not exist is still ``"member"``, and
+    reporting that is the workspace validator's job.
+
+    Callers split on ``::`` first; `qualifier` must be non-empty and must
+    not itself contain ``::``.
+
+    Returns:
+        ``(kind, reason)`` where kind is ``"member"``, ``"repo"``, or
+        ``"invalid"``; reason is None unless kind is ``"invalid"``.
+    """
+    slash_count = qualifier.count("/")
+    if slash_count == 0:
+        errors = validate_identifier(
+            qualifier, "member qualifier", allow_dot=True, max_length=None
+        )
+        if errors:
+            return "invalid", "; ".join(errors)
+        return "member", None
+
+    if slash_count == 1:
+        try:
+            _require_valid_repo_ref(qualifier, "repo qualifier")
+        except ValueError as exc:
+            return "invalid", str(exc)
+        return "repo", None
+
+    return "invalid", (
+        f"qualifier '{qualifier}' must be a workspace member name (no '/') or an "
+        "'org/repo' reference (exactly one '/')"
+    )
 
 
 # Regex for validating 40-character hex SHA

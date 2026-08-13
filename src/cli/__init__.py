@@ -38,14 +38,25 @@ from cli.reviewer import reviewer
 from cli.board import board
 from cli.entity import entity
 from cli.wiki import wiki
+from cli.plugin import plugin
+# Chunk: docs/chunks/federation_workspace_manifest - `ve workspace` manifest commands
+from cli.workspace import workspace
+# Chunk: docs/chunks/federation_template_pointers - `ve package scaffold` pointer-only members
+from cli.package import package
 # Chunk: docs/chunks/entity_config_toml - Operator-level `~/.ve-config.toml` and `ve config show`
 from cli.config import config
 # Chunk: docs/chunks/hooks_lifecycle_fragments - `ve hooks show|list` for docs/hooks/ fragments
 from cli.hooks import hooks
+# Chunk: docs/chunks/crossref_absence_evidence - `ve exists` and `ve deletion`
+from cli.exists_cmd import exists
+from cli.deletion import deletion
+# Chunk: docs/chunks/crossref_refactor_move - `ve refactor move` evidence-backed rename propagation
+from cli.refactor import refactor
 
 # Add top-level commands
 cli.add_command(init)
 cli.add_command(validate)
+cli.add_command(exists)
 
 # Add command groups
 cli.add_command(chunk)
@@ -62,5 +73,18 @@ cli.add_command(reviewer)
 cli.add_command(board)
 cli.add_command(entity)
 cli.add_command(wiki)
+cli.add_command(plugin)
+cli.add_command(workspace)
+cli.add_command(package)
 cli.add_command(config)
 cli.add_command(hooks)
+cli.add_command(deletion)
+cli.add_command(refactor)
+
+# Chunk: docs/chunks/federation_tree_discovery - Resolve --project-dir to the nearest enclosing VE tree
+# KEEP THIS LAST: the installer walks the command tree as it exists when called,
+# so a group registered after this line would silently miss tree discovery.
+# New cli.add_command(...) calls belong above.
+from cli.tree_discovery import install_tree_discovery
+
+install_tree_discovery(cli)

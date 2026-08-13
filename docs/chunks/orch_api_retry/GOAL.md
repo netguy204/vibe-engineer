@@ -8,24 +8,26 @@ code_paths:
 - src/orchestrator/scheduler.py
 - tests/test_orchestrator_scheduler.py
 code_references:
-  - ref: src/orchestrator/models.py#OrchestratorConfig
-    implements: "API retry configuration (initial delay, max delay, max attempts)"
-  - ref: src/orchestrator/models.py#WorkUnit
-    implements: "API retry state fields (api_retry_count, next_retry_at)"
-  - ref: src/orchestrator/state.py#StateStore::_migrate_v12
-    implements: "Database migration adding api_retry_count and next_retry_at columns"
-  - ref: src/orchestrator/retry.py#is_retryable_api_error
-    implements: "Pattern matching to detect 5xx API errors"
-  - ref: src/orchestrator/scheduler.py#Scheduler::_schedule_api_retry
-    implements: "Exponential backoff retry scheduling logic"
-  - ref: src/orchestrator/scheduler.py#Scheduler::_dispatch_tick
-    implements: "Dispatch loop respecting next_retry_at timing"
-  - ref: src/orchestrator/scheduler.py#Scheduler::_handle_agent_result
-    implements: "Error handling branching for retryable vs non-retryable errors"
-  - ref: src/orchestrator/scheduler.py#Scheduler::_advance_phase
-    implements: "Reset retry state on successful phase advancement"
-  - ref: src/orchestrator/retry.py
-    implements: "Pattern matching for retryable API errors"
+- ref: src/orchestrator/models.py#OrchestratorConfig
+  implements: API retry configuration (initial delay, max delay, max attempts)
+- ref: src/orchestrator/models.py#WorkUnit
+  implements: API retry state fields (api_retry_count, next_retry_at)
+- ref: src/orchestrator/state.py#StateStore::_migrate_v12
+  implements: Database migration adding api_retry_count and next_retry_at columns
+- ref: src/orchestrator/retry.py#is_retryable_api_error
+  implements: Pattern matching to detect 5xx API errors
+- ref: src/orchestrator/scheduler.py#Scheduler::_schedule_api_retry
+  implements: Exponential backoff retry scheduling logic
+- ref: src/orchestrator/scheduler.py#Scheduler::_dispatch_tick
+  implements: Dispatch loop respecting next_retry_at timing
+- ref: src/orchestrator/scheduler.py#Scheduler::_handle_agent_result
+  implements: Error handling branching for retryable vs non-retryable errors
+- ref: src/orchestrator/scheduler.py#Scheduler::_advance_phase
+  implements: Reset retry state on successful phase advancement
+- ref: src/orchestrator/retry.py
+  implements: Pattern matching for retryable API errors
+- ref: tests/test_orchestrator_scheduler.py
+  implements: Tests for API retry functionality
 narrative: null
 investigation: null
 subsystems: []
@@ -35,7 +37,6 @@ depends_on: []
 created_after:
 - orch_question_capture
 ---
-
 # Chunk Goal
 
 ## Minor Goal

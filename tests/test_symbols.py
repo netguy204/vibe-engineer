@@ -382,3 +382,387 @@ class TestOverlapDetectionAcrossProjects:
         """File-level references don't overlap across projects."""
         # File reference doesn't contain symbols from different project
         assert is_parent_of("org/a::src/foo.py", "org/b::src/foo.py#Bar") is False
+
+
+# Chunk: docs/chunks/crossref_generator_verify - Shared reference-existence check tests
+class TestCheckReferenceTarget:
+    """Tests for check_reference_target dispositions.
+
+    Success criterion: a single shared check reports absence (missing file,
+    missing Python symbol) as an error, unparseable Python as a warning,
+    and verified / non-checkable targets as clean.
+    """
+
+    def test_missing_file_is_error(self, tmp_path: Path):
+        """A reference naming a nonexistent file returns an error."""
+        from symbols import check_reference_target
+
+        error, warning = check_reference_target(tmp_path, "src/nope.py#Thing")
+        assert error is not None
+        assert "src/nope.py" in error
+        assert warning is None
+
+    def test_missing_symbol_in_parseable_python_is_error(self, tmp_path: Path):
+        """An invented symbol in a real, parseable Python file is an error."""
+        from symbols import check_reference_target
+
+        src = tmp_path / "src"
+        src.mkdir()
+        (src / "mod.py").write_text("class RealClass:\n    pass\n")
+
+        error, warning = check_reference_target(tmp_path, "src/mod.py#InventedClass")
+        assert error is not None
+        assert "InventedClass" in error
+        assert warning is None
+
+    def test_existing_symbol_is_clean(self, tmp_path: Path):
+        """A reference to a defined symbol passes with no error or warning."""
+        from symbols import check_reference_target
+
+        src = tmp_path / "src"
+        src.mkdir()
+        (src / "mod.py").write_text("class RealClass:\n    def method(self):\n        pass\n")
+
+        assert check_reference_target(tmp_path, "src/mod.py#RealClass") == (None, None)
+        assert check_reference_target(tmp_path, "src/mod.py#RealClass::method") == (None, None)
+
+    def test_file_only_reference_checks_existence_only(self, tmp_path: Path):
+        """A file-only reference passes iff the file exists."""
+        from symbols import check_reference_target
+
+        (tmp_path / "README.md").write_text("hello\n")
+
+        assert check_reference_target(tmp_path, "README.md") == (None, None)
+        error, _ = check_reference_target(tmp_path, "MISSING.md")
+        assert error is not None
+
+    def test_directory_reference_is_clean(self, tmp_path: Path):
+        """A file-only reference to an existing directory passes."""
+        from symbols import check_reference_target
+
+        (tmp_path / "pkg").mkdir()
+        assert check_reference_target(tmp_path, "pkg") == (None, None)
+
+    # Chunk: docs/chunks/crossref_unchecked_anchors - Uncheckable anchors are stated, not passed
+    def test_non_python_symbol_anchor_is_unchecked_warning(self, tmp_path: Path):
+        """Symbol anchors on non-Python files are UNCHECKED: warning, not silence.
+
+        There is no symbol checker for YAML/Markdown/etc., and a silent pass
+        reads as coverage that never happened.
+        """
+        from symbols import check_reference_target
+
+        (tmp_path / "config.yaml").write_text("key: value\n")
+        error, warning = check_reference_target(tmp_path, "config.yaml#key")
+        assert error is None
+        assert warning is not None
+        assert "not checked" in warning
+        assert "config.yaml" in warning
+
+    def test_non_identifier_anchor_on_python_file_is_unchecked_warning(
+        self, tmp_path: Path
+    ):
+        """A dotted/bracketed anchor leaf is undecidable: warning, never error.
+
+        Whole-word \\b semantics around dots and brackets are meaningless, so
+        the checker states UNCHECKED instead of scanning with undefined
+        behavior — the same undecidable signal that makes
+        name_is_reexport_only return None.
+        """
+        from symbols import check_reference_target
+
+        src = tmp_path / "src"
+        src.mkdir()
+        (src / "mod.py").write_text("class RealClass:\n    pass\n")
+
+        error, warning = check_reference_target(
+            tmp_path, "src/mod.py#jobs.Checks.steps[Seed workspace .venv]"
+        )
+        assert error is None
+        assert warning is not None
+        assert "not a checkable identifier" in warning
+
+    def test_empty_symbol_anchor_is_unchecked_warning(self, tmp_path: Path):
+        """A trailing '#' with no symbol is uncheckable, not silently passed."""
+        from symbols import check_reference_target
+
+        src = tmp_path / "src"
+        src.mkdir()
+        (src / "mod.py").write_text("class RealClass:\n    pass\n")
+
+        error, warning = check_reference_target(tmp_path, "src/mod.py#")
+        assert error is None
+        assert warning is not None
+        assert "not a checkable identifier" in warning
+
+    def test_module_level_constant_is_warning_not_error(self, tmp_path: Path):
+        """A name that occurs in the file but is not a def/class is uncheckable.
+
+        AST extraction only indexes functions and classes; a reference to a
+        module-level constant (e.g. VALID_TRANSITIONS) is legitimate and must
+        not be declared provably absent — that would false-block completion.
+        """
+        from symbols import check_reference_target
+
+        src = tmp_path / "src"
+        src.mkdir()
+        (src / "mod.py").write_text(
+            "VALID_TRANSITIONS = {1: 2}\n\n\nclass RealClass:\n    pass\n"
+        )
+
+        error, warning = check_reference_target(tmp_path, "src/mod.py#VALID_TRANSITIONS")
+        assert error is None
+        assert warning is not None
+        assert "VALID_TRANSITIONS" in warning
+
+    def test_name_absent_from_file_entirely_is_error(self, tmp_path: Path):
+        """A name that occurs nowhere in the file at all is provably absent."""
+        from symbols import check_reference_target
+
+        src = tmp_path / "src"
+        src.mkdir()
+        (src / "mod.py").write_text(
+            "SOME_CONST = 1\n\n\nclass RealClass:\n    pass\n"
+        )
+
+        error, warning = check_reference_target(tmp_path, "src/mod.py#GhostName")
+        assert error is not None
+        assert "GhostName" in error
+
+    def test_prefix_of_longer_name_is_still_error(self, tmp_path: Path):
+        """A symbol that only occurs as a prefix of a longer identifier is absent."""
+        from symbols import check_reference_target
+
+        src = tmp_path / "src"
+        src.mkdir()
+        (src / "mod.py").write_text(
+            "def validate_symbol_with_context():\n    pass\n"
+        )
+
+        error, warning = check_reference_target(tmp_path, "src/mod.py#validate_symbol")
+        assert error is not None
+
+    def test_unparseable_python_is_warning_not_error(self, tmp_path: Path):
+        """A Python file with a syntax error is uncheckable: warning, no error."""
+        from symbols import check_reference_target
+
+        src = tmp_path / "src"
+        src.mkdir()
+        (src / "broken.py").write_text("def broken(:\n")
+
+        error, warning = check_reference_target(tmp_path, "src/broken.py#broken")
+        assert error is None
+        assert warning is not None
+        assert "src/broken.py" in warning
+
+
+# Chunk: docs/chunks/crossref_glob_refs - Glob file parts in reference existence checking
+class TestCheckReferenceTargetGlobs:
+    """Glob file parts are patterns: error only when the expansion is empty."""
+
+    def _make_packages(self, tmp_path: Path) -> None:
+        for name in ("alpha", "beta"):
+            pkg = tmp_path / "packages" / "tasks" / name
+            pkg.mkdir(parents=True)
+            (pkg / "Dockerfile").write_text("FROM scratch\n")
+
+    def test_matching_glob_is_clean(self, tmp_path: Path):
+        """A pattern matching existing files is a verified reference."""
+        from symbols import check_reference_target
+
+        self._make_packages(tmp_path)
+        assert check_reference_target(tmp_path, "packages/tasks/*/Dockerfile") == (
+            None,
+            None,
+        )
+
+    def test_empty_glob_is_error(self, tmp_path: Path):
+        """A pattern matching nothing is an error naming the pattern."""
+        from symbols import check_reference_target
+
+        error, warning = check_reference_target(tmp_path, "packages/tasks/*/Dockerfile")
+        assert error is not None
+        assert "packages/tasks/*/Dockerfile" in error
+        assert warning is None
+
+    def test_symbol_anchor_on_glob_is_warning(self, tmp_path: Path):
+        """Symbols are not checked across expansions: uncheckable, not passed."""
+        from symbols import check_reference_target
+
+        pkg = tmp_path / "packages" / "alpha"
+        pkg.mkdir(parents=True)
+        (pkg / "handler.py").write_text("class Handler:\n    pass\n")
+
+        error, warning = check_reference_target(
+            tmp_path, "packages/*/handler.py#Handler"
+        )
+        assert error is None
+        assert warning is not None
+        assert "Handler" in warning
+        assert "not checked" in warning
+
+    def test_question_mark_and_bracket_patterns_are_globs(self, tmp_path: Path):
+        """All three glob magic characters mark a file part as a pattern."""
+        from symbols import is_glob_pattern
+
+        assert is_glob_pattern("src/*.py")
+        assert is_glob_pattern("src/mod?.py")
+        assert is_glob_pattern("src/[ab].py")
+        assert not is_glob_pattern("src/plain.py")
+
+    def test_malformed_pattern_is_empty_expansion_error(self, tmp_path: Path):
+        """A malformed pattern degrades to the empty-glob error, not a crash."""
+        from symbols import check_reference_target
+
+        error, warning = check_reference_target(tmp_path, "/absolute/*.py")
+        assert error is not None
+
+
+# Chunk: docs/chunks/crossref_reexport_absence - Re-export-only names are absent
+class TestNameIsReexportOnly:
+    """Decision table for the shared re-export-only predicate.
+
+    Success criterion: a name whose every whole-word occurrence sits inside
+    import statements or `__all__` string-list statements is decidably
+    "bound here, not defined here"; anything else stays conservative.
+    """
+
+    def test_plain_import_only_is_true(self):
+        from symbols import name_is_reexport_only
+
+        assert name_is_reexport_only("import Bar\n", "Bar") is True
+
+    def test_from_import_with_noqa_comment_is_true(self):
+        """The `# noqa: F401` field case: comment on the import line is covered."""
+        from symbols import name_is_reexport_only
+
+        content = "from ._impl import Bar  # noqa: F401\n"
+        assert name_is_reexport_only(content, "Bar") is True
+
+    def test_origin_name_of_aliased_import_is_true(self):
+        from symbols import name_is_reexport_only
+
+        content = "from x import Bar as Baz\n"
+        assert name_is_reexport_only(content, "Bar") is True
+
+    def test_multiline_parenthesized_import_is_true(self):
+        from symbols import name_is_reexport_only
+
+        content = "from x import (\n    Foo,\n    Bar,\n)\n"
+        assert name_is_reexport_only(content, "Bar") is True
+
+    def test_dunder_all_list_is_true(self):
+        from symbols import name_is_reexport_only
+
+        assert name_is_reexport_only('__all__ = ["Bar", "Foo"]\n', "Bar") is True
+
+    def test_dunder_all_augmented_and_append_are_true(self):
+        from symbols import name_is_reexport_only
+
+        assert name_is_reexport_only('__all__ += ["Bar"]\n', "Bar") is True
+        assert name_is_reexport_only('__all__.append("Bar")\n', "Bar") is True
+
+    def test_import_plus_real_definition_is_false(self):
+        """A local definition alongside the import keeps the name present."""
+        from symbols import name_is_reexport_only
+
+        content = "from x import Bar\n\n\nclass Bar:\n    pass\n"
+        assert name_is_reexport_only(content, "Bar") is False
+        content = "from x import Bar\nBar = compat_shim(Bar)\n"
+        assert name_is_reexport_only(content, "Bar") is False
+
+    def test_usage_docstring_and_offline_comment_are_false(self):
+        from symbols import name_is_reexport_only
+
+        assert name_is_reexport_only("result = Bar()\n", "Bar") is False
+        assert name_is_reexport_only('"""Uses Bar heavily."""\n', "Bar") is False
+        assert name_is_reexport_only("# Bar lives elsewhere\nx = 1\n", "Bar") is False
+
+    def test_compound_statement_mentioning_dunder_all_is_false(self):
+        """`if "Bar" in __all__:` guarding real code must not exclude the body."""
+        from symbols import name_is_reexport_only
+
+        content = 'if "Bar" in __all__:\n    Bar = make()\n'
+        assert name_is_reexport_only(content, "Bar") is False
+
+    def test_unparseable_content_is_none(self):
+        from symbols import name_is_reexport_only
+
+        assert name_is_reexport_only("def broken(:\n    Bar\n", "Bar") is None
+
+    def test_non_identifier_name_is_none(self):
+        from symbols import name_is_reexport_only
+
+        assert name_is_reexport_only("import Bar\n", "steps[Seed]") is None
+
+    def test_name_that_never_occurs_is_false(self):
+        """Callers establish occurrence first; True is reserved for re-exports."""
+        from symbols import name_is_reexport_only
+
+        assert name_is_reexport_only("import Foo\n", "Bar") is False
+
+
+# Chunk: docs/chunks/crossref_reexport_absence - Gate treats re-export-only as absent
+class TestCheckReferenceTargetReexports:
+    """check_reference_target dispositions for re-export-only names.
+
+    Success criterion: `pkg/__init__.py#Bar` where `Bar` is only re-exported
+    gates as an error naming the cause, while genuinely-present names and
+    unparseable files keep their current dispositions.
+    """
+
+    def test_reexport_only_name_is_error(self, tmp_path: Path):
+        from symbols import check_reference_target
+
+        pkg = tmp_path / "pkg"
+        pkg.mkdir()
+        (pkg / "__init__.py").write_text(
+            "from ._impl import Bar  # noqa: F401\n"
+        )
+
+        error, warning = check_reference_target(tmp_path, "pkg/__init__.py#Bar")
+        assert error is not None
+        assert "Bar" in error
+        assert "import" in error or "__all__" in error
+        assert warning is None
+
+    def test_dunder_all_only_name_is_error(self, tmp_path: Path):
+        from symbols import check_reference_target
+
+        src = tmp_path / "src"
+        src.mkdir()
+        (src / "mod.py").write_text('__all__ = ["Gadget"]\n')
+
+        error, warning = check_reference_target(tmp_path, "src/mod.py#Gadget")
+        assert error is not None
+        assert "Gadget" in error
+
+    def test_reexport_plus_fallback_assignment_is_warning(self, tmp_path: Path):
+        """try/except ImportError fallback idioms stay uncheckable, not absent."""
+        from symbols import check_reference_target
+
+        src = tmp_path / "src"
+        src.mkdir()
+        (src / "mod.py").write_text(
+            "try:\n"
+            "    from fast import Bar\n"
+            "except ImportError:\n"
+            "    Bar = None\n"
+        )
+
+        error, warning = check_reference_target(tmp_path, "src/mod.py#Bar")
+        assert error is None
+        assert warning is not None
+
+    def test_parseable_file_with_no_defs_and_absent_name_is_error(self, tmp_path: Path):
+        """Defines-nothing is no longer conflated with unparseable."""
+        from symbols import check_reference_target
+
+        src = tmp_path / "src"
+        src.mkdir()
+        (src / "mod.py").write_text("import os\n")
+
+        error, warning = check_reference_target(tmp_path, "src/mod.py#Ghost")
+        assert error is not None
+        assert "Ghost" in error
+        assert warning is None

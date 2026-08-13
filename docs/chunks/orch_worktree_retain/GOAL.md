@@ -13,6 +13,15 @@ code_paths:
 - tests/test_orchestrator_worktree.py
 - tests/test_orchestrator_scheduler.py
 - docs/trunk/ORCHESTRATOR.md
+- src/orchestrator/api/app.py
+- src/orchestrator/api/streaming.py
+- src/orchestrator/api/work_units.py
+- src/orchestrator/client.py
+- src/orchestrator/state.py
+- tests/test_orchestrator_api.py
+- tests/test_orchestrator_cli_operations.py
+- tests/test_orchestrator_scheduler_results.py
+- tests/test_orchestrator_state.py
 code_references:
 - ref: src/orchestrator/models.py#WorkUnit
   implements: Work unit model with retain_worktree field for worktree retention
@@ -47,7 +56,25 @@ code_references:
 - ref: src/cli/orch.py#orch_inject
   implements: CLI inject command with --retain flag support
 - ref: src/orchestrator/api/worktrees.py
-  implements: "Worktree management endpoints (list, remove, prune, batch prune)"
+  implements: Worktree management endpoints (list, remove, prune, batch prune)
+- ref: src/orchestrator/api/app.py
+  implements: Worktree management endpoints
+- ref: src/orchestrator/api/streaming.py
+  implements: Include retain_worktree for dashboard display
+- ref: src/orchestrator/api/work_units.py
+  implements: Allow updating retain_worktree
+- ref: src/orchestrator/client.py
+  implements: Prune retained worktrees
+- ref: src/orchestrator/state.py
+  implements: Retain worktrees after completion
+- ref: tests/test_orchestrator_api.py
+  implements: Retain worktrees after completion
+- ref: tests/test_orchestrator_cli_operations.py
+  implements: Test worktree threshold config
+- ref: tests/test_orchestrator_scheduler_results.py
+  implements: Retain worktrees after completion
+- ref: tests/test_orchestrator_state.py
+  implements: Retain worktrees after completion
 narrative: null
 investigation: null
 subsystems: []
@@ -59,7 +86,6 @@ created_after:
 - cli_modularize
 - reviewer_decisions_nudge
 ---
-
 # Chunk Goal
 
 ## Minor Goal

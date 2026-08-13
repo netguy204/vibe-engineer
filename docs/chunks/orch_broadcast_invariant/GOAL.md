@@ -5,15 +5,27 @@ parent_chunk: null
 code_paths:
 - src/orchestrator/scheduler.py
 - tests/test_orchestrator_scheduler.py
+- tests/test_orchestrator_scheduler_activation.py
+- tests/test_orchestrator_scheduler_dispatch.py
+- tests/test_orchestrator_scheduler_results.py
+- tests/test_orchestrator_scheduler_review.py
 code_references:
-  - ref: src/orchestrator/scheduler.py#Scheduler
-    implements: "WebSocket broadcasting invariant documentation in class docstring"
-  - ref: src/orchestrator/scheduler.py#Scheduler::_run_work_unit
-    implements: "Broadcast RUNNING status when work unit is dispatched"
-  - ref: src/orchestrator/scheduler.py#Scheduler::_advance_phase
-    implements: "Broadcast READY status on phase advancement and DONE status on completion"
-  - ref: tests/test_orchestrator_scheduler.py#TestWebSocketBroadcasts
-    implements: "Test coverage for WebSocket broadcast invariant"
+- ref: src/orchestrator/scheduler.py#Scheduler
+  implements: WebSocket broadcasting invariant documentation in class docstring
+- ref: src/orchestrator/scheduler.py#Scheduler::_run_work_unit
+  implements: Broadcast RUNNING status when work unit is dispatched
+- ref: src/orchestrator/scheduler.py#Scheduler::_advance_phase
+  implements: Broadcast READY status on phase advancement and DONE status on completion
+- ref: tests/test_orchestrator_scheduler.py#TestWebSocketBroadcasts
+  implements: Test coverage for WebSocket broadcast invariant
+- ref: tests/test_orchestrator_scheduler_activation.py
+  implements: Test coverage for WebSocket broadcast invariant
+- ref: tests/test_orchestrator_scheduler_dispatch.py
+  implements: Test coverage for WebSocket broadcast invariant
+- ref: tests/test_orchestrator_scheduler_results.py
+  implements: Test coverage for WebSocket broadcast invariant
+- ref: tests/test_orchestrator_scheduler_review.py
+  implements: Test coverage for WebSocket broadcast invariant
 narrative: null
 investigation: null
 subsystems: []
@@ -24,7 +36,6 @@ created_after:
 - friction_chunk_workflow
 - narrative_consolidation
 ---
-
 # Chunk Goal
 
 ## Minor Goal

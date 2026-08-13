@@ -3,9 +3,9 @@ status: ACTIVE
 ticket: null
 parent_chunk: null
 code_paths:
-  - src/templates/commands/chunk-create.md.jinja2
+  - src/templates/plugin/skills/chunk-create.md.jinja2
 code_references:
-  - ref: commands/chunk-create.md
+  - ref: skills/chunk-create/SKILL.md
     implements: "Intent-judgment gate (step 4) enforcing CHUNKS.md principle 2 before goal refinement"
 narrative: intent_ownership
 investigation: null

@@ -3,11 +3,11 @@ status: ACTIVE
 ticket: null
 parent_chunk: null
 code_paths:
-  - src/templates/claude/CLAUDE.md.jinja2
+  - src/templates/claude/AGENTS.md.jinja2
   - docs/trunk/ARTIFACTS.md
   - docs/trunk/EXTERNAL.md
 code_references:
-  - ref: src/templates/claude/CLAUDE.md.jinja2
+  - ref: src/templates/claude/AGENTS.md.jinja2
     implements: "External Artifacts pointer in CLAUDE.md template directing agents to EXTERNAL.md"
   - ref: docs/trunk/ARTIFACTS.md#external-artifacts
     implements: "Brief External Artifacts section with redirect to EXTERNAL.md"

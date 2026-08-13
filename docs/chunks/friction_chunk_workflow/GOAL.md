@@ -3,10 +3,10 @@ status: ACTIVE
 ticket: null
 parent_chunk: null
 code_paths:
-  - src/templates/commands/chunk-complete.md.jinja2
+  - src/templates/plugin/skills/chunk-complete.md.jinja2
   - tests/test_friction_workflow.py
 code_references:
-  - ref: commands/chunk-complete.md
+  - ref: skills/chunk-complete/SKILL.md
     implements: "Friction resolution reporting in step 12 - detects friction_entries in chunk, reports resolution status for full/partial scope"
   - ref: tests/test_friction_workflow.py#TestFrictionWorkflowIntegration
     implements: "Test helper base class with setup methods for friction log and chunk creation"

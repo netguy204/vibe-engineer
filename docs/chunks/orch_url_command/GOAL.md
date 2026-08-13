@@ -6,15 +6,18 @@ code_paths:
 - src/ve.py
 - src/orchestrator/daemon.py
 - tests/test_orchestrator_cli.py
+- tests/test_orchestrator_cli_display.py
 code_references:
 - ref: src/orchestrator/daemon.py#get_daemon_url
-  implements: "Helper function to read port file and construct HTTP URL"
+  implements: Helper function to read port file and construct HTTP URL
 - ref: src/ve.py#orch_url
-  implements: "CLI command that prints orchestrator URL with --json support"
+  implements: CLI command that prints orchestrator URL with --json support
 - ref: tests/test_orchestrator_cli.py#TestOrchUrl
-  implements: "Test suite for URL command covering happy path, errors, and JSON output"
+  implements: Test suite for URL command covering happy path, errors, and JSON output
 - ref: src/cli/orch.py#orch_url
-  implements: "CLI orch url command after CLI modularization"
+  implements: CLI orch url command after CLI modularization
+- ref: tests/test_orchestrator_cli_display.py
+  implements: URL command for orchestrator
 narrative: null
 investigation: null
 subsystems:
@@ -25,7 +28,6 @@ bug_type: null
 created_after:
 - chunknaming_drop_ticket
 ---
-
 # Chunk Goal
 
 ## Minor Goal

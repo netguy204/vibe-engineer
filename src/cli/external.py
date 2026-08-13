@@ -11,16 +11,18 @@ Commands for managing external artifact references.
 import pathlib
 
 import click
+from pydantic import ValidationError
 
 from models import ArtifactType
 from task import TaskChunkError
-from external_refs import ARTIFACT_MAIN_FILE
+from external_refs import ARTIFACT_DIR_NAME, ARTIFACT_MAIN_FILE, create_peer_yaml
 from cli.utils import handle_task_context
 from external_resolve import (
     resolve_artifact_task_directory,
     resolve_artifact_single_repo,
     ResolveResult,
 )
+from workspace import WorkspaceError, load_workspace
 
 
 @click.group()
@@ -75,6 +77,121 @@ def resolve(local_artifact_id, main_only, secondary_only, goal_only, plan_only, 
             raise SystemExit(1)
         _resolve_external_single_repo(
             project_dir, local_artifact_id, main_only, secondary_only
+        )
+
+
+# Subsystem: docs/subsystems/cross_repo_operations - Intra-workspace addressing flavor
+# Chunk: docs/chunks/federation_peer_refs - ve external point creates a peer interest edge
+@external.command()
+@click.argument("member")
+@click.argument("artifact")
+@click.option(
+    "--why",
+    type=str,
+    default=None,
+    help="One line recording what this tree depends on in the target artifact.",
+)
+@click.option(
+    "--name",
+    type=str,
+    default=None,
+    help="Local pointer directory name (defaults to the target artifact's name).",
+)
+@click.option(
+    "--force",
+    is_flag=True,
+    help="Create the pointer even if the target artifact does not exist yet.",
+)
+@click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=".")
+def point(member, artifact, why, name, force, project_dir):
+    """Record interest in ARTIFACT owned by workspace member MEMBER.
+
+    Creates a peer external.yaml in this tree pointing at another VE tree in the
+    same workspace. Ownership does not move: the artifact stays with the tree
+    whose code enforces it, and this pointer is an interest edge recording that
+    this tree reads it.
+
+    ARTIFACT may be given as `docs/<type>/<name>`, `<type>/<name>`, or - when it
+    already exists in the member's tree - just `<name>`.
+
+    Point when readers multiply; promote when writers change.
+    """
+    from external_refs import normalize_artifact_path
+
+    try:
+        ws = load_workspace(project_dir)
+    except WorkspaceError as exc:
+        click.echo(f"Error: {exc}", err=True)
+        raise SystemExit(1)
+
+    try:
+        member_root = ws.resolve(member)
+    except KeyError as exc:
+        click.echo(f"Error: {exc.args[0]}", err=True)
+        raise SystemExit(1)
+
+    # Chunk: docs/chunks/federation_peer_refs - A tree does not express interest in itself
+    if member_root.resolve() == pathlib.Path(project_dir).resolve():
+        click.echo(
+            f"Error: '{member}' is this tree, so a pointer would address the tree "
+            f"that already owns the artifact. Reference it directly with a bare "
+            f"path (docs/<type>/<name>) instead.",
+            err=True,
+        )
+        raise SystemExit(1)
+
+    try:
+        artifact_type, artifact_id = normalize_artifact_path(
+            artifact, search_path=member_root
+        )
+    except ValueError as exc:
+        click.echo(f"Error: {exc}", err=True)
+        raise SystemExit(1)
+
+    dir_name = ARTIFACT_DIR_NAME[artifact_type]
+    target_dir = member_root / "docs" / dir_name / artifact_id
+    if not target_dir.is_dir() and not force:
+        click.echo(
+            f"Error: {artifact_type.value} '{artifact_id}' does not exist in tree "
+            f"'{member}' (looked for {target_dir}). A pointer at a nonexistent "
+            f"artifact can never resolve; create the artifact first, or pass "
+            f"--force if you are pointing at work in progress.",
+            err=True,
+        )
+        raise SystemExit(1)
+
+    local_name = name or artifact_id
+    pointer_dir = project_dir / "docs" / dir_name / local_name
+    if pointer_dir.exists():
+        click.echo(
+            f"Error: docs/{dir_name}/{local_name} already exists in {project_dir}. "
+            f"Use --name to point under a different local name.",
+            err=True,
+        )
+        raise SystemExit(1)
+
+    try:
+        pointer_path = create_peer_yaml(
+            project_path=project_dir,
+            short_name=local_name,
+            member=member,
+            external_artifact_id=artifact_id,
+            artifact_type=artifact_type,
+            why=why,
+        )
+    except ValidationError as exc:
+        click.echo(f"Error: invalid peer reference: {exc}", err=True)
+        raise SystemExit(1)
+
+    click.echo(f"Created {pointer_path}")
+    click.echo(f"  points at tree:{member} -> {target_dir}")
+    if why:
+        click.echo(f"  why: {why}")
+    if not target_dir.is_dir():
+        click.echo(
+            f"Warning: {target_dir} does not exist yet; this pointer will not "
+            f"resolve until it does.",
+            err=True,
         )
 
 
@@ -217,6 +334,10 @@ def _display_resolve_result(result: ResolveResult, main_only: bool, secondary_on
     artifact_type_display = result.artifact_type.value
     click.echo(f"Artifact: {result.artifact_id} ({artifact_type_display})")
     click.echo(f"Context: {result.context_mode}")
+    # Chunk: docs/chunks/federation_peer_refs - Surface the target and the interest note
+    click.echo(f"Target: {result.target_display}")
+    if result.why:
+        click.echo(f"Why: {result.why}")
     if result.local_path:
         click.echo(f"Path: {result.local_path}")
 

@@ -3,11 +3,11 @@ status: ACTIVE
 ticket: null
 parent_chunk: null
 code_paths:
-- src/templates/commands/chunk-create.md.jinja2
+- src/templates/plugin/skills/chunk-create.md.jinja2
 - src/templates/chunk/GOAL.md.jinja2
-- .claude/commands/chunk-create.md
+- skills/chunk-create/SKILL.md
 code_references:
-  - ref: commands/chunk-create.md
+  - ref: skills/chunk-create/SKILL.md
     implements: "Step 10 - IMPORTANT commit guidance instructing agents to add entire chunk directory"
   - ref: src/templates/chunk/GOAL.md.jinja2
     implements: "COMMIT BOTH FILES section added to FUTURE CHUNK APPROVAL REQUIREMENT"

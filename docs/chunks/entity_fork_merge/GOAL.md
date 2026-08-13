@@ -6,35 +6,54 @@ code_paths:
 - src/cli/entity.py
 - src/entity_repo.py
 - src/entity_merge.py
+- tests/conftest.py
+- tests/test_entity_fork_merge.py
+- tests/test_entity_fork_merge_cli.py
+- tests/test_entity_merge.py
 code_references:
-  - ref: src/entity_repo.py#EntityRepoMetadata
-    implements: "Fork lineage tracking via forked_from field"
-  - ref: src/entity_repo.py#ForkResult
-    implements: "Result type for fork_entity operation"
-  - ref: src/entity_repo.py#MergeResult
-    implements: "Result type for a clean merge_entity operation"
-  - ref: src/entity_repo.py#ConflictResolution
-    implements: "LLM-resolved conflict pending operator approval"
-  - ref: src/entity_repo.py#MergeConflictsPending
-    implements: "Result type when merge halts due to conflicts requiring resolution"
-  - ref: src/entity_repo.py#fork_entity
-    implements: "Clones entity repo with updated name and fork lineage metadata"
-  - ref: src/entity_repo.py#merge_entity
-    implements: "Fetches and merges learnings from source entity (optional, falls back to configured origin remote) with LLM conflict resolution; uncommitted-changes gate uses _has_tracked_uncommitted_changes (ignores untracked files)"
-  - ref: src/entity_repo.py#commit_resolved_merge
-    implements: "Writes resolved conflict content and completes the merge commit"
-  - ref: src/entity_repo.py#abort_merge
-    implements: "Aborts an in-progress merge and restores pre-merge state; called explicitly via 've entity merge --abort' (not silently on unresolvable conflicts — see entity_merge_preserve_conflicts)"
-  - ref: src/entity_merge.py#ConflictHunk
-    implements: "Parsed git conflict hunk (ours/theirs)"
-  - ref: src/entity_merge.py#parse_conflict_markers
-    implements: "Parses git conflict markers from file content"
-  - ref: src/entity_merge.py#resolve_wiki_conflict
-    implements: "LLM-assisted synthesis of conflicting wiki page versions via Claude Code agent SDK (with Anthropic SDK fallback)"
-  - ref: src/cli/entity.py#fork
-    implements: "CLI command: ve entity fork <name> <new-name>"
-  - ref: src/cli/entity.py#merge
-    implements: "CLI command: ve entity merge <name> [source] with optional SOURCE argument and operator approval gate; also supports --abort flag and merge-in-progress detection (see entity_merge_preserve_conflicts)"
+- ref: src/entity_repo.py#EntityRepoMetadata
+  implements: Fork lineage tracking via forked_from field
+- ref: src/entity_repo.py#ForkResult
+  implements: Result type for fork_entity operation
+- ref: src/entity_repo.py#MergeResult
+  implements: Result type for a clean merge_entity operation
+- ref: src/entity_repo.py#ConflictResolution
+  implements: LLM-resolved conflict pending operator approval
+- ref: src/entity_repo.py#MergeConflictsPending
+  implements: Result type when merge halts due to conflicts requiring resolution
+- ref: src/entity_repo.py#fork_entity
+  implements: Clones entity repo with updated name and fork lineage metadata
+- ref: src/entity_repo.py#merge_entity
+  implements: Fetches and merges learnings from source entity (optional, falls back
+    to configured origin remote) with LLM conflict resolution; uncommitted-changes
+    gate uses _has_tracked_uncommitted_changes (ignores untracked files)
+- ref: src/entity_repo.py#commit_resolved_merge
+  implements: Writes resolved conflict content and completes the merge commit
+- ref: src/entity_repo.py#abort_merge
+  implements: "Aborts an in-progress merge and restores pre-merge state; called explicitly\
+    \ via 've entity merge --abort' (not silently on unresolvable conflicts \u2014\
+    \ see entity_merge_preserve_conflicts)"
+- ref: src/entity_merge.py#ConflictHunk
+  implements: Parsed git conflict hunk (ours/theirs)
+- ref: src/entity_merge.py#parse_conflict_markers
+  implements: Parses git conflict markers from file content
+- ref: src/entity_merge.py#resolve_wiki_conflict
+  implements: LLM-assisted synthesis of conflicting wiki page versions via Claude
+    Code agent SDK (with Anthropic SDK fallback)
+- ref: src/cli/entity.py#fork
+  implements: 'CLI command: ve entity fork <name> <new-name>'
+- ref: src/cli/entity.py#merge
+  implements: 'CLI command: ve entity merge <name> [source] with optional SOURCE argument
+    and operator approval gate; also supports --abort flag and merge-in-progress detection
+    (see entity_merge_preserve_conflicts)'
+- ref: tests/conftest.py
+  implements: Shared entity test helpers extracted from test_entity_push_pull.py
+- ref: tests/test_entity_fork_merge.py
+  implements: fork/merge unit tests
+- ref: tests/test_entity_fork_merge_cli.py
+  implements: fork/merge CLI integration tests
+- ref: tests/test_entity_merge.py
+  implements: entity_merge unit tests
 narrative: null
 investigation: entity_wiki_memory
 subsystems: []

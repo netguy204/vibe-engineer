@@ -11,11 +11,22 @@ code_paths:
 - tests/test_orchestrator_scheduler.py
 code_references:
 - ref: src/orchestrator/scheduler.py#Scheduler::_finalize_completed_work_unit
-  implements: "Commits only on the retain_worktree path; delegates commit-remove-merge to finalize_work_unit otherwise (no double-commit)"
+  implements: Commits only on the retain_worktree path; delegates commit-remove-merge
+    to finalize_work_unit otherwise (no double-commit)
 - ref: src/orchestrator/worktree.py#WorktreeManager::commit_changes
-  implements: "Treats empty-stderr exit-code-1 from git commit as a no-op (e.g., submodule entries leaving nothing actually staged)"
+  implements: Treats empty-stderr exit-code-1 from git commit as a no-op (e.g., submodule
+    entries leaving nothing actually staged)
 - ref: src/orchestrator/worktree.py#WorktreeManager::_remove_worktree_from_repo
-  implements: "Falls back to shutil.rmtree followed by git worktree prune when git worktree remove fails for submodule-containing worktrees"
+  implements: Falls back to shutil.rmtree followed by git worktree prune when git
+    worktree remove fails for submodule-containing worktrees
+- ref: tests/test_orchestrator_scheduler.py
+  implements: Tests for double-commit elimination
+- ref: tests/test_orchestrator_worktree_core.py
+  implements: Test submodule-resilient worktree removal
+- ref: tests/test_orchestrator_worktree_multirepo.py
+  implements: Test clean tree finalization
+- ref: tests/test_orchestrator_worktree_operations.py
+  implements: Test empty-stderr exit-code-1 hardening
 narrative: null
 investigation: null
 subsystems:
@@ -27,7 +38,6 @@ depends_on: []
 created_after:
 - merge_strategy_simplify
 ---
-
 # Chunk Goal
 
 ## Minor Goal

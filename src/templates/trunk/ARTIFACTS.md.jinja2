@@ -105,6 +105,17 @@ When friction accumulates (3+ entries in a theme), add a proposed chunk to the f
 
 Use `/friction-log` to quickly capture a friction point.
 
+## Deletion Grants {#deletion-grants}
+
+The deletion-grant ledger (`docs/trunk/DELETIONS.md`) records operator-authorized reference deletions. Deleting a backreference or `code_references` entry is normally out of vocabulary for validation fix loops — a reference is somebody's record of governing intent. When code was deliberately deleted and the operator explicitly authorizes removing the reference to it, the grant is recorded **before** the reference is removed:
+
+```bash
+ve exists <name>                 # evidence of absence: does this path/symbol exist anywhere visible?
+ve deletion record <reference> --location <file:line> --by <operator> --reason "<why>" --evidence "<summary>"
+```
+
+The ledger is created by `ve deletion record` on first use (never by hand), so the authorization lands in the same diff as the deletion and a reviewer can see the grant. `ve deletion list` shows recorded grants.
+
 ## Proposed Chunks
 
 The `proposed_chunks` frontmatter field is a cross-cutting pattern used in narratives, investigations, and friction logs to track work that has been proposed but not yet created:
@@ -135,6 +146,8 @@ Source code may contain comments linking back to documentation:
 
 When you see backreferences, read the referenced artifact to understand the code's context and constraints.
 
+References are maintained under the rename mandate (see CLAUDE.md, "File Moves and Renames"): any file move or rename must update every reference that names the old path — chunk `code_paths` and `ref:` fields included — validated with `uvx --from vibe-engineer ve validate`.
+
 **Do NOT add `# Narrative:` backreferences.** Narratives decompose into chunks; reference the implementing chunk instead.
 
 **Chunk backreferences in multi-project tasks:**
@@ -143,7 +156,9 @@ Always use the local path within the current repository (e.g., `docs/chunks/chun
 
 ## External Artifacts {#external-artifacts}
 
-External artifacts enable multi-repository workflows by providing pointers to artifacts in other repositories. When an artifact directory contains `external.yaml` instead of GOAL.md or OVERVIEW.md, it's pointing to content in another repo.
+External artifacts are pointers: an artifact directory containing `external.yaml` instead of GOAL.md or OVERVIEW.md, recording where the real document lives. A pointer either names another repository (`repo: org/repo`, resolved by fetching a tracked branch) or another VE tree in the same working copy (`tree: <member>`, resolved through the workspace manifest — no fetch, no branch). Either kind may carry a `why:` line saying what this tree depends on in the target, which turns the pointer into a legible interest edge.
+
+Ownership stays with the tree whose code enforces an intent; other trees express interest with pointers at their own level. **Point when readers multiply; promote when writers change** — moving an artifact to the root tree is an ownership transfer, not a way to make it visible.
 
 For comprehensive documentation on external artifacts, see [EXTERNAL.md](EXTERNAL.md).
 {% endraw %}

@@ -5,7 +5,7 @@ parent_chunk: null
 code_paths:
   - src/entity_shutdown.py
   - src/cli/entity.py
-  - src/templates/commands/entity-shutdown.md.jinja2
+  - src/templates/plugin/skills/entity-shutdown.md.jinja2
   - tests/test_entity_shutdown.py
   - tests/test_entity_shutdown_cli.py
 code_references:
@@ -25,7 +25,7 @@ code_references:
     implements: "Main orchestration: journal write, API consolidation, tier rewrite"
   - ref: src/cli/entity.py#shutdown
     implements: "CLI entry point for ve entity shutdown command"
-  - ref: commands/entity-shutdown.md
+  - ref: skills/entity-shutdown/SKILL.md
     implements: "Slash command template instructing agent to extract and consolidate memories"
 narrative: null
 investigation: agent_memory_consolidation

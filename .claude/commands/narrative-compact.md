@@ -1,1 +1,0 @@
-../../.agents/skills/narrative-compact/SKILL.md

@@ -198,6 +198,42 @@ class TestProjectInit:
         claude_content = (temp_project / "CLAUDE.md").read_text()
         assert agents_content == claude_content
 
+    # Chunk: docs/chunks/template_workspace_awareness - Workspace detection through ve init
+    def test_init_single_tree_agents_md_matches_golden(self, temp_project):
+        """Outside a workspace, init() writes exactly the pre-chunk AGENTS.md bytes."""
+        import pathlib as _pathlib
+
+        golden = (
+            _pathlib.Path(__file__).parent / "fixtures" / "agents_md_single_tree.md"
+        ).read_text()
+        project = Project(temp_project)
+        project.init()
+        assert (temp_project / "AGENTS.md").read_text() == golden
+
+    # Chunk: docs/chunks/template_workspace_awareness - Workspace detection through ve init
+    def test_init_in_workspace_renders_workspace_aware_agents_md(self, temp_project):
+        """A project under a .ve-workspace.yaml gets the workspace-aware managed block."""
+        (temp_project / ".ve-workspace.yaml").write_text("members: {}\n")
+        member_dir = temp_project / "packages" / "member"
+        member_dir.mkdir(parents=True)
+        project = Project(member_dir)
+        project.init()
+        content = (member_dir / "AGENTS.md").read_text()
+        assert "### Working Across VE Trees in This Workspace" in content
+        assert "uvx --from vibe-engineer ve workspace validate" in content
+        assert "uvx --from vibe-engineer ve validate" not in content
+        assert "docs/trunk/DELETIONS.md" in content
+
+    # Chunk: docs/chunks/template_workspace_awareness - Workspace detection through ve init
+    def test_init_at_workspace_root_renders_workspace_aware_agents_md(self, temp_project):
+        """A tree that itself holds the manifest is governed by it too."""
+        (temp_project / ".ve-workspace.yaml").write_text("members: {}\n")
+        project = Project(temp_project)
+        project.init()
+        content = (temp_project / "AGENTS.md").read_text()
+        assert "### Working Across VE Trees in This Workspace" in content
+        assert "uvx --from vibe-engineer ve workspace validate" in content
+
     def test_init_reports_created_files(self, temp_project):
         """init() reports all created files in result."""
         project = Project(temp_project)
@@ -320,6 +356,7 @@ class TestProjectInitReviewers:
 
 # Chunk: docs/chunks/claudemd_magic_markers - Test suite for marker detection, preservation, and edge cases
 # Chunk: docs/chunks/agentskills_migration - Updated for AGENTS.md as canonical file
+# Chunk: docs/chunks/claudemd_marker_safety - Generated files carry annotated markers; segments located via parse_markers
 class TestMagicMarkers:
     """Tests for AGENTS.md magic marker functionality."""
 
@@ -328,41 +365,45 @@ class TestMagicMarkers:
 
     def test_new_agents_md_includes_markers(self, temp_project):
         """New AGENTS.md files include magic markers."""
+        from project import parse_markers
+
         project = Project(temp_project)
         project.init()
 
         agents_md = temp_project / "AGENTS.md"
         content = agents_md.read_text()
 
-        assert self.MARKER_START in content
-        assert self.MARKER_END in content
-        # START should come before END
-        assert content.index(self.MARKER_START) < content.index(self.MARKER_END)
+        parsed = parse_markers(content)
+        assert parsed.has_markers
+        assert parsed.error is None
+        # The managed block sits between the markers
+        assert "Vibe Engineering" in parsed.inside
 
     def test_markers_preserve_content_before(self, temp_project):
         """Content before START marker is preserved on reinit."""
+        from project import parse_markers
+
         project = Project(temp_project)
         project.init()
 
         agents_md = temp_project / "AGENTS.md"
-        original = agents_md.read_text()
+        parsed = parse_markers(agents_md.read_text())
 
         # Add custom content before the START marker
         custom_header = "# My Custom Project\n\nThis is my custom documentation.\n\n"
-        start_idx = original.index(self.MARKER_START)
-        modified = custom_header + original[start_idx:]
-        agents_md.write_text(modified)
+        agents_md.write_text(custom_header + parsed.inside + parsed.after)
 
         # Reinit should preserve custom content
         project.init()
         result = agents_md.read_text()
 
         assert result.startswith(custom_header)
-        assert self.MARKER_START in result
-        assert self.MARKER_END in result
+        assert parse_markers(result).has_markers
 
     def test_markers_preserve_content_after(self, temp_project):
         """Content after END marker is preserved on reinit."""
+        from project import parse_markers
+
         project = Project(temp_project)
         project.init()
 
@@ -379,26 +420,26 @@ class TestMagicMarkers:
         result = agents_md.read_text()
 
         assert result.endswith(custom_footer)
-        assert self.MARKER_START in result
-        assert self.MARKER_END in result
+        assert parse_markers(result).has_markers
 
     def test_markers_rewrite_content_inside(self, temp_project):
         """Content inside markers is rewritten with latest template."""
+        from project import parse_markers
+
         project = Project(temp_project)
         project.init()
 
         agents_md = temp_project / "AGENTS.md"
-        original = agents_md.read_text()
+        parsed = parse_markers(agents_md.read_text())
 
-        # Modify content inside markers
-        start_idx = original.index(self.MARKER_START)
-        end_idx = original.index(self.MARKER_END) + len(self.MARKER_END)
+        # Modify content inside markers (bare marker form on purpose:
+        # legacy files keep parsing)
         modified = (
-            original[:start_idx]
+            parsed.before
             + self.MARKER_START
             + "\n\nOLD MANAGED CONTENT THAT SHOULD BE REPLACED\n\n"
             + self.MARKER_END
-            + original[end_idx:]
+            + parsed.after
         )
         agents_md.write_text(modified)
 
@@ -535,6 +576,289 @@ class TestMagicMarkers:
 
         # With markers, we should see it in created (updated), not skipped
         assert "AGENTS.md" in result.created
+
+
+# Chunk: docs/chunks/claudemd_symlink_notice - init announces the AGENTS.md/CLAUDE.md arrangement
+class TestInitAgentsMdNotices:
+    """init() reports what happened to AGENTS.md and CLAUDE.md via notices."""
+
+    MARKER_START = "<!-- VE:MANAGED:START -->"
+    MARKER_END = "<!-- VE:MANAGED:END -->"
+
+    def _arrangement_notices(self, result):
+        """Notices about the AGENTS.md/CLAUDE.md arrangement."""
+        return [
+            n for n in result.notices if "AGENTS.md" in n or "CLAUDE.md" in n
+        ]
+
+    def test_fresh_init_announces_created_arrangement(self, temp_project):
+        """Fresh init emits one notice naming AGENTS.md and the symlink."""
+        result = Project(temp_project).init()
+
+        notices = self._arrangement_notices(result)
+        assert len(notices) == 1
+        assert "Created AGENTS.md" in notices[0]
+        assert "CLAUDE.md is a symlink" in notices[0]
+
+    def test_conversion_announces_filetype_change(self, temp_project):
+        """Converting a regular CLAUDE.md announces the symlink conversion."""
+        claude_md = temp_project / "CLAUDE.md"
+        claude_md.write_text(
+            f"# My Project\n\n{self.MARKER_START}\nOld\n{self.MARKER_END}\n"
+        )
+
+        result = Project(temp_project).init()
+
+        notices = self._arrangement_notices(result)
+        assert len(notices) == 1
+        assert "Converted CLAUDE.md to a symlink" in notices[0]
+        assert "file-type change" in notices[0]
+
+    def test_reinit_announces_managed_block_update(self, temp_project):
+        """Re-init announces the in-place managed block update."""
+        project = Project(temp_project)
+        project.init()
+
+        result = project.init()
+
+        notices = self._arrangement_notices(result)
+        assert len(notices) == 1
+        assert "VE-managed block" in notices[0]
+        assert "in place" in notices[0]
+
+    def test_symlink_creation_for_existing_agents_md_is_announced(
+        self, temp_project
+    ):
+        """Creating just the symlink (markerless AGENTS.md) is announced."""
+        agents_md = temp_project / "AGENTS.md"
+        agents_md.write_text("# Custom AGENTS.md\n\nNo markers here.\n")
+
+        result = Project(temp_project).init()
+
+        notices = self._arrangement_notices(result)
+        assert notices == ["Created CLAUDE.md as a symlink to AGENTS.md."]
+
+    def test_repointed_symlink_is_announced(self, temp_project):
+        """A CLAUDE.md symlink pointing elsewhere is repointed and announced."""
+        project = Project(temp_project)
+        project.init()
+        claude_md = temp_project / "CLAUDE.md"
+        other = temp_project / "OTHER.md"
+        other.write_text("elsewhere\n")
+        claude_md.unlink()
+        claude_md.symlink_to("OTHER.md")
+
+        result = project.init()
+
+        assert any(
+            "Repointed the CLAUDE.md symlink" in n for n in result.notices
+        )
+
+    def test_notices_do_not_change_existing_reporting(self, temp_project):
+        """Notices are additive: created/skipped reporting is unchanged."""
+        project = Project(temp_project)
+        first = project.init()
+        second = project.init()
+
+        assert "AGENTS.md" in first.created
+        assert "AGENTS.md" in second.created  # update-in-place still 'created'
+        assert "AGENTS.md" not in second.skipped
+
+
+# Chunk: docs/chunks/claudemd_marker_safety - Annotated marker recognition in parse_markers
+class TestAnnotatedMarkerParsing:
+    """parse_markers recognizes bare and annotated marker forms alike."""
+
+    START_ANNOTATED = (
+        "<!-- VE:MANAGED:START — regenerated by `ve init`; anything added "
+        "between these markers is destroyed. -->"
+    )
+    END_ANNOTATED = (
+        "<!-- VE:MANAGED:END — content below this line is preserved. -->"
+    )
+
+    def test_annotated_markers_parse(self):
+        from project import parse_markers
+
+        content = f"before\n{self.START_ANNOTATED}\ninside\n{self.END_ANNOTATED}\nafter\n"
+        result = parse_markers(content)
+
+        assert result.has_markers
+        assert result.error is None
+        assert result.before == "before\n"
+        assert result.inside == f"{self.START_ANNOTATED}\ninside\n{self.END_ANNOTATED}"
+        assert result.after == "\nafter\n"
+
+    def test_mixed_bare_and_annotated_markers_parse(self):
+        from project import MARKER_START, parse_markers
+
+        content = f"{MARKER_START}\ninside\n{self.END_ANNOTATED}\n"
+        result = parse_markers(content)
+
+        assert result.has_markers
+        assert result.error is None
+        assert result.inside == f"{MARKER_START}\ninside\n{self.END_ANNOTATED}"
+
+    def test_prose_mentioning_marker_tokens_is_not_a_marker(self):
+        """The seeded safe region mentions the tokens mid-comment; that must
+        never be counted as a marker pair."""
+        from project import MARKER_END, MARKER_START, parse_markers
+
+        preamble = (
+            "<!--\n"
+            "  Everything between the VE:MANAGED:START and VE:MANAGED:END\n"
+            "  markers below is regenerated by `ve init`.\n"
+            "-->\n"
+        )
+        content = f"{preamble}\n{MARKER_START}\ninside\n{MARKER_END}\n"
+        result = parse_markers(content)
+
+        assert result.has_markers
+        assert result.error is None
+        assert result.before == f"{preamble}\n"
+        assert result.inside == f"{MARKER_START}\ninside\n{MARKER_END}"
+
+    def test_annotated_plus_bare_pair_is_multiple_pairs_error(self):
+        from project import MARKER_END, MARKER_START, parse_markers
+
+        content = (
+            f"{self.START_ANNOTATED}\na\n{self.END_ANNOTATED}\n"
+            f"{MARKER_START}\nb\n{MARKER_END}\n"
+        )
+        result = parse_markers(content)
+
+        assert not result.has_markers
+        assert result.error is not None
+        assert "multiple" in result.error
+
+    def test_annotated_missing_end_is_error(self):
+        from project import parse_markers
+
+        result = parse_markers(f"header\n{self.START_ANNOTATED}\ncontent\n")
+
+        assert not result.has_markers
+        assert result.error is not None
+
+
+# Chunk: docs/chunks/claudemd_marker_safety - Seeded safe regions and the discard warning
+class TestManagedBlockSafety:
+    """The VE:MANAGED block is safe to live next to.
+
+    Fresh writes seed a region outside the markers, the markers document
+    themselves, and dropping in-block content is reported, never silent.
+    """
+
+    MARKER_START = "<!-- VE:MANAGED:START -->"
+    MARKER_END = "<!-- VE:MANAGED:END -->"
+
+    def _discard_warnings(self, result):
+        return [w for w in result.warnings if "Discarded" in w]
+
+    def test_fresh_init_seeds_safe_regions_outside_markers(self, temp_project):
+        """A fresh AGENTS.md does not begin at START and end at END."""
+        from project import parse_markers
+
+        Project(temp_project).init()
+
+        parsed = parse_markers((temp_project / "AGENTS.md").read_text())
+        assert parsed.has_markers
+        # Above START: a comment explaining the safe regions
+        assert "This region is yours" in parsed.before
+        # Below END: somewhere correct to write from the very first render
+        assert "Project-specific content goes here" in parsed.after
+
+    def test_fresh_markers_are_self_documenting(self, temp_project):
+        """The marker lines themselves say what ve init will destroy."""
+        from project import parse_markers
+
+        Project(temp_project).init()
+
+        parsed = parse_markers((temp_project / "AGENTS.md").read_text())
+        start_line = parsed.inside.splitlines()[0]
+        end_line = parsed.inside.splitlines()[-1]
+        assert start_line.startswith("<!-- VE:MANAGED:START")
+        assert "destroyed" in start_line
+        assert end_line.startswith("<!-- VE:MANAGED:END")
+        assert "preserved" in end_line
+
+    def test_reinit_of_untouched_file_does_not_warn(self, temp_project):
+        project = Project(temp_project)
+        project.init()
+
+        result = project.init()
+
+        assert self._discard_warnings(result) == []
+
+    def test_bare_marker_upgrade_does_not_warn(self, temp_project):
+        """Swapping bare markers for annotated ones is not discarded content."""
+        from project import parse_markers
+
+        project = Project(temp_project)
+        project.init()
+
+        agents_md = temp_project / "AGENTS.md"
+        parsed = parse_markers(agents_md.read_text())
+        # Same block content, but wrapped in the historical bare markers
+        inner_lines = parsed.inside.splitlines()[1:-1]
+        bare_block = "\n".join([self.MARKER_START, *inner_lines, self.MARKER_END])
+        agents_md.write_text(parsed.before + bare_block + parsed.after)
+
+        result = project.init()
+
+        assert self._discard_warnings(result) == []
+        # And the file comes back with the annotated markers
+        upgraded = parse_markers(agents_md.read_text())
+        assert "destroyed" in upgraded.inside.splitlines()[0]
+
+    def test_in_block_operator_content_is_discarded_with_warning(
+        self, temp_project
+    ):
+        """Regeneration that drops operator lines names the file and says so."""
+        from project import parse_markers
+
+        project = Project(temp_project)
+        project.init()
+
+        agents_md = temp_project / "AGENTS.md"
+        parsed = parse_markers(agents_md.read_text())
+        directive = "NEVER run destructive commands without operator approval."
+        lines = parsed.inside.splitlines()
+        lines.insert(1, directive)
+        agents_md.write_text(parsed.before + "\n".join(lines) + parsed.after)
+
+        result = project.init()
+
+        warnings = self._discard_warnings(result)
+        assert len(warnings) == 1
+        assert "AGENTS.md" in warnings[0]
+        assert "VE-managed block" in warnings[0]
+        # The warning points at the preserved regions for recovery
+        assert "START marker" in warnings[0] and "END marker" in warnings[0]
+        # The content really is gone from the file
+        assert directive not in agents_md.read_text()
+
+    def test_content_outside_markers_survives_the_same_run(self, temp_project):
+        """Above-START/below-END preservation is designed behavior, unchanged."""
+        from project import parse_markers
+
+        project = Project(temp_project)
+        project.init()
+
+        agents_md = temp_project / "AGENTS.md"
+        parsed = parse_markers(agents_md.read_text())
+        header = "# House Rules\n\nAlways above START.\n\n"
+        footer = "\n\n## Appendix\n\nAlways below END.\n"
+        lines = parsed.inside.splitlines()
+        lines.insert(1, "an in-block line that will be dropped")
+        agents_md.write_text(header + "\n".join(lines) + footer)
+
+        result = project.init()
+
+        content = agents_md.read_text()
+        assert content.startswith(header)
+        assert content.endswith(footer)
+        assert "an in-block line that will be dropped" not in content
+        assert len(self._discard_warnings(result)) == 1
 
 
 class TestProjectInitIdempotency:

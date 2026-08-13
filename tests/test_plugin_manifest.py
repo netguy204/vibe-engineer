@@ -16,7 +16,7 @@ import yaml
 REPO_ROOT = Path(__file__).parent.parent
 PLUGIN_MANIFEST = REPO_ROOT / ".claude-plugin" / "plugin.json"
 MARKETPLACE_MANIFEST = REPO_ROOT / ".claude-plugin" / "marketplace.json"
-PILOT_COMMAND = REPO_ROOT / "commands" / "ve-status.md"
+PILOT_COMMAND = REPO_ROOT / "skills" / "ve-status" / "SKILL.md"
 
 
 def _load_json(path: Path) -> dict:
@@ -97,7 +97,7 @@ class TestPilotCommand:
 
 class TestPluginLayout:
     def test_content_directories_exist_at_plugin_root(self):
-        for directory in ("commands", "skills", "agents", "hooks"):
+        for directory in ("skills", "agents", "hooks"):
             assert (REPO_ROOT / directory).is_dir(), (
                 f"plugin content directory {directory}/ missing at repo root"
             )

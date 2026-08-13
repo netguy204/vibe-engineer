@@ -3,16 +3,8 @@ status: ACTIVE
 ticket: null
 parent_chunk: null
 code_paths:
-  - src/models.py
-  - src/scratchpad.py
-  - src/scratchpad_commands.py
+  - src/models
   - src/ve.py
-  - src/templates/scratchpad_chunk/GOAL.md.jinja2
-  - src/templates/scratchpad_narrative/OVERVIEW.md.jinja2
-  - src/templates/commands/migrate-to-subsystems.md.jinja2
-  - .claude/commands/migrate-to-subsystems.md
-  - tests/test_scratchpad.py
-  - tests/test_scratchpad_commands.py
   - tests/conftest.py
 code_references:
   - ref: src/models/
@@ -21,9 +13,9 @@ code_references:
     implements: "Removed scratchpad CLI command group"
   - ref: tests/conftest.py
     implements: "Removed isolated_scratchpad and scratchpad_for_project fixtures"
-  - ref: commands/chunk-create.md
+  - ref: skills/chunk-create/SKILL.md
     implements: "Updated to reflect in-repo workflow instead of scratchpad"
-  - ref: commands/narrative-create.md
+  - ref: skills/narrative-create/SKILL.md
     implements: "Updated to reflect in-repo workflow instead of scratchpad"
 narrative: revert_scratchpad_chunks
 investigation: null

@@ -6,9 +6,15 @@ code_paths:
 - src/entity_shutdown.py
 - tests/test_entity_shutdown.py
 - tests/test_entity_shutdown_cli.py
+- src/entity_merge.py
+- src/entity_migration.py
 code_references:
 - ref: src/entity_shutdown.py#run_consolidation
-  implements: "Guard check for anthropic import before API call"
+  implements: Guard check for anthropic import before API call
+- ref: src/entity_merge.py
+  implements: Guard anthropic import
+- ref: src/entity_migration.py
+  implements: Guard anthropic import
 narrative: null
 investigation: null
 subsystems: []
@@ -23,7 +29,6 @@ created_after:
 - entity_touch_command
 - orch_retry_single
 ---
-
 # Chunk Goal
 
 ## Minor Goal

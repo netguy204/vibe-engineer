@@ -3,20 +3,20 @@ status: ACTIVE
 ticket: null
 parent_chunk: null
 code_paths:
-- src/orchestrator/api.py
+- src/orchestrator/api
 - src/orchestrator/websocket.py
 - src/orchestrator/templates/dashboard.html
 - tests/test_orchestrator_dashboard.py
 code_references:
-  - ref: src/orchestrator/api.py#dashboard_endpoint
+  - ref: src/orchestrator/api/streaming.py#dashboard_endpoint
     implements: "GET / endpoint rendering dashboard HTML with attention queue and work unit grid"
-  - ref: src/orchestrator/api.py#websocket_endpoint
+  - ref: src/orchestrator/api/streaming.py#websocket_endpoint
     implements: "WebSocket endpoint for real-time dashboard updates with initial state snapshot"
-  - ref: src/orchestrator/api.py#answer_endpoint
+  - ref: src/orchestrator/api/attention.py#answer_endpoint
     implements: "POST answer endpoint with form submission support for dashboard UI"
-  - ref: src/orchestrator/api.py#resolve_conflict_endpoint
+  - ref: src/orchestrator/api/conflicts.py#resolve_conflict_endpoint
     implements: "POST conflict resolution endpoint with form submission support"
-  - ref: src/orchestrator/api.py#_get_jinja_env
+  - ref: src/orchestrator/api/common.py#get_jinja_env
     implements: "Jinja2 environment setup for template rendering"
   - ref: src/orchestrator/websocket.py#ConnectionManager
     implements: "WebSocket connection manager for tracking active connections and broadcasting"

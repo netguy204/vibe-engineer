@@ -7,21 +7,25 @@ code_paths:
 - src/integrity.py
 - src/chunks.py
 - tests/test_integrity.py
+- src/chunk_validation.py
 code_references:
-  - ref: src/integrity.py#IntegrityValidator::validate_chunk
-    implements: "Public single-chunk validation entry point for unified validation routing"
-  - ref: src/integrity.py#_errors_to_messages
-    implements: "Helper to convert IntegrityError objects to string messages for backward compatibility"
-  - ref: src/chunks.py#Chunks::validate_subsystem_refs
-    implements: "Wrapper method routing through IntegrityValidator"
-  - ref: src/chunks.py#Chunks::validate_investigation_ref
-    implements: "Wrapper method routing through IntegrityValidator"
-  - ref: src/chunks.py#Chunks::validate_narrative_ref
-    implements: "Wrapper method routing through IntegrityValidator"
-  - ref: src/chunks.py#Chunks::validate_friction_entries_ref
-    implements: "Wrapper method routing through IntegrityValidator"
-  - ref: tests/test_integrity.py#TestIntegrityValidatorSingleChunk
-    implements: "Tests for IntegrityValidator.validate_chunk() single-chunk validation"
+- ref: src/integrity.py#IntegrityValidator::validate_chunk
+  implements: Public single-chunk validation entry point for unified validation routing
+- ref: src/integrity.py#_errors_to_messages
+  implements: Helper to convert IntegrityError objects to string messages for backward
+    compatibility
+- ref: src/chunks.py#Chunks::validate_subsystem_refs
+  implements: Wrapper method routing through IntegrityValidator
+- ref: src/chunks.py#Chunks::validate_investigation_ref
+  implements: Wrapper method routing through IntegrityValidator
+- ref: src/chunks.py#Chunks::validate_narrative_ref
+  implements: Wrapper method routing through IntegrityValidator
+- ref: src/chunks.py#Chunks::validate_friction_entries_ref
+  implements: Wrapper method routing through IntegrityValidator
+- ref: tests/test_integrity.py#TestIntegrityValidatorSingleChunk
+  implements: Tests for IntegrityValidator.validate_chunk() single-chunk validation
+- ref: src/chunk_validation.py
+  implements: Routes through IntegrityValidator
 narrative: arch_review_remediation
 investigation: null
 subsystems: []
@@ -34,7 +38,6 @@ created_after:
 - orchestrator_api_decompose
 - task_operations_decompose
 ---
-
 # Chunk Goal
 
 ## Minor Goal

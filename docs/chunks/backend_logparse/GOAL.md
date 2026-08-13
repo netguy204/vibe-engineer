@@ -2,26 +2,39 @@
 status: ACTIVE
 ticket: null
 parent_chunk: null
-code_paths: ["src/orchestrator/backend.py", "src/orchestrator/backends/claude.py", "src/orchestrator/agent.py", "src/orchestrator/log_parser.py", "tests/test_orchestrator_log_parser.py", "tests/test_orchestrator_backend.py"]
+code_paths:
+- src/orchestrator/backend.py
+- src/orchestrator/backends/claude.py
+- src/orchestrator/agent.py
+- src/orchestrator/log_parser.py
+- tests/test_orchestrator_log_parser.py
+- tests/test_orchestrator_backend.py
+- tests/test_orchestrator_cli_tail.py
 code_references:
-  - ref: src/orchestrator/backend.py#TextEvent
-    implements: "Normalized log event for agent text output"
-  - ref: src/orchestrator/backend.py#ToolCallEvent
-    implements: "Normalized log event for tool invocations"
-  - ref: src/orchestrator/backend.py#ToolResultEvent
-    implements: "Normalized log event for tool results"
-  - ref: src/orchestrator/backend.py#ResultEvent
-    implements: "Normalized log event for session completion"
-  - ref: src/orchestrator/backends/claude.py#_emit_log_events
-    implements: "Translates Claude SDK messages into normalized LogEvents"
-  - ref: src/orchestrator/agent.py#create_log_callback
-    implements: "Serializes LogEvents as JSON lines to disk"
-  - ref: src/orchestrator/agent.py#_EVENT_TYPE_TAG
-    implements: "Maps event classes to JSON type tags for serialization"
-  - ref: src/orchestrator/log_parser.py#parse_log_line
-    implements: "Deserializes JSON log lines into ParsedLogEntry (replaces regex parsing)"
-  - ref: src/orchestrator/log_parser.py#parse_log_file
-    implements: "Reads JSON-line log files into structured entries"
+- ref: src/orchestrator/backend.py#TextEvent
+  implements: Normalized log event for agent text output
+- ref: src/orchestrator/backend.py#ToolCallEvent
+  implements: Normalized log event for tool invocations
+- ref: src/orchestrator/backend.py#ToolResultEvent
+  implements: Normalized log event for tool results
+- ref: src/orchestrator/backend.py#ResultEvent
+  implements: Normalized log event for session completion
+- ref: src/orchestrator/backends/claude.py#_emit_log_events
+  implements: Translates Claude SDK messages into normalized LogEvents
+- ref: src/orchestrator/agent.py#create_log_callback
+  implements: Serializes LogEvents as JSON lines to disk
+- ref: src/orchestrator/agent.py#_EVENT_TYPE_TAG
+  implements: Maps event classes to JSON type tags for serialization
+- ref: src/orchestrator/log_parser.py#parse_log_line
+  implements: Deserializes JSON log lines into ParsedLogEntry (replaces regex parsing)
+- ref: src/orchestrator/log_parser.py#parse_log_file
+  implements: Reads JSON-line log files into structured entries
+- ref: tests/test_orchestrator_backend.py
+  implements: Tests for _emit_log_events and LogEvent types
+- ref: tests/test_orchestrator_cli_tail.py
+  implements: Updated to JSON-line log format
+- ref: tests/test_orchestrator_log_parser.py
+  implements: Tests for JSON-line log parser
 narrative: pluggable_backends
 investigation: null
 subsystems: []

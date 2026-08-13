@@ -48,15 +48,26 @@ class TestNarrativeShortNameValidation:
         assert result.exit_code != 0
         assert "character" in result.output.lower()
 
-    def test_rejects_length_32_or_more(self, runner, temp_project):
-        """short_name with 32+ characters is rejected."""
-        long_name = "a" * 32
+    # Chunk: docs/chunks/crossref_artifact_id_cap - Descriptive names beyond 31 chars are legal
+    def test_accepts_descriptive_name_beyond_31_chars(self, runner, temp_project):
+        """Ordinary descriptive names over 31 characters are accepted."""
+        long_name = "database_and_sagemaker_savings_plans"  # 36 chars
+        result = runner.invoke(
+            cli,
+            ["narrative", "create", long_name, "--project-dir", str(temp_project)]
+        )
+        assert result.exit_code == 0, f"Failed with: {result.output}"
+
+    # Chunk: docs/chunks/crossref_artifact_id_cap - Cap is the filesystem component limit
+    def test_rejects_length_over_path_component_limit(self, runner, temp_project):
+        """short_name over 255 characters (filesystem limit) is rejected."""
+        long_name = "a" * 256
         result = runner.invoke(
             cli,
             ["narrative", "create", long_name, "--project-dir", str(temp_project)]
         )
         assert result.exit_code != 0
-        assert "32" in result.output or "length" in result.output.lower()
+        assert "255" in result.output
 
     def test_accepts_valid_short_name(self, runner, temp_project):
         """Valid short_name with alphanumeric, underscore, hyphen is accepted."""
@@ -68,8 +79,8 @@ class TestNarrativeShortNameValidation:
 
     def test_collects_all_errors(self, runner, temp_project):
         """Multiple validation errors are collected and shown together."""
-        # 33 chars with a space and invalid char
-        bad_name = "a" * 30 + " @!"
+        # 258 chars (over the 255 limit) with a space and invalid char
+        bad_name = "a" * 255 + " @!"
         result = runner.invoke(
             cli,
             ["narrative", "create", bad_name, "--project-dir", str(temp_project)]
@@ -78,7 +89,7 @@ class TestNarrativeShortNameValidation:
         # Should mention multiple issues
         output_lower = result.output.lower()
         assert "invalid characters" in output_lower
-        assert "31" in result.output or "at most" in output_lower
+        assert "255" in result.output or "at most" in output_lower
 
 
 class TestNarrativeLowercaseNormalization:

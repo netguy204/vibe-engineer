@@ -244,6 +244,33 @@ Code references use symbolic paths rather than line numbers for stability as cod
 - `src/chunks.py#Chunks::create_chunk` - a method in a class
 - `src/ve.py#validate_short_name` - a standalone function
 - `src/models.py#Outer::Inner::method` - deeply nested symbol
+- `packages/tasks/*/Dockerfile` - a glob pattern covering every match
+- `engine::src/foo.py#Bar` - a member-qualified reference into a sibling
+  tree of the same workspace
+- `acme/project::src/foo.py#Bar` - a repo-qualified reference into another
+  repository
+
+**Qualified references**: A file path (in `code_paths` or the file part of a
+`code_references` ref) may carry a `::` qualifier, under the same shape rule
+the comment backreference grammar uses. A qualifier with no `/` names a
+**workspace member**: the reference resolves through `.ve-workspace.yaml`
+against that member's root, and `ve workspace validate` fully verifies it —
+existence, glob expansion, and symbol anchors are all checked in the target
+tree. A qualifier with exactly one `/` is a GitHub-style **org/repo**
+reference into another repository; those legitimately cannot be checked
+offline and are reported as *unverified*, never as defects. Any other shape
+is a malformed qualifier and is reported as a defect. Single-tree validation
+(`ve validate`) defers all qualified entries to workspace validation rather
+than misresolving them against the local tree.
+
+**Glob patterns**: A file path (in `code_paths` or the file part of a
+`code_references` ref) containing glob magic (`*`, `?`, `[`) is a pattern,
+not a literal path. It expresses "this applies uniformly across everything
+matching this shape" without enumerating N concrete paths that rot
+independently. Validators expand the pattern against the project root and
+error **only when the expansion is empty**; a non-empty expansion is a
+verified reference. Symbol anchors on glob patterns are reported as
+uncheckable (warning/unverified), never checked across the expansion.
 
 **Validation**:
 - When validating a chunk (`ve chunk validate`), symbolic references are validated
@@ -467,7 +494,7 @@ Alias: `ve chunk start` (deprecated, same behavior)
   - `--future`: Create chunk with `FUTURE` status instead of `IMPLEMENTING`
 - **Preconditions**:
   - `docs/chunks/` directory exists
-  - `SHORT_NAME` matches pattern `^[a-zA-Z0-9_-]{1,31}$`
+  - `SHORT_NAME` matches pattern `^[a-zA-Z0-9_-]{1,255}$`
   - `TICKET_ID` (if provided) matches pattern `^[a-zA-Z0-9_-]+$`
 - **Postconditions**:
   - New directory `docs/chunks/{short_name}/` created
@@ -479,7 +506,7 @@ Alias: `ve chunk start` (deprecated, same behavior)
 - **Errors**:
   - ValidationError if SHORT_NAME contains spaces
   - ValidationError if SHORT_NAME contains invalid characters
-  - ValidationError if SHORT_NAME exceeds 31 characters
+  - ValidationError if SHORT_NAME exceeds 255 characters
   - ValidationError if TICKET_ID contains spaces or invalid characters
 - **Exit codes**: 0 on success, 1 on validation error or user abort
 
@@ -533,7 +560,7 @@ Create a new subsystem directory with OVERVIEW.md template for guided discovery.
 - **Options**:
   - `--project-dir PATH`: Target directory (default: current working directory)
 - **Preconditions**:
-  - `SHORT_NAME` matches pattern `^[a-zA-Z0-9_-]{1,31}$`
+  - `SHORT_NAME` matches pattern `^[a-zA-Z0-9_-]{1,255}$`
   - No existing subsystem with the same short name
 - **Postconditions**:
   - New directory `docs/subsystems/{short_name}/` created
@@ -542,7 +569,7 @@ Create a new subsystem directory with OVERVIEW.md template for guided discovery.
   - Input is normalized to lowercase
 - **Errors**:
   - ValidationError if SHORT_NAME contains invalid characters
-  - ValidationError if SHORT_NAME exceeds 31 characters
+  - ValidationError if SHORT_NAME exceeds 255 characters
   - Error if subsystem with same short name already exists
 - **Exit codes**: 0 on success, 1 on validation error
 
@@ -615,7 +642,7 @@ Create a new investigation directory with OVERVIEW.md template.
 - **Options**:
   - `--project-dir PATH`: Target directory (default: current working directory)
 - **Preconditions**:
-  - `SHORT_NAME` matches pattern `^[a-zA-Z0-9_-]{1,31}$`
+  - `SHORT_NAME` matches pattern `^[a-zA-Z0-9_-]{1,255}$`
   - No existing investigation with the same short name
 - **Postconditions**:
   - New directory `docs/investigations/{short_name}/` created
@@ -624,7 +651,7 @@ Create a new investigation directory with OVERVIEW.md template.
   - Input is normalized to lowercase
 - **Errors**:
   - ValidationError if SHORT_NAME contains invalid characters
-  - ValidationError if SHORT_NAME exceeds 31 characters
+  - ValidationError if SHORT_NAME exceeds 255 characters
   - Error if investigation with same short name already exists
 - **Exit codes**: 0 on success, 1 on validation error
 
@@ -706,8 +733,8 @@ This tool is for documentation management, not high-throughput data processing. 
 
 | Limit | Value | Behavior when exceeded |
 |-------|-------|------------------------|
-| SHORT_NAME length | 31 characters | ValidationError, operation aborted |
-| Chunk name length | 31 characters | ValidationError, operation aborted |
+| SHORT_NAME length | 255 characters (filesystem path-component limit) | ValidationError, operation aborted |
+| Chunk name length | 255 characters (filesystem path-component limit) | ValidationError, operation aborted |
 | Character set | `[a-zA-Z0-9_-]` | ValidationError, operation aborted |
 
 ## Versioning and Compatibility

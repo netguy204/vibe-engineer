@@ -1,1 +1,0 @@
-../../.agents/skills/steward-send/SKILL.md

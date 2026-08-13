@@ -3,26 +3,29 @@ status: ACTIVE
 ticket: null
 parent_chunk: null
 code_paths:
-  - src/orchestrator/api/attention.py
-  - src/orchestrator/api/app.py
-  - src/orchestrator/client.py
-  - src/cli/orch.py
-  - tests/test_orchestrator_retry_command.py
+- src/orchestrator/api/attention.py
+- src/orchestrator/api/app.py
+- src/orchestrator/client.py
+- src/cli/orch.py
+- tests/test_orchestrator_retry_command.py
 code_references:
-  - ref: src/orchestrator/api/attention.py#retry_endpoint
-    implements: "POST /work-units/{chunk}/retry - Properly resets work unit state for fresh retry"
-  - ref: src/orchestrator/api/attention.py#retry_all_endpoint
-    implements: "POST /work-units/retry-all - Batch retry with optional phase filtering"
-  - ref: src/orchestrator/client.py#OrchestratorClient::retry_work_unit
-    implements: "Client method for single work unit retry via HTTP"
-  - ref: src/orchestrator/client.py#OrchestratorClient::retry_all_work_units
-    implements: "Client method for batch retry with phase filter support"
-  - ref: src/cli/orch.py#work_unit_retry
-    implements: "ve orch work-unit retry <chunk> CLI command"
-  - ref: src/cli/orch.py#orch_retry_all
-    implements: "ve orch retry-all CLI command with --phase filter"
-  - ref: tests/test_orchestrator_retry_command.py
-    implements: "Test coverage for retry endpoints and state reset behavior"
+- ref: src/orchestrator/api/attention.py#retry_endpoint
+  implements: POST /work-units/{chunk}/retry - Properly resets work unit state for
+    fresh retry
+- ref: src/orchestrator/api/attention.py#retry_all_endpoint
+  implements: POST /work-units/retry-all - Batch retry with optional phase filtering
+- ref: src/orchestrator/client.py#OrchestratorClient::retry_work_unit
+  implements: Client method for single work unit retry via HTTP
+- ref: src/orchestrator/client.py#OrchestratorClient::retry_all_work_units
+  implements: Client method for batch retry with phase filter support
+- ref: src/cli/orch.py#work_unit_retry
+  implements: ve orch work-unit retry <chunk> CLI command
+- ref: src/cli/orch.py#orch_retry_all
+  implements: ve orch retry-all CLI command with --phase filter
+- ref: tests/test_orchestrator_retry_command.py
+  implements: Test coverage for retry endpoints and state reset behavior
+- ref: src/orchestrator/api/app.py
+  implements: Batch retry endpoint
 narrative: null
 investigation: orch_stuck_recovery
 subsystems:
@@ -35,7 +38,6 @@ created_after:
 - orch_merge_rebase_retry
 - orch_rename_propagation
 ---
-
 # Chunk Goal
 
 ## Minor Goal

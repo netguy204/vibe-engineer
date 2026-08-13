@@ -1,1 +1,0 @@
-../../.agents/skills/chunk-review/SKILL.md

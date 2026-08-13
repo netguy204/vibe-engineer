@@ -9,25 +9,32 @@ code_paths:
 - tests/test_entity_migrate_cli.py
 code_references:
 - ref: src/entity_migration.py#LegacyMemory
-  implements: "Data model for a single legacy memory file"
+  implements: Data model for a single legacy memory file
 - ref: src/entity_migration.py#ClassifiedMemories
-  implements: "Grouped memory buckets (identity/domain/techniques/relationships/log/unclassified)"
+  implements: Grouped memory buckets (identity/domain/techniques/relationships/log/unclassified)
 - ref: src/entity_migration.py#MigrationResult
-  implements: "Migration summary returned to caller and printed by CLI"
+  implements: Migration summary returned to caller and printed by CLI
 - ref: src/entity_migration.py#read_legacy_entity
-  implements: "Reads legacy .entities/<name>/ structure into structured data"
+  implements: Reads legacy .entities/<name>/ structure into structured data
 - ref: src/entity_migration.py#classify_memories
-  implements: "Routes each LegacyMemory into the appropriate wiki bucket"
+  implements: Routes each LegacyMemory into the appropriate wiki bucket
 - ref: src/entity_migration.py#format_log_page
-  implements: "Mechanically converts journal-tier memories to wiki/log.md (no LLM)"
+  implements: Mechanically converts journal-tier memories to wiki/log.md (no LLM)
 - ref: src/entity_migration.py#synthesize_identity_page
-  implements: "LLM synthesis of core/correction/autonomy memories into wiki/identity.md"
+  implements: LLM synthesis of core/correction/autonomy memories into wiki/identity.md
 - ref: src/entity_migration.py#synthesize_knowledge_pages
-  implements: "LLM grouping of domain/skill memories into focused wiki pages"
+  implements: LLM grouping of domain/skill memories into focused wiki pages
 - ref: src/entity_migration.py#migrate_entity
-  implements: "Full migration orchestration with atomicity: read → classify → create repo → synthesize wiki → copy memories → commit; cleans up partial repo on any failure to enable safe retries"
+  implements: "Full migration orchestration with atomicity: read \u2192 classify \u2192\
+    \ create repo \u2192 synthesize wiki \u2192 copy memories \u2192 commit; cleans\
+    \ up partial repo on any failure to enable safe retries"
 - ref: src/cli/entity.py#migrate
-  implements: "ve entity migrate CLI command: resolves paths, calls migrate_entity, prints summary"
+  implements: 've entity migrate CLI command: resolves paths, calls migrate_entity,
+    prints summary'
+- ref: tests/test_entity_migrate_cli.py
+  implements: Migration CLI tests
+- ref: tests/test_entity_migration.py
+  implements: Migration tests
 narrative: null
 investigation: entity_wiki_memory
 subsystems: []

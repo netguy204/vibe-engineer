@@ -1128,6 +1128,7 @@ class TestVeConfig:
 class TestVeConfigInTemplates:
     """Tests for the AGENTS.md managed template content."""
 
+    # Chunk: docs/chunks/claudemd_marker_safety - Markers are annotated (self-documenting), so match the prefix
     def test_agents_md_template_has_managed_markers(self):
         """AGENTS.md template has VE:MANAGED markers for managed content."""
         from template_system import render_template
@@ -1136,8 +1137,8 @@ class TestVeConfigInTemplates:
             "claude",
             "AGENTS.md.jinja2",
         )
-        assert "<!-- VE:MANAGED:START -->" in result
-        assert "<!-- VE:MANAGED:END -->" in result
+        assert "<!-- VE:MANAGED:START" in result
+        assert "<!-- VE:MANAGED:END" in result
 
     def test_agents_md_template_no_development_section(self):
         """AGENTS.md template does not include Development section."""
@@ -1158,6 +1159,107 @@ class TestVeConfigInTemplates:
             "AGENTS.md.jinja2",
         )
         assert "## Template Editing Workflow" not in result
+
+
+# Chunk: docs/chunks/template_workspace_awareness - Workspace-aware managed block tests
+class TestWorkspaceAwareAgentsTemplate:
+    """Tests for workspace-aware content in the claude AGENTS.md template.
+
+    The single-tree render is pinned byte-for-byte against golden fixtures in
+    tests/fixtures/ captured before this chunk touched the templates. If a
+    deliberate template change breaks the pin, regenerate the fixtures on
+    purpose (render with a default TemplateContext and overwrite the files) —
+    never loosen the assertion.
+    """
+
+    FIXTURES = pathlib.Path(__file__).parent / "fixtures"
+
+    def _render(self, template_name, **ctx_kwargs):
+        from template_system import TemplateContext, render_template
+
+        return render_template(
+            "claude", template_name, context=TemplateContext(**ctx_kwargs)
+        )
+
+    def test_template_context_defaults_to_single_tree(self):
+        """TemplateContext.in_workspace defaults to False."""
+        from template_system import TemplateContext
+
+        assert TemplateContext().in_workspace is False
+
+    def test_single_tree_agents_md_is_byte_identical_to_golden(self):
+        """A single-tree AGENTS.md render matches the pre-chunk bytes exactly."""
+        golden = (self.FIXTURES / "agents_md_single_tree.md").read_text()
+        assert self._render("AGENTS.md.jinja2") == golden
+        assert self._render("AGENTS.md.jinja2", in_workspace=False) == golden
+
+    def test_single_tree_render_without_context_matches_golden(self):
+        """Call sites that pass no context at all still get the single-tree bytes."""
+        from template_system import render_template
+
+        golden = (self.FIXTURES / "agents_md_single_tree.md").read_text()
+        assert render_template("claude", "AGENTS.md.jinja2") == golden
+
+    def test_workspace_rename_mandate_prescribes_workspace_validate(self):
+        """With a manifest present, the rename mandate names the workspace validator.
+
+        This is the actively-wrong-advice fix: the single-tree validator run at
+        a workspace root reports phantom structural errors, so the mandate must
+        never prescribe it there.
+        """
+        result = self._render("AGENTS.md.jinja2", in_workspace=True)
+        assert "uvx --from vibe-engineer ve workspace validate" in result
+        assert "uvx --from vibe-engineer ve validate" not in result
+
+    def test_workspace_render_demonstrates_qualified_form(self):
+        """The workspace render shows member::docs/... and points at ve workspace list."""
+        result = self._render("AGENTS.md.jinja2", in_workspace=True)
+        assert "::docs/subsystems/" in result
+        assert "::docs/chunks/" in result
+        assert "ve workspace list" in result
+
+    def test_workspace_render_documents_peer_pointers_and_reader_rule(self):
+        """Peer pointers (tree: vs repo:) and the 1-reader/2+-readers rule are present."""
+        result = self._render("AGENTS.md.jinja2", in_workspace=True)
+        assert "ve external point" in result
+        assert "`tree:`" in result
+        assert "`repo:`" in result
+        assert "docs/trunk/EXTERNAL.md" in result
+        # The field-proven rule, preserved in spirit verbatim.
+        assert "One Reader Qualifies; Several Readers Get a Pointer" in result
+        assert "qualify it in place" in result
+        assert "record the dependency once with a peer pointer" in result
+
+    def test_workspace_render_prefers_code_references(self):
+        """code_references with symbol anchors and implements: beat legacy code_paths."""
+        result = self._render("AGENTS.md.jinja2", in_workspace=True)
+        assert "`code_references` over `code_paths`" in result
+        assert "#Symbol::method" in result
+        assert "implements:" in result
+
+    def test_workspace_render_points_at_deletion_ledger(self):
+        """Gone-target references route through ve deletion record, not silent deletes."""
+        result = self._render("AGENTS.md.jinja2", in_workspace=True)
+        assert "ve deletion record" in result
+        assert "docs/trunk/DELETIONS.md" in result
+        assert "reference just to make the validator pass." in result
+
+    def test_workspace_content_absent_from_single_tree_render(self):
+        """None of the workspace-only content leaks into a single-tree render."""
+        result = self._render("AGENTS.md.jinja2")
+        for marker in (
+            "Working Across VE Trees in This Workspace",
+            "ve workspace validate",
+            "ve external point",
+            "ve deletion record",
+            "docs/trunk/DELETIONS.md",
+        ):
+            assert marker not in result
+
+    # Chunk: docs/chunks/priorart_subject_search - CLAUDE.md.jinja2 deleted; AGENTS.md.jinja2
+    # is the only claude template ve init renders, so the former lockstep test
+    # (which pinned the two templates' workspace blocks to each other) is gone
+    # with it. CLAUDE.md reaches users as a symlink to AGENTS.md, not a render.
 
 
 class TestManagedClaudeMdMigrationTemplate:

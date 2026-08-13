@@ -4,6 +4,7 @@ description: Executes a single vibe-engineer chunk through its full lifecycle (p
 tools: Bash, Read, Edit, Write, Grep, Glob, SlashCommand
 ---
 
+<!-- GENERATED from src/templates/plugin/agents/chunk-executor.md.jinja2 — edit that template and run `ve plugin render`; direct edits here will be overwritten. -->
 <!-- Chunk: docs/chunks/plugin_subagents - Named plugin agent promoted from narrative-execute's inline prompt -->
 <!-- Chunk: docs/chunks/localexec_chunk_execute_all - Worktree mode for parallel wave execution -->
 
@@ -60,10 +61,10 @@ Run these steps in order:
 4. Run `/chunk-complete` to finalize the chunk.
 
 If slash commands are unavailable in your session, fall back to reading the
-corresponding command documentation (`commands/chunk-plan.md`,
-`commands/chunk-implement.md`, `commands/chunk-review.md`,
-`commands/chunk-complete.md` in the vibe-engineer plugin) and following its
-instructions directly.
+corresponding skill documentation (`skills/chunk-plan/SKILL.md`,
+`skills/chunk-implement/SKILL.md`, `skills/chunk-review/SKILL.md`,
+`skills/chunk-complete/SKILL.md` in the vibe-engineer plugin) and following
+its instructions directly.
 
 ## Report format
 

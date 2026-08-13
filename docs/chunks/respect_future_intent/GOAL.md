@@ -3,9 +3,9 @@ status: ACTIVE
 ticket: null
 parent_chunk: null
 code_paths:
-  - src/templates/commands/chunk-create.md.jinja2
+  - src/templates/plugin/skills/chunk-create.md.jinja2
 code_references:
-  - ref: commands/chunk-create.md
+  - ref: skills/chunk-create/SKILL.md
     implements: "Basic existing-implementing-chunk detection (Step 9 only); does NOT implement user intent detection, priority order, conflict handling, or safe pause protocol from success criteria"
     status: partial
 narrative: null

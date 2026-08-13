@@ -1,1 +1,0 @@
-../../.agents/skills/swarm-request-response/SKILL.md

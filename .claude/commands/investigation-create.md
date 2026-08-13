@@ -1,1 +1,0 @@
-../../.agents/skills/investigation-create/SKILL.md

@@ -9,11 +9,15 @@ code_paths:
 - tests/test_orchestrator_root_resolution.py
 code_references:
 - ref: src/board/storage.py#resolve_project_root
-  implements: "Shared project root resolution (task yaml → git → CWD fallback)"
+  implements: "Shared project root resolution (task yaml \u2192 git \u2192 CWD fallback)"
 - ref: src/board/storage.py#resolve_board_root
-  implements: "Thin delegate to resolve_project_root for board commands"
+  implements: Thin delegate to resolve_project_root for board commands
 - ref: src/cli/orch.py#resolve_orch_project_dir
-  implements: "Orch CLI wrapper around resolve_project_root for --project-dir resolution"
+  implements: Orch CLI wrapper around resolve_project_root for --project-dir resolution
+- ref: tests/test_board_storage.py
+  implements: Referenced by tests/test_board_storage.py
+- ref: tests/test_orchestrator_root_resolution.py
+  implements: CLI integration tests for orch root resolution
 narrative: null
 investigation: null
 subsystems:
@@ -28,7 +32,6 @@ created_after:
 - board_watch_safety
 - orchestrator_monitor_skill
 ---
-
 # Chunk Goal
 
 ## Minor Goal

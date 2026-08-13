@@ -4,7 +4,7 @@ ticket: null
 parent_chunk: null
 code_paths:
 - src/entities.py
-- src/templates/commands/entity-startup.md.jinja2
+- src/templates/plugin/skills/entity-startup.md.jinja2
 - src/templates/entity/wiki_schema.md.jinja2
 - src/templates/entity/wiki/SOP.md.jinja2
 code_references:
@@ -20,7 +20,7 @@ code_references:
     implements: "Empty-default SOP.md template with placeholder comment for role-specific startup procedures"
   - ref: src/templates/entity/wiki_schema.md.jinja2
     implements: "Document SOP.md in wiki directory structure and What Goes Where sections"
-  - ref: commands/entity-startup.md
+  - ref: skills/entity-startup/SKILL.md
     implements: "Replace Active State guidance with SOP.md-aware startup instructions"
 narrative: null
 investigation: entity_wiki_memory

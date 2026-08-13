@@ -1,5 +1,5 @@
 ---
-status: DRAFTING
+status: ACTIVE
 advances_trunk_goal: "Required Properties: partial-adoption — 'The tooling that supports this workflow must remain effective even if not every engineer working in the project uses the workflow.' Colleagues working in ve-initialized projects from Cursor are exactly this clause; the workflow must feel native to them, not Claude-Code-shaped."
 proposed_chunks:
   - prompt: >-
@@ -15,7 +15,7 @@ proposed_chunks:
       marker convention that does not collide with the existing
       no-AUTO-GENERATED-header invariant in tests/test_plugin_commands.py.
     depends_on: []
-    chunk_directory: null
+    chunk_directory: dualplugin_template_source
   - prompt: >-
       Migrate all remaining plugin content into the template source: the
       other 36 commands plus the two agents (chunk-executor, intent-auditor),
@@ -24,7 +24,7 @@ proposed_chunks:
       are build products of `ve plugin render` and the drift test covers
       every file.
     depends_on: [0]
-    chunk_directory: null
+    chunk_directory: dualplugin_content_migration
   - prompt: >-
       Scaffold the Cursor plugin: .cursor-plugin/plugin.json and
       marketplace.json per the cursor/plugins spec, a Cursor render target in
@@ -39,7 +39,7 @@ proposed_chunks:
       manifests (pyproject.toml, .claude-plugin/plugin.json,
       .cursor-plugin/plugin.json), test-enforced.
     depends_on: [0]
-    chunk_directory: null
+    chunk_directory: dualplugin_cursor_scaffold
   - prompt: >-
       Render the full surface for Cursor: all commands/skills and both agents
       (Cursor 2.4+ subagents) emitted from the template source into the
@@ -49,7 +49,7 @@ proposed_chunks:
       (chunk-create, chunk-plan, steward-send, chunk-execute-all) behaves
       correctly in a Cursor session in a ve project.
     depends_on: [1, 2]
-    chunk_directory: null
+    chunk_directory: dualplugin_cursor_render
   - prompt: >-
       Cursor lifecycle integration and release discipline: decide and
       implement the Cursor counterpart of the SessionStart hook (Cursor
@@ -61,7 +61,7 @@ proposed_chunks:
       colleagues (marketplace and /add-plugin paths), and add a "Developing
       the plugin" section covering the template-edit → render → test loop.
     depends_on: [3]
-    chunk_directory: null
+    chunk_directory: dualplugin_lifecycle_release
 created_after: ["intent_ownership"]
 ---
 

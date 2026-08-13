@@ -15,63 +15,65 @@ code_paths:
 - tests/test_orchestrator_api.py
 - tests/test_orchestrator_cli.py
 code_references:
-  - ref: src/orchestrator/__init__.py
-    implements: "Package exports for orchestrator module"
-  - ref: src/orchestrator/models.py#WorkUnitPhase
-    implements: "Enum for chunk lifecycle phases (GOAL/PLAN/IMPLEMENT/COMPLETE)"
-  - ref: src/orchestrator/models.py#WorkUnitStatus
-    implements: "Enum for work unit scheduling states (READY/RUNNING/BLOCKED/NEEDS_ATTENTION/DONE)"
-  - ref: src/orchestrator/models.py#WorkUnit
-    implements: "Core work unit model tracking chunk through lifecycle"
-  - ref: src/orchestrator/models.py#OrchestratorState
-    implements: "Daemon status information model"
-  - ref: src/orchestrator/state.py#StateStore
-    implements: "SQLite state persistence with migrations, work unit CRUD, and status logging"
-  - ref: src/orchestrator/state.py#get_default_db_path
-    implements: "Database path resolution in .ve directory"
-  - ref: src/orchestrator/daemon.py#DaemonError
-    implements: "Daemon-specific exception type"
-  - ref: src/orchestrator/daemon.py#start_daemon
-    implements: "Daemon startup with double-fork daemonization"
-  - ref: src/orchestrator/daemon.py#stop_daemon
-    implements: "Graceful daemon shutdown with SIGTERM/SIGKILL"
-  - ref: src/orchestrator/daemon.py#is_daemon_running
-    implements: "Daemon running status check via PID file"
-  - ref: src/orchestrator/daemon.py#get_daemon_status
-    implements: "Comprehensive daemon status including uptime and work unit counts"
-  - ref: src/orchestrator/api/app.py#create_app
-    implements: "Starlette app factory with REST endpoints for work unit CRUD"
-  - ref: src/orchestrator/client.py#OrchestratorClient
-    implements: "HTTP client for CLI-to-daemon communication via Unix socket"
-  - ref: src/orchestrator/client.py#DaemonNotRunningError
-    implements: "Client exception for daemon not running"
-  - ref: src/cli/orch.py#orch
-    implements: "CLI command group for orchestrator commands"
-  - ref: src/cli/orch.py#start
-    implements: "ve orch start command"
-  - ref: src/cli/orch.py#stop
-    implements: "ve orch stop command"
-  - ref: src/cli/orch.py#orch_status
-    implements: "ve orch status command with JSON output support"
-  - ref: src/cli/orch.py#orch_ps
-    implements: "ve orch ps command to list work units"
-  - ref: src/cli/orch.py#work_unit
-    implements: "Work unit subcommand group"
-  - ref: src/cli/orch.py#work_unit_create
-    implements: "ve orch work-unit create command"
-  - ref: src/cli/orch.py#work_unit_status
-    implements: "ve orch work-unit status command"
-  - ref: src/cli/orch.py#work_unit_delete
-    implements: "ve orch work-unit delete command"
-  - ref: src/orchestrator/api/work_units.py
-    implements: "REST endpoints for work unit CRUD and daemon status"
+- ref: src/orchestrator/__init__.py
+  implements: Package exports for orchestrator module
+- ref: src/orchestrator/models.py#WorkUnitPhase
+  implements: Enum for chunk lifecycle phases (GOAL/PLAN/IMPLEMENT/COMPLETE)
+- ref: src/orchestrator/models.py#WorkUnitStatus
+  implements: Enum for work unit scheduling states (READY/RUNNING/BLOCKED/NEEDS_ATTENTION/DONE)
+- ref: src/orchestrator/models.py#WorkUnit
+  implements: Core work unit model tracking chunk through lifecycle
+- ref: src/orchestrator/models.py#OrchestratorState
+  implements: Daemon status information model
+- ref: src/orchestrator/state.py#StateStore
+  implements: SQLite state persistence with migrations, work unit CRUD, and status
+    logging
+- ref: src/orchestrator/state.py#get_default_db_path
+  implements: Database path resolution in .ve directory
+- ref: src/orchestrator/daemon.py#DaemonError
+  implements: Daemon-specific exception type
+- ref: src/orchestrator/daemon.py#start_daemon
+  implements: Daemon startup with double-fork daemonization
+- ref: src/orchestrator/daemon.py#stop_daemon
+  implements: Graceful daemon shutdown with SIGTERM/SIGKILL
+- ref: src/orchestrator/daemon.py#is_daemon_running
+  implements: Daemon running status check via PID file
+- ref: src/orchestrator/daemon.py#get_daemon_status
+  implements: Comprehensive daemon status including uptime and work unit counts
+- ref: src/orchestrator/api/app.py#create_app
+  implements: Starlette app factory with REST endpoints for work unit CRUD
+- ref: src/orchestrator/client.py#OrchestratorClient
+  implements: HTTP client for CLI-to-daemon communication via Unix socket
+- ref: src/orchestrator/client.py#DaemonNotRunningError
+  implements: Client exception for daemon not running
+- ref: src/cli/orch.py#orch
+  implements: CLI command group for orchestrator commands
+- ref: src/cli/orch.py#start
+  implements: ve orch start command
+- ref: src/cli/orch.py#stop
+  implements: ve orch stop command
+- ref: src/cli/orch.py#orch_status
+  implements: ve orch status command with JSON output support
+- ref: src/cli/orch.py#orch_ps
+  implements: ve orch ps command to list work units
+- ref: src/cli/orch.py#work_unit
+  implements: Work unit subcommand group
+- ref: src/cli/orch.py#work_unit_create
+  implements: ve orch work-unit create command
+- ref: src/cli/orch.py#work_unit_status
+  implements: ve orch work-unit status command
+- ref: src/cli/orch.py#work_unit_delete
+  implements: ve orch work-unit delete command
+- ref: src/orchestrator/api/work_units.py
+  implements: REST endpoints for work unit CRUD and daemon status
+- ref: tests/test_orchestrator_state.py
+  implements: State store tests
 narrative: null
 investigation: parallel_agent_orchestration
 subsystems: []
 created_after:
 - jinja_backrefs
 ---
-
 # Chunk Goal
 
 ## Minor Goal

@@ -7,36 +7,44 @@ code_paths:
 - src/task_init.py
 - src/template_system.py
 - src/templates/claude/AGENTS.md.jinja2
-- src/templates/claude/CLAUDE.md.jinja2
-- src/templates/commands/
 - tests/test_project.py
 - tests/test_init.py
 - tests/test_task_init.py
-- tests/test_steward_skills.py
 - tests/test_chunk_review_skill.py
 - tests/test_template_system.py
 - tests/test_orchestrator_feedback_injection.py
 code_references:
 - ref: src/project.py#Project::init
-  implements: "Slimmed init pipeline: trunk docs, AGENTS.md, artifact directories, reviewers baseline, gitignore — no skill rendering or command symlinks"
+  implements: "Slimmed init pipeline: trunk docs, AGENTS.md, artifact directories,\
+    \ reviewers baseline, gitignore \u2014 no skill rendering or command symlinks"
 - ref: src/project.py#_is_ve_generated_file
-  implements: "Kept VE-generated-file detector for plugin_legacy_migration's legacy-layout cleanup"
+  implements: Kept VE-generated-file detector for plugin_legacy_migration's legacy-layout
+    cleanup
 - ref: src/task_init.py#TaskInit::execute
-  implements: "Slimmed task init: writes .ve-task.yaml and task AGENTS.md only, no skill rendering"
+  implements: 'Slimmed task init: writes .ve-task.yaml and task AGENTS.md only, no
+    skill rendering'
 - ref: src/template_system.py#render_to_directory
-  implements: "Collection rendering without the removed skill_layout (agentskills.io) output mode"
+  implements: Collection rendering without the removed skill_layout (agentskills.io)
+    output mode
 - ref: src/templates/claude/AGENTS.md.jinja2
-  implements: "Managed block reduced to trunk-doc pointers, chunk conventions, and the Claude Code plugin pointer for commands"
-- ref: src/templates/claude/CLAUDE.md.jinja2
-  implements: "Parallel slimmed managed-block template kept content-identical to AGENTS.md.jinja2"
+  implements: Managed block reduced to trunk-doc pointers, chunk conventions, and
+    the Claude Code plugin pointer for commands
 - ref: tests/test_project.py#TestProjectInit::test_init_creates_no_agents_skills_directory
-  implements: "Negative coverage: fresh init creates no .agents/ directory"
+  implements: 'Negative coverage: fresh init creates no .agents/ directory'
 - ref: tests/test_project.py#TestProjectInit::test_init_creates_no_claude_commands_directory
-  implements: "Negative coverage: fresh init creates no .claude/ directory"
+  implements: 'Negative coverage: fresh init creates no .claude/ directory'
 - ref: tests/test_project.py#TestIsVeGeneratedFile
-  implements: "Direct unit coverage for the kept _is_ve_generated_file helper"
+  implements: Direct unit coverage for the kept _is_ve_generated_file helper
 - ref: tests/test_task_init.py#TestTaskInitNoSkills
-  implements: "Negative coverage: task init renders no skills or command symlinks"
+  implements: 'Negative coverage: task init renders no skills or command symlinks'
+- ref: tests/test_chunk_review_skill.py
+  implements: Removed chunk-review template rendering tests;
+- ref: tests/test_init.py
+  implements: Init renders no skills or command symlinks
+- ref: tests/test_orchestrator_feedback_injection.py
+  implements: Repointed at the static plugin command (templates collection removed)
+- ref: tests/test_template_system.py
+  implements: Command-template tests removed with the commands collection
 narrative: claude_plugin_port
 investigation: null
 subsystems: []

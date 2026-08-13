@@ -3,19 +3,34 @@ status: ACTIVE
 ticket: null
 parent_chunk: null
 code_paths:
-  - src/orchestrator/scheduler.py
-  - tests/test_orchestrator_scheduler_unblock.py
+- src/orchestrator/scheduler.py
+- tests/test_orchestrator_scheduler_unblock.py
+- tests/test_orchestrator_scheduler_activation.py
+- tests/test_orchestrator_scheduler_dispatch.py
+- tests/test_orchestrator_scheduler_injection.py
+- tests/test_orchestrator_scheduler_results.py
+- tests/test_orchestrator_scheduler_review.py
 code_references:
-  - ref: src/orchestrator/scheduler.py#Scheduler::_unblock_dependents
-    implements: "Fix NEEDS_ATTENTION to READY transition when blockers complete"
-  - ref: src/orchestrator/scheduler.py#Scheduler::_run_work_unit
-    implements: "Clear attention_reason and blocked_by when transitioning to RUNNING"
-  - ref: src/orchestrator/scheduler.py#Scheduler::_advance_phase
-    implements: "Clear attention_reason when transitioning to READY on phase advancement"
-  - ref: tests/test_orchestrator_scheduler_unblock.py#TestNeedsAttentionUnblock
-    implements: "Tests for NEEDS_ATTENTION to READY transition on unblock"
-  - ref: tests/test_orchestrator_scheduler_unblock.py#TestAttentionReasonCleanup
-    implements: "Tests for attention_reason and blocked_by cleanup on status transitions"
+- ref: src/orchestrator/scheduler.py#Scheduler::_unblock_dependents
+  implements: Fix NEEDS_ATTENTION to READY transition when blockers complete
+- ref: src/orchestrator/scheduler.py#Scheduler::_run_work_unit
+  implements: Clear attention_reason and blocked_by when transitioning to RUNNING
+- ref: src/orchestrator/scheduler.py#Scheduler::_advance_phase
+  implements: Clear attention_reason when transitioning to READY on phase advancement
+- ref: tests/test_orchestrator_scheduler_unblock.py#TestNeedsAttentionUnblock
+  implements: Tests for NEEDS_ATTENTION to READY transition on unblock
+- ref: tests/test_orchestrator_scheduler_unblock.py#TestAttentionReasonCleanup
+  implements: Tests for attention_reason and blocked_by cleanup on status transitions
+- ref: tests/test_orchestrator_scheduler_activation.py
+  implements: Fix NEEDS_ATTENTION to READY transition on unblock
+- ref: tests/test_orchestrator_scheduler_dispatch.py
+  implements: Fix NEEDS_ATTENTION to READY transition on unblock
+- ref: tests/test_orchestrator_scheduler_injection.py
+  implements: Fix NEEDS_ATTENTION to READY transition on unblock
+- ref: tests/test_orchestrator_scheduler_results.py
+  implements: Fix NEEDS_ATTENTION to READY transition on unblock
+- ref: tests/test_orchestrator_scheduler_review.py
+  implements: Fix NEEDS_ATTENTION to READY transition on unblock
 narrative: null
 investigation: null
 subsystems: []
@@ -30,7 +45,6 @@ created_after:
 - orch_sandbox_enforcement
 - orch_blocked_lifecycle
 ---
-
 # Chunk Goal
 
 ## Minor Goal

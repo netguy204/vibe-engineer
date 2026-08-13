@@ -7,13 +7,19 @@ code_paths:
 - tests/test_board_client.py
 code_references:
 - ref: src/board/client.py#StaleWatchError
-  implements: "Idle timeout sentinel exception — distinguishes idle re-registration timeouts from genuine network failures"
+  implements: "Idle timeout sentinel exception \u2014 distinguishes idle re-registration\
+    \ timeouts from genuine network failures"
 - ref: src/board/client.py#BoardClient::watch_with_reconnect
-  implements: "Single-channel watch with StaleWatchError branch that bypasses the reconnect budget on idle timeouts; adaptive stale_timeout backoff after 3 idle reconnects"
+  implements: Single-channel watch with StaleWatchError branch that bypasses the reconnect
+    budget on idle timeouts; adaptive stale_timeout backoff after 3 idle reconnects
 - ref: src/board/client.py#BoardClient::watch_multi
-  implements: "Raises StaleWatchError (not ConnectionError) on stale timeout, enabling budget-exempt idle reconnect in the wrapper"
+  implements: Raises StaleWatchError (not ConnectionError) on stale timeout, enabling
+    budget-exempt idle reconnect in the wrapper
 - ref: src/board/client.py#BoardClient::watch_multi_with_reconnect
-  implements: "Multi-channel watch with StaleWatchError branch exempt from the reconnect budget; idle_reconnects and current_stale_timeout tracking; reset on message delivery"
+  implements: Multi-channel watch with StaleWatchError branch exempt from the reconnect
+    budget; idle_reconnects and current_stale_timeout tracking; reset on message delivery
+- ref: tests/test_board_client.py
+  implements: Idle reconnect budget tests
 narrative: null
 investigation: null
 subsystems: []

@@ -9,23 +9,26 @@ code_paths:
 - src/cli/orch.py
 - src/templates/trunk/ORCHESTRATOR.md.jinja2
 - tests/test_orchestrator_api.py
+- tests/test_orchestrator_worktree_core.py
 code_references:
-  - ref: src/orchestrator/worktree.py#WorktreeManager::has_unmerged_commits
-    implements: "Check for unmerged commits before branch deletion"
-  - ref: src/orchestrator/worktree.py#WorktreeManager::_remove_single_repo_worktree
-    implements: "Safe branch delete using -d by default, -D when force=True"
-  - ref: src/orchestrator/worktree.py#WorktreeManager::_remove_task_context_worktrees
-    implements: "Safe branch delete in multi-repo mode"
-  - ref: src/orchestrator/worktree.py#WorktreeManager::remove_worktree
-    implements: "Force parameter threading to branch deletion"
-  - ref: src/orchestrator/api/work_units.py#delete_work_unit_endpoint
-    implements: "Pre-delete unmerged commit check with force override"
-  - ref: src/orchestrator/client.py#OrchestratorClient::delete_work_unit
-    implements: "Force parameter in client API"
-  - ref: src/cli/orch.py#work_unit_delete
-    implements: "--force CLI flag for safe deletion override"
-  - ref: tests/test_orchestrator_api.py#TestDeleteWorkUnitSafeBranch
-    implements: "Tests for safe branch deletion behavior"
+- ref: src/orchestrator/worktree.py#WorktreeManager::has_unmerged_commits
+  implements: Check for unmerged commits before branch deletion
+- ref: src/orchestrator/worktree.py#WorktreeManager::_remove_single_repo_worktree
+  implements: Safe branch delete using -d by default, -D when force=True
+- ref: src/orchestrator/worktree.py#WorktreeManager::_remove_task_context_worktrees
+  implements: Safe branch delete in multi-repo mode
+- ref: src/orchestrator/worktree.py#WorktreeManager::remove_worktree
+  implements: Force parameter threading to branch deletion
+- ref: src/orchestrator/api/work_units.py#delete_work_unit_endpoint
+  implements: Pre-delete unmerged commit check with force override
+- ref: src/orchestrator/client.py#OrchestratorClient::delete_work_unit
+  implements: Force parameter in client API
+- ref: src/cli/orch.py#work_unit_delete
+  implements: --force CLI flag for safe deletion override
+- ref: tests/test_orchestrator_api.py#TestDeleteWorkUnitSafeBranch
+  implements: Tests for safe branch deletion behavior
+- ref: tests/test_orchestrator_worktree_core.py
+  implements: Tests for safe branch deletion
 narrative: null
 investigation: orch_stuck_recovery
 subsystems:
@@ -38,7 +41,6 @@ created_after:
 - orch_merge_rebase_retry
 - orch_review_approve_bypass
 ---
-
 # Chunk Goal
 
 ## Minor Goal

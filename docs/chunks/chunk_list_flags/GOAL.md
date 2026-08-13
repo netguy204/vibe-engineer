@@ -5,12 +5,12 @@ parent_chunk: null
 code_paths:
 - src/chunks.py
 - src/ve.py
-- src/templates/claude/CLAUDE.md.jinja2
-- src/templates/commands/chunk-plan.md.jinja2
-- src/templates/commands/chunk-complete.md.jinja2
-- src/templates/commands/chunk-implement.md.jinja2
-- src/templates/commands/chunk-create.md.jinja2
-- src/templates/commands/chunk-commit.md.jinja2
+- src/templates/claude/AGENTS.md.jinja2
+- src/templates/plugin/skills/chunk-plan.md.jinja2
+- src/templates/plugin/skills/chunk-complete.md.jinja2
+- src/templates/plugin/skills/chunk-implement.md.jinja2
+- src/templates/plugin/skills/chunk-create.md.jinja2
+- src/templates/plugin/skills/chunk-commit.md.jinja2
 - tests/test_chunk_list.py
 code_references:
 - ref: src/chunks.py#Chunks::get_recent_active_chunks

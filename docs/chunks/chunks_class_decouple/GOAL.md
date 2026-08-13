@@ -7,25 +7,34 @@ code_paths:
 - src/chunks.py
 - src/project.py
 - src/reviewers.py
+- src/task/artifact_ops.py
+- tests/test_chunk_list_proposed.py
 code_references:
-  - ref: src/integrity.py#ChunksProtocol
-    implements: "Protocol interface breaking circular dependency between chunks.py and integrity.py"
-  - ref: src/chunks.py#Chunks::validate_subsystem_refs
-    implements: "Passes self via protocol to break circular import"
-  - ref: src/chunks.py#Chunks::validate_investigation_ref
-    implements: "Passes self via protocol to break circular import"
-  - ref: src/chunks.py#Chunks::validate_narrative_ref
-    implements: "Passes self via protocol to break circular import"
-  - ref: src/chunks.py#Chunks::validate_friction_entries_ref
-    implements: "Passes self via protocol to break circular import"
-  - ref: src/chunks.py#Chunks::list_proposed_chunks
-    implements: "Deprecated forwarding method that delegates to Project.list_proposed_chunks()"
-  - ref: src/project.py#Project::list_proposed_chunks
-    implements: "Cross-artifact query moved from Chunks to Project where all managers are accessible"
-  - ref: src/reviewers.py#Reviewers::parse_decision_frontmatter
-    implements: "Uses shared parse_frontmatter() from frontmatter.py instead of manual regex"
-  - ref: src/cli/chunk.py#list_proposed_chunks_cmd
-    implements: "Calls Project.list_proposed_chunks() directly"
+- ref: src/integrity.py#ChunksProtocol
+  implements: Protocol interface breaking circular dependency between chunks.py and
+    integrity.py
+- ref: src/chunks.py#Chunks::validate_subsystem_refs
+  implements: Passes self via protocol to break circular import
+- ref: src/chunks.py#Chunks::validate_investigation_ref
+  implements: Passes self via protocol to break circular import
+- ref: src/chunks.py#Chunks::validate_narrative_ref
+  implements: Passes self via protocol to break circular import
+- ref: src/chunks.py#Chunks::validate_friction_entries_ref
+  implements: Passes self via protocol to break circular import
+- ref: src/chunks.py#Chunks::list_proposed_chunks
+  implements: Deprecated forwarding method that delegates to Project.list_proposed_chunks()
+- ref: src/project.py#Project::list_proposed_chunks
+  implements: Cross-artifact query moved from Chunks to Project where all managers
+    are accessible
+- ref: src/reviewers.py#Reviewers::parse_decision_frontmatter
+  implements: Uses shared parse_frontmatter() from frontmatter.py instead of manual
+    regex
+- ref: src/cli/chunk.py#list_proposed_chunks_cmd
+  implements: Calls Project.list_proposed_chunks() directly
+- ref: src/task/artifact_ops.py
+  implements: Calls Project.list_proposed_chunks() directly
+- ref: tests/test_chunk_list_proposed.py
+  implements: Updated to call Project.list_proposed_chunks() directly
 narrative: arch_review_remediation
 investigation: null
 subsystems: []
@@ -37,7 +46,6 @@ created_after:
 - orchestrator_api_decompose
 - task_operations_decompose
 ---
-
 # Chunk Goal
 
 ## Minor Goal

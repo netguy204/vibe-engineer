@@ -6,8 +6,8 @@ This module contains validation functions extracted from src/chunks.py:
 - ValidationResult: Structured error reporting for validation outcomes
 - validate_chunk_complete: Validates chunk is ready for completion
 - validate_chunk_injectable: Validates chunk is ready for orchestrator injection
+- validate_chunk_references_exist: Existence gate for declared code references
 - plan_has_content: Checks if PLAN.md has actual content beyond template
-- _validate_symbol_exists: Verifies symbolic references point to existing symbols
 - _validate_symbol_exists_with_context: Cross-project code reference validation
 
 All functions that require Chunks instance access take it as the first parameter.
@@ -21,7 +21,7 @@ import re
 from typing import TYPE_CHECKING
 
 from models import ChunkStatus
-from symbols import parse_reference, extract_symbols, qualify_ref
+from symbols import check_reference_target, expand_glob, is_glob_pattern
 
 if TYPE_CHECKING:
     from chunks import Chunks
@@ -86,52 +86,14 @@ def plan_has_content(plan_path: pathlib.Path) -> bool:
     return len(content_without_comments) > 0
 
 
-# Chunk: docs/chunks/chunk_validate - Symbol existence verification for code references
-def _validate_symbol_exists(project_dir: pathlib.Path, ref: str) -> list[str]:
-    """Validate that a symbolic reference points to an existing symbol.
-
-    Args:
-        project_dir: The project root directory to resolve paths against.
-        ref: Symbolic reference string (e.g., "src/foo.py#Bar::baz")
-
-    Returns:
-        List of warning messages (empty if valid).
-    """
-    # Qualify the ref with local project context before parsing
-    qualified_ref = qualify_ref(ref, ".")
-    _, file_path, symbol_path = parse_reference(qualified_ref)
-
-    # Check if file exists
-    full_path = project_dir / file_path
-    if not full_path.exists():
-        return [f"Warning: File not found: {file_path} (ref: {ref})"]
-
-    # If no symbol path, just check file exists (which we did above)
-    if symbol_path is None:
-        return []
-
-    # Extract symbols from file and check if referenced symbol exists
-    symbols = extract_symbols(full_path)
-    if not symbols:
-        # Could be syntax error or non-Python file
-        if str(file_path).endswith(".py"):
-            return [f"Warning: Could not extract symbols from {file_path} (ref: {ref})"]
-        # Non-Python files can't have symbol validation
-        return []
-
-    if symbol_path not in symbols:
-        return [f"Warning: Symbol not found: {symbol_path} in {file_path} (ref: {ref})"]
-
-    return []
-
-
 # Chunk: docs/chunks/task_chunk_validation - Cross-project code reference validation
+# Chunk: docs/chunks/crossref_generator_verify - Absence is an error; uncheckable is a warning
 def _validate_symbol_exists_with_context(
     project_dir: pathlib.Path,
     ref: str,
     task_dir: pathlib.Path | None = None,
     chunk_project: pathlib.Path | None = None,
-) -> list[str]:
+) -> tuple[list[str], list[str]]:
     """Validate a symbolic reference with task context for cross-project refs.
 
     For non-qualified references (no project::), validates against chunk_project.
@@ -145,7 +107,10 @@ def _validate_symbol_exists_with_context(
         chunk_project: Project directory where the chunk lives (default: project_dir).
 
     Returns:
-        List of warning messages (empty if valid).
+        Tuple of (errors, warnings). Errors are provably absent targets
+        (missing file, missing symbol in a parseable Python file). Warnings
+        are uncheckable targets (unparseable Python, unresolvable
+        cross-project references).
     """
     # Check if this is a project-qualified reference
     hash_pos = ref.find("#")
@@ -160,69 +125,91 @@ def _validate_symbol_exists_with_context(
 
         # Without task context, we can't resolve cross-project refs
         if task_dir is None:
-            return [
+            return ([], [
                 f"Skipped cross-project reference: {ref} (no task context)"
-            ]
+            ])
 
         # Resolve the project path
         from task import load_task_config, resolve_repo_directory
 
         try:
-            config = load_task_config(task_dir)
+            load_task_config(task_dir)
             project_path = resolve_repo_directory(task_dir, project_ref)
         except (FileNotFoundError, ValueError) as e:
-            return [f"Warning: Could not resolve project '{project_ref}': {e} (ref: {ref})"]
+            return ([], [
+                f"Warning: Could not resolve project '{project_ref}': {e} (ref: {ref})"
+            ])
 
-        # Parse the file and symbol from remaining
-        if "#" in remaining:
-            file_path, symbol_path = remaining.split("#", 1)
-        else:
-            file_path = remaining
-            symbol_path = None
-
-        # Validate against the resolved project
-        full_path = project_path / file_path
-        if not full_path.exists():
-            return [f"Warning: File not found: {file_path} in project {project_ref} (ref: {ref})"]
-
-        if symbol_path is None:
-            return []
-
-        symbols = extract_symbols(full_path)
-        if not symbols:
-            if str(file_path).endswith(".py"):
-                return [f"Warning: Could not extract symbols from {file_path} in project {project_ref} (ref: {ref})"]
-            return []
-
-        if symbol_path not in symbols:
-            return [f"Warning: Symbol not found: {symbol_path} in {file_path} (project: {project_ref}) (ref: {ref})"]
-
-        return []
+        error, warning = check_reference_target(project_path, remaining)
+        errors = [f"{error} (project: {project_ref})"] if error else []
+        warnings = [f"Warning: {warning} (project: {project_ref})"] if warning else []
+        return (errors, warnings)
     else:
         # Non-qualified reference - validate against chunk's project
         effective_project_dir = chunk_project if chunk_project else project_dir
 
-        # Use local project context
-        qualified_ref = qualify_ref(ref, ".")
-        _, file_path, symbol_path = parse_reference(qualified_ref)
+        error, warning = check_reference_target(effective_project_dir, ref)
+        return (
+            [error] if error else [],
+            [f"Warning: {warning}"] if warning else [],
+        )
 
-        full_path = effective_project_dir / file_path
-        if not full_path.exists():
-            return [f"Warning: File not found: {file_path} (ref: {ref})"]
 
-        if symbol_path is None:
-            return []
+# Chunk: docs/chunks/crossref_generator_verify - Completion gate: declared references must exist
+def validate_chunk_references_exist(
+    chunks: Chunks,
+    chunk_name: str,
+    task_dir: pathlib.Path | None = None,
+) -> tuple[list[str], list[str]]:
+    """Check that a chunk's declared code_paths and code_references exist.
 
-        symbols = extract_symbols(full_path)
-        if not symbols:
-            if str(file_path).endswith(".py"):
-                return [f"Warning: Could not extract symbols from {file_path} (ref: {ref})"]
-            return []
+    This is the completion gate: a chunk cannot land pointing at code that
+    does not exist. Unlike validate_chunk_complete, empty code_references
+    passes here — this checks only that whatever *is* declared resolves.
 
-        if symbol_path not in symbols:
-            return [f"Warning: Symbol not found: {symbol_path} in {file_path} (ref: {ref})"]
+    Args:
+        chunks: The Chunks instance whose project contains the chunk.
+        chunk_name: The resolved chunk directory name.
+        task_dir: Optional task directory for resolving cross-project refs.
 
-        return []
+    Returns:
+        Tuple of (errors, warnings). Errors are declared targets that
+        provably do not exist; warnings are uncheckable targets.
+    """
+    errors: list[str] = []
+    warnings: list[str] = []
+
+    frontmatter = chunks.parse_chunk_frontmatter(chunk_name)
+    if frontmatter is None:
+        return ([f"Could not parse frontmatter for chunk '{chunk_name}'"], [])
+
+    for path in frontmatter.code_paths or []:
+        # Chunk: docs/chunks/crossref_glob_refs - Glob entries error only on empty expansion
+        if is_glob_pattern(path):
+            if not expand_glob(chunks.project_dir, path):
+                errors.append(
+                    f"code_paths glob pattern '{path}' matches nothing — if "
+                    "the matching files were moved or renamed, update this "
+                    "pattern"
+                )
+            continue
+        if not (chunks.project_dir / path).exists():
+            errors.append(
+                f"code_paths entry '{path}' does not exist — if the file was "
+                "moved or renamed, update this reference"
+            )
+
+    for ref in frontmatter.code_references or []:
+        ref_errors, ref_warnings = _validate_symbol_exists_with_context(
+            chunks.project_dir,
+            ref.ref,
+            task_dir=task_dir,
+            chunk_project=chunks.project_dir,
+        )
+        errors.extend(ref_errors)
+        warnings.extend(ref_warnings)
+
+    return (errors, warnings)
 
 
 # Chunk: docs/chunks/chunk_validate - Status, code_references, subsystem, investigation, and narrative validation
@@ -353,22 +340,25 @@ def validate_chunk_complete(
         )
 
     # Validate code_references - already validated by ChunkFrontmatter model
-    # Just need to check non-empty and validate symbol existence for warnings
+    # Just need to check non-empty and validate target existence
     if not frontmatter.code_references:
         errors.append(
             "code_references is empty; at least one reference is required"
         )
     else:
-        # Validate that referenced symbols exist (produces warnings, not errors)
+        # Chunk: docs/chunks/crossref_generator_verify - Provable absence blocks completion
+        # Validate that referenced targets exist: absence is an error,
+        # uncheckable targets are warnings.
         # Use the validation_chunks instance for proper project context
         for ref in frontmatter.code_references:
-            symbol_warnings = _validate_symbol_exists_with_context(
+            ref_errors, ref_warnings = _validate_symbol_exists_with_context(
                 validation_chunks.project_dir,
                 ref.ref,
                 task_dir=task_dir,
                 chunk_project=location.project_dir,
             )
-            warnings.extend(symbol_warnings)
+            errors.extend(ref_errors)
+            warnings.extend(ref_warnings)
 
     # Validate subsystem references
     # Chunk: docs/chunks/integrity_deprecate_standalone - Routes through IntegrityValidator

@@ -3,10 +3,10 @@ status: ACTIVE
 ticket: null
 parent_chunk: null
 code_paths:
-  - src/templates/commands/migrate-managed-claude-md.md.jinja2
+  - src/templates/plugin/skills/migrate-managed-claude-md.md.jinja2
   - src/templates/migrations/managed_claude_md/MIGRATION.md.jinja2
 code_references:
-  - ref: commands/migrate-managed-claude-md.md
+  - ref: skills/migrate-managed-claude-md/SKILL.md
     implements: "Slash command template providing step-by-step migration instructions"
   - ref: src/templates/migrations/managed_claude_md/MIGRATION.md.jinja2
     implements: "Migration state tracking template with phases and boundaries"

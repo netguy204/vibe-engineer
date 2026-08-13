@@ -8,9 +8,10 @@ code_paths:
 - src/orchestrator/scheduler.py
 - src/orchestrator/state.py
 - src/cli/orch.py
-- src/templates/commands/chunk-rebase.md.jinja2
-- .claude/commands/chunk-rebase.md
+- src/templates/plugin/skills/chunk-rebase.md.jinja2
+- skills/chunk-rebase/SKILL.md
 - tests/test_orchestrator_scheduler.py
+- tests/test_orchestrator_scheduler_review.py
 code_references:
 - ref: src/orchestrator/models.py#WorkUnitPhase
   implements: REBASE phase between IMPLEMENT and REVIEW
@@ -21,11 +22,15 @@ code_references:
 - ref: src/orchestrator/scheduler.py#Scheduler::_handle_agent_result
   implements: Route REBASE phase completion to advance_phase
 - ref: src/orchestrator/scheduler.py#Scheduler::_advance_phase
-  implements: IMPLEMENT→REBASE→REVIEW phase progression
+  implements: "IMPLEMENT\u2192REBASE\u2192REVIEW phase progression"
 - ref: src/orchestrator/state.py#StateStore::_migrate_v13
   implements: Document REBASE as valid phase value in schema v13
-- ref: commands/chunk-rebase.md
+- ref: skills/chunk-rebase/SKILL.md
   implements: Agent prompt template for commit-merge-resolve-test workflow
+- ref: tests/test_orchestrator_scheduler.py
+  implements: REBASE phase tests
+- ref: tests/test_orchestrator_scheduler_review.py
+  implements: Updated to expect REBASE after IMPLEMENT
 narrative: arch_consolidation
 investigation: null
 subsystems: []
@@ -37,7 +42,6 @@ created_after:
 - cli_help_text
 - cli_json_output
 ---
-
 # Chunk Goal
 
 ## Minor Goal

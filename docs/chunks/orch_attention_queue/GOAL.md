@@ -3,7 +3,7 @@ status: ACTIVE
 ticket: null
 parent_chunk: null
 code_paths:
-- src/orchestrator/api.py
+- src/orchestrator/api
 - src/orchestrator/state.py
 - src/orchestrator/scheduler.py
 - src/orchestrator/agent.py
@@ -12,44 +12,46 @@ code_paths:
 - tests/test_orchestrator_attention.py
 - tests/test_orchestrator_cli.py
 - tests/test_orchestrator_api.py
+- src/orchestrator/api/work_units.py
 code_references:
-  - ref: src/orchestrator/api/attention.py#_get_goal_summary
-    implements: "Extract goal summary from chunk's GOAL.md Minor Goal section"
-  - ref: src/orchestrator/api/attention.py#attention_endpoint
-    implements: "GET /attention endpoint returning prioritized queue with enriched items"
-  - ref: src/orchestrator/api/attention.py#answer_endpoint
-    implements: "POST /work-units/{chunk}/answer endpoint for submitting answers"
-  - ref: src/orchestrator/state.py#StateStore::_migrate_v6
-    implements: "Database migration adding pending_answer column"
-  - ref: src/orchestrator/state.py#StateStore::get_attention_queue
-    implements: "Query NEEDS_ATTENTION work units ordered by blocks count and time"
-  - ref: src/orchestrator/scheduler.py#Scheduler::_run_work_unit
-    implements: "Pass pending_answer to agent runner on resume"
-  - ref: src/orchestrator/agent.py#AgentRunner::run_phase
-    implements: "Accept and inject answer parameter when resuming sessions"
-  - ref: src/orchestrator/models.py#WorkUnit
-    implements: "pending_answer field for storing operator answers until resume"
-  - ref: src/orchestrator/client.py#OrchestratorClient::get_attention_queue
-    implements: "Client method to call GET /attention endpoint"
-  - ref: src/orchestrator/client.py#OrchestratorClient::answer_work_unit
-    implements: "Client method to call POST /work-units/{chunk}/answer endpoint"
-  - ref: src/cli/orch.py#orch_attention
-    implements: "ve orch attention CLI command showing attention queue"
-  - ref: src/cli/orch.py#orch_answer
-    implements: "ve orch answer CLI command to answer questions and resume"
-  - ref: tests/test_orchestrator_attention.py
-    implements: "Tests for attention queue and pending_answer persistence"
-  - ref: tests/test_orchestrator_api.py#TestAttentionEndpoint
-    implements: "Tests for GET /attention API endpoint"
-  - ref: tests/test_orchestrator_api.py#TestAnswerEndpoint
-    implements: "Tests for POST /work-units/{chunk}/answer API endpoint"
+- ref: src/orchestrator/api/attention.py#_get_goal_summary
+  implements: Extract goal summary from chunk's GOAL.md Minor Goal section
+- ref: src/orchestrator/api/attention.py#attention_endpoint
+  implements: GET /attention endpoint returning prioritized queue with enriched items
+- ref: src/orchestrator/api/attention.py#answer_endpoint
+  implements: POST /work-units/{chunk}/answer endpoint for submitting answers
+- ref: src/orchestrator/state.py#StateStore::_migrate_v6
+  implements: Database migration adding pending_answer column
+- ref: src/orchestrator/state.py#StateStore::get_attention_queue
+  implements: Query NEEDS_ATTENTION work units ordered by blocks count and time
+- ref: src/orchestrator/scheduler.py#Scheduler::_run_work_unit
+  implements: Pass pending_answer to agent runner on resume
+- ref: src/orchestrator/agent.py#AgentRunner::run_phase
+  implements: Accept and inject answer parameter when resuming sessions
+- ref: src/orchestrator/models.py#WorkUnit
+  implements: pending_answer field for storing operator answers until resume
+- ref: src/orchestrator/client.py#OrchestratorClient::get_attention_queue
+  implements: Client method to call GET /attention endpoint
+- ref: src/orchestrator/client.py#OrchestratorClient::answer_work_unit
+  implements: Client method to call POST /work-units/{chunk}/answer endpoint
+- ref: src/cli/orch.py#orch_attention
+  implements: ve orch attention CLI command showing attention queue
+- ref: src/cli/orch.py#orch_answer
+  implements: ve orch answer CLI command to answer questions and resume
+- ref: tests/test_orchestrator_attention.py
+  implements: Tests for attention queue and pending_answer persistence
+- ref: tests/test_orchestrator_api.py#TestAttentionEndpoint
+  implements: Tests for GET /attention API endpoint
+- ref: tests/test_orchestrator_api.py#TestAnswerEndpoint
+  implements: Tests for POST /work-units/{chunk}/answer API endpoint
+- ref: src/orchestrator/api/work_units.py
+  implements: Allow updating attention_reason
 narrative: null
 investigation: parallel_agent_orchestration
 subsystems: []
 created_after:
 - orch_attention_reason
 ---
-
 # Chunk Goal
 
 ## Minor Goal

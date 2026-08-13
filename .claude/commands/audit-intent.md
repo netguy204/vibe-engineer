@@ -1,1 +1,0 @@
-../../.agents/skills/audit-intent/SKILL.md

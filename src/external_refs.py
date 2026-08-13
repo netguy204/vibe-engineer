@@ -11,6 +11,8 @@ references across all workflow artifact types (chunks, narratives, investigation
 subsystems).
 """
 
+import re
+from datetime import datetime, timezone
 from pathlib import Path
 
 import yaml
@@ -125,6 +127,51 @@ def load_external_ref(path: Path) -> ExternalArtifactRef:
         data = yaml.safe_load(f)
 
     return ExternalArtifactRef.model_validate(data)
+
+
+# Chunk: docs/chunks/external_never_resolved - Stamp a cross-repo pointer that just resolved
+def stamp_resolved(path: Path, when: datetime | None = None) -> bool:
+    """Record that this pointer's target was just read successfully.
+
+    Only cross-repository (``repo:``) pointers are stamped. A peer (``tree:``)
+    pointer resolves through the workspace manifest against the same commit, so
+    it is either resolvable now or reported as ``missing-target``; there is no
+    "has anyone ever looked" question for it, and the model rejects the field.
+
+    The write is a targeted key update rather than a re-serialization of the
+    parsed model, so unknown keys and the author's field order survive.
+
+    Args:
+        path: Directory containing external.yaml.
+        when: Instant to record. Defaults to now, UTC.
+
+    Returns:
+        True if a stamp was written, False if this pointer takes no stamp.
+    """
+    ref_file = path / "external.yaml"
+    if not ref_file.exists():
+        return False
+
+    with open(ref_file) as f:
+        data = yaml.safe_load(f) or {}
+
+    # Peers take no stamp; neither does a pointer with no cross-repo target.
+    if data.get("tree") is not None or data.get("repo") is None:
+        return False
+
+    # Quoted: YAML resolves a bare timestamp to a datetime, and this field is a
+    # string. The model tolerates both on read; what we write is unambiguous.
+    stamp = f"'{(when or datetime.now(timezone.utc)).isoformat()}'"
+    text = ref_file.read_text()
+    pattern = re.compile(r"^last_resolved:.*$", re.MULTILINE)
+    if pattern.search(text):
+        text = pattern.sub(f"last_resolved: {stamp}", text, count=1)
+    else:
+        if text and not text.endswith("\n"):
+            text += "\n"
+        text += f"last_resolved: {stamp}\n"
+    ref_file.write_text(text)
+    return True
 
 
 # Chunk: docs/chunks/accept_full_artifact_paths - Flexible artifact path normalization
@@ -314,6 +361,70 @@ def create_external_yaml(
     }
     if created_after:
         data["created_after"] = created_after
+
+    with open(external_yaml_path, "w") as f:
+        yaml.dump(data, f, default_flow_style=False)
+
+    return external_yaml_path
+
+
+# Subsystem: docs/subsystems/cross_repo_operations - Intra-workspace addressing flavor
+# Chunk: docs/chunks/federation_peer_refs - Peer pointer creation
+def create_peer_yaml(
+    project_path: Path,
+    short_name: str,
+    member: str,
+    external_artifact_id: str,
+    artifact_type: ArtifactType,
+    why: str | None = None,
+    created_after: list[str] | None = None,
+) -> Path:
+    """Create a peer (intra-workspace) external.yaml in a project's artifact directory.
+
+    A peer pointer names a workspace member instead of a repository. There is no
+    `track`: the target lives in the same working copy, so it is at the same
+    commit as the tree pointing at it by construction.
+
+    The pointer is validated as an `ExternalArtifactRef` before it is written, so
+    a malformed member name or interest note cannot reach disk.
+
+    Args:
+        project_path: Path to the *pointing* project directory (the tree that
+            expresses interest).
+        short_name: Local artifact directory name for the pointer.
+        member: Workspace member name owning the target artifact.
+        external_artifact_id: Artifact ID inside the member's tree.
+        artifact_type: Type of artifact.
+        why: Optional one-line note recording what this tree depends on.
+        created_after: Local causal ordering, as for repo-based pointers.
+
+    Returns:
+        Path to the created external.yaml file.
+
+    Raises:
+        ValidationError: If the resulting reference would be invalid.
+    """
+    ref = ExternalArtifactRef(
+        artifact_type=artifact_type,
+        artifact_id=external_artifact_id,
+        tree=member,
+        why=why,
+        created_after=created_after or [],
+    )
+
+    artifact_dir = project_path / "docs" / ARTIFACT_DIR_NAME[artifact_type] / short_name
+    artifact_dir.mkdir(parents=True, exist_ok=True)
+
+    external_yaml_path = artifact_dir / "external.yaml"
+    data: dict = {
+        "artifact_type": ref.artifact_type.value,
+        "artifact_id": ref.artifact_id,
+        "tree": ref.tree,
+    }
+    if ref.why:
+        data["why"] = ref.why
+    if ref.created_after:
+        data["created_after"] = ref.created_after
 
     with open(external_yaml_path, "w") as f:
         yaml.dump(data, f, default_flow_style=False)

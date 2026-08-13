@@ -17,7 +17,7 @@ from typing import TYPE_CHECKING
 from artifact_manager import ArtifactManager
 from artifact_ordering import ArtifactIndex, ArtifactType
 from models import SubsystemFrontmatter, SubsystemStatus, VALID_STATUS_TRANSITIONS
-from symbols import is_parent_of, parse_reference, qualify_ref
+from symbols import check_reference_target, is_parent_of, parse_reference, qualify_ref
 from template_system import ActiveSubsystem, TemplateContext, render_to_directory
 
 if TYPE_CHECKING:
@@ -248,6 +248,40 @@ class Subsystems(ArtifactManager[SubsystemFrontmatter, SubsystemStatus]):
                 )
 
         return errors
+
+    # Chunk: docs/chunks/crossref_generator_verify - Verify subsystem code_references exist
+    def validate_code_references(
+        self, subsystem_id: str
+    ) -> tuple[list[str], list[str]]:
+        """Validate that a subsystem's code_references name existing targets.
+
+        This is the write-time verification affordance for the
+        subsystem-discovery flow: a generator that emits unverified symbol
+        names manufactures exactly the debt the validator then finds, so an
+        invented symbol or missing file is an error here, not a warning.
+
+        Args:
+            subsystem_id: The subsystem directory name to validate.
+
+        Returns:
+            Tuple of (errors, warnings). Errors are provably absent targets;
+            warnings are uncheckable targets (unparseable Python files).
+        """
+        errors: list[str] = []
+        warnings: list[str] = []
+
+        frontmatter = self.parse_subsystem_frontmatter(subsystem_id)
+        if frontmatter is None:
+            return ([], [])  # Subsystem doesn't exist or invalid, nothing to validate
+
+        for ref in frontmatter.code_references or []:
+            error, warning = check_reference_target(self.project_dir, ref.ref)
+            if error:
+                errors.append(error)
+            if warning:
+                warnings.append(f"Warning: {warning}")
+
+        return (errors, warnings)
 
     # Chunk: docs/chunks/subsystem_impact_resolution - Find subsystems with overlapping code refs
     # Chunk: docs/chunks/chunk_frontmatter_model - Uses typed frontmatter.code_references and code_paths

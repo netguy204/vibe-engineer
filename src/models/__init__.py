@@ -80,6 +80,14 @@ from models.chunk import (
     parse_status_filters,
 )
 
+# Chunk: docs/chunks/federation_workspace_manifest - Workspace manifest schema
+# Workspace domain
+from models.workspace import (
+    MEMBER_NAME_PATTERN,
+    WorkspaceManifest,
+    WorkspaceMember,
+)
+
 # Entity domain
 from models.entity import (
     ENTITY_NAME_PATTERN,
@@ -147,4 +155,8 @@ __all__ = [
     "MemoryValence",
     "MemoryFrontmatter",
     "EntityIdentity",
+    # Workspace domain
+    "MEMBER_NAME_PATTERN",
+    "WorkspaceMember",
+    "WorkspaceManifest",
 ]

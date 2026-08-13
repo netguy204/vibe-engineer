@@ -4,7 +4,7 @@ ticket: null
 narrative: task_artifact_discovery
 code_paths:
 - src/project.py
-- src/templates/claude/CLAUDE.md.jinja2
+- src/templates/claude/AGENTS.md.jinja2
 - tests/test_project.py
 code_references:
   - ref: src/project.py#MARKER_START
@@ -19,10 +19,10 @@ code_references:
   - ref: src/project.py#parse_markers
     implements: "Marker detection and content segmentation logic"
     verified: "2026-03-31"
-  - ref: src/project.py#Project::_init_claude_md
-    implements: "Marker-aware CLAUDE.md initialization with preservation"
-    verified: "2026-03-31"
-  - ref: src/templates/claude/CLAUDE.md.jinja2
+  - ref: src/project.py#Project::_init_agents_md
+    implements: "Marker-aware AGENTS.md initialization with preservation (renamed from _init_claude_md by agentskills_migration)"
+    verified: "2026-07-31"
+  - ref: src/templates/claude/AGENTS.md.jinja2
     implements: "Template with magic markers wrapping VE-managed content"
     verified: "2026-03-31"
   - ref: tests/test_project.py#TestMagicMarkers

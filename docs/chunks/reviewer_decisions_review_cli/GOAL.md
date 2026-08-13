@@ -7,22 +7,24 @@ code_paths:
 - src/reviewers.py
 - tests/test_reviewer_decisions_review.py
 code_references:
-  - ref: src/reviewers.py#Reviewers
-    implements: "Business logic class for reviewer operations"
-  - ref: src/reviewers.py#Reviewers::update_operator_review
-    implements: "Updates operator_review field in decision file frontmatter"
-  - ref: src/reviewers.py#Reviewers::get_pending_decisions
-    implements: "Returns decisions with null operator_review for --pending flag"
-  - ref: src/reviewers.py#Reviewers::is_decision_file
-    implements: "Validates that a path is a valid decision file"
-  - ref: src/reviewers.py#validate_decision_path
-    implements: "Resolves and validates decision file paths from CLI arguments"
-  - ref: src/cli/reviewer.py#reviewer
-    implements: "CLI reviewer command group"
-  - ref: src/cli/reviewer.py#decisions
-    implements: "CLI reviewer decisions subcommand with --pending flag"
-  - ref: src/cli/reviewer.py#decisions_review
-    implements: "CLI reviewer decisions review command"
+- ref: src/reviewers.py#Reviewers
+  implements: Business logic class for reviewer operations
+- ref: src/reviewers.py#Reviewers::update_operator_review
+  implements: Updates operator_review field in decision file frontmatter
+- ref: src/reviewers.py#Reviewers::get_pending_decisions
+  implements: Returns decisions with null operator_review for --pending flag
+- ref: src/reviewers.py#Reviewers::is_decision_file
+  implements: Validates that a path is a valid decision file
+- ref: src/reviewers.py#validate_decision_path
+  implements: Resolves and validates decision file paths from CLI arguments
+- ref: src/cli/reviewer.py#reviewer
+  implements: CLI reviewer command group
+- ref: src/cli/reviewer.py#decisions
+  implements: CLI reviewer decisions subcommand with --pending flag
+- ref: src/cli/reviewer.py#decisions_review
+  implements: CLI reviewer decisions review command
+- ref: tests/test_reviewer_decisions_review.py
+  implements: CLI for operator decision review
 narrative: null
 investigation: reviewer_log_concurrency
 subsystems: []
@@ -39,7 +41,6 @@ created_after:
 - integrity_validate
 - orch_reviewer_decision_mcp
 ---
-
 # Chunk Goal
 
 ## Minor Goal

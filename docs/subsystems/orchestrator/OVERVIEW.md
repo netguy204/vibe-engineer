@@ -1,40 +1,58 @@
 ---
 status: DOCUMENTED
 chunks:
-  - chunk_id: orch_review_phase
-    relationship: implements
-  - chunk_id: orch_task_agent_env
-    relationship: implements
-  - chunk_id: explicit_deps_workunit_flag
-    relationship: implements
-  - chunk_id: orch_url_command
-    relationship: implements
-  - chunk_id: orch_merge_safety
-    relationship: implements
-  - chunk_id: orch_state_transactions
-    relationship: implements
-  - chunk_id: orch_worktree_cleanup
-    relationship: implements
-  - chunk_id: orch_merge_before_delete
-    relationship: implements
-  - chunk_id: orch_prune_consolidate
-    relationship: implements
-  - chunk_id: orchestrator_api_decompose
-    relationship: implements
-  - chunk_id: orch_session_auto_resume
-    relationship: implements
-  - chunk_id: optimistic_locking
-    relationship: implements
-  - chunk_id: phase_aware_recovery
-    relationship: implements
-  - chunk_id: finalization_recovery
-    relationship: implements
-  - chunk_id: merge_strategy_simplify
-    relationship: implements
-  - chunk_id: finalize_double_commit
-    relationship: implements
-  - chunk_id: orch_daemon_root_resolution
-    relationship: implements
+- chunk_id: orch_review_phase
+  relationship: implements
+- chunk_id: orch_task_agent_env
+  relationship: implements
+- chunk_id: explicit_deps_workunit_flag
+  relationship: implements
+- chunk_id: orch_url_command
+  relationship: implements
+- chunk_id: orch_merge_safety
+  relationship: implements
+- chunk_id: orch_state_transactions
+  relationship: implements
+- chunk_id: orch_worktree_cleanup
+  relationship: implements
+- chunk_id: orch_merge_before_delete
+  relationship: implements
+- chunk_id: orch_prune_consolidate
+  relationship: implements
+- chunk_id: orchestrator_api_decompose
+  relationship: implements
+- chunk_id: orch_session_auto_resume
+  relationship: implements
+- chunk_id: optimistic_locking
+  relationship: implements
+- chunk_id: phase_aware_recovery
+  relationship: implements
+- chunk_id: finalization_recovery
+  relationship: implements
+- chunk_id: merge_strategy_simplify
+  relationship: implements
+- chunk_id: finalize_double_commit
+  relationship: implements
+- chunk_id: orch_daemon_root_resolution
+  relationship: implements
+- chunk_id: orch_investigate_scenarios
+  relationship: implements
+- chunk_id: orch_merge_rebase_retry
+  relationship: implements
+- chunk_id: orch_rename_propagation
+  relationship: implements
+- chunk_id: orch_retry_command
+  relationship: implements
+- chunk_id: orch_review_approve_bypass
+  relationship: implements
+- chunk_id: orch_review_feedback_fidelity
+  relationship: implements
+- chunk_id: orch_safe_branch_delete
+  relationship: implements
+- chunk_id: orchestrator_monitor_skill
+  relationship: uses
+- chunk_id: rename_rebase_guard
+  relationship: implements
 code_references:
 - ref: src/orchestrator/__init__.py
   implements: Package exports for orchestrator module
@@ -123,7 +141,6 @@ code_references:
 created_after:
 - workflow_artifacts
 ---
-
 # orchestrator
 
 ## Intent

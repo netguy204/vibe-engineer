@@ -7,9 +7,13 @@ code_paths:
 - tests/test_board_cli.py
 code_references:
 - ref: src/cli/board.py#watch_cmd
-  implements: "Ephemeral --offset option that overrides persisted cursor for single-channel watch"
+  implements: Ephemeral --offset option that overrides persisted cursor for single-channel
+    watch
 - ref: src/cli/board.py#watch_multi_cmd
-  implements: "Ephemeral --offset option that overrides all per-channel persisted cursors for multi-channel watch"
+  implements: Ephemeral --offset option that overrides all per-channel persisted cursors
+    for multi-channel watch
+- ref: tests/test_board_cli.py
+  implements: Ephemeral offset override for watch
 narrative: null
 investigation: null
 subsystems: []
@@ -19,7 +23,6 @@ depends_on: []
 created_after:
 - board_cursor_root_resolution
 ---
-
 # Chunk Goal
 
 ## Minor Goal

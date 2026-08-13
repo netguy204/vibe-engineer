@@ -3,12 +3,12 @@ status: ACTIVE
 ticket: null
 parent_chunk: null
 code_paths:
-- src/templates/commands/narrative-execute.md.jinja2
-- src/templates/claude/CLAUDE.md.jinja2
-- .claude/commands/narrative-execute.md
+- src/templates/plugin/skills/narrative-execute.md.jinja2
+- src/templates/claude/AGENTS.md.jinja2
+- skills/narrative-execute/SKILL.md
 - CLAUDE.md
 code_references:
-- ref: commands/narrative-execute.md
+- ref: skills/narrative-execute/SKILL.md
   implements: "Slash command with full narrative execution workflow: DAG parsing, wave computation, parallel Agent dispatch, failure handling, and finalization (static plugin command)"
 narrative: null
 investigation: null

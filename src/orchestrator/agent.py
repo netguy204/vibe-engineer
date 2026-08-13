@@ -108,12 +108,12 @@ class AgentRunner:
     def get_skill_path(self, phase: WorkUnitPhase) -> Path:
         """Get the path to the phase-prompt source file for a phase.
 
-        Phase prompts are the plugin command sources (DEC-010). They ship
+        Phase prompts are the plugin skill sources (DEC-010). They ship
         with the vibe-engineer package: an installed wheel carries them as
-        package data at orchestrator/skills/<name>.md (hatch force-include
-        of the repo-root commands/ directory). In a development checkout
-        (editable install), the force-include is not materialized, so we
-        fall back to the repo-root commands/ directory.
+        package data at orchestrator/skills/<name>/SKILL.md (hatch
+        force-include of the repo-root skills/ directory). In a development
+        checkout (editable install), the force-include is not materialized,
+        so we fall back to the repo-root skills/ directory.
 
         The target project's layout is irrelevant: since plugin-based
         distribution, projects no longer carry .agents/skills/ content.
@@ -126,14 +126,14 @@ class AgentRunner:
         """
         skill_name = PHASE_SKILL_FILES[phase]
 
-        # Installed package: commands/ force-included as orchestrator/skills/
-        packaged = Path(__file__).resolve().parent / "skills" / f"{skill_name}.md"
+        # Installed package: skills/ force-included as orchestrator/skills/
+        packaged = Path(__file__).resolve().parent / "skills" / skill_name / "SKILL.md"
         if packaged.is_file():
             return packaged
 
         # Development checkout: src/orchestrator/agent.py -> repo root
         repo_root = Path(__file__).resolve().parents[2]
-        return repo_root / "commands" / f"{skill_name}.md"
+        return repo_root / "skills" / skill_name / "SKILL.md"
 
     def get_phase_prompt(self, chunk: str, phase: WorkUnitPhase) -> str:
         """Build the prompt for a phase execution.

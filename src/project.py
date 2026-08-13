@@ -4,7 +4,9 @@
 # Subsystem: docs/subsystems/template_system - Uses template rendering
 # Chunk: docs/chunks/project_init_command - Project initialization CLI command
 
+import os
 import pathlib
+import re
 from dataclasses import dataclass, field
 from datetime import date
 from typing import NamedTuple
@@ -21,12 +23,162 @@ from template_system import (
     render_template,
     render_to_directory,
 )
+from workspace import WORKSPACE_MANIFEST_NAME, find_workspace_root, suggest_member_names
 
 
 # Chunk: docs/chunks/claudemd_magic_markers - Magic marker constants for START and END delimiters
-# Magic marker constants for CLAUDE.md managed content
+# Magic marker constants for CLAUDE.md managed content (the bare form)
 MARKER_START = "<!-- VE:MANAGED:START -->"
 MARKER_END = "<!-- VE:MANAGED:END -->"
+
+# Chunk: docs/chunks/claudemd_marker_safety - Annotated marker recognition
+# The template renders self-documenting markers: the marker comment carries
+# prose after the token stating what ve init will destroy and where project
+# content is safe. These patterns match both that annotated form and the
+# historical bare form above, so every existing AGENTS.md keeps parsing.
+# The token must open the comment — prose that merely *mentions*
+# VE:MANAGED:START mid-comment (as the seeded safe region above the block
+# does) is never counted as a marker.
+_MARKER_START_RE = re.compile(r"<!--\s*VE:MANAGED:START\b.*?-->", re.DOTALL)
+_MARKER_END_RE = re.compile(r"<!--\s*VE:MANAGED:END\b.*?-->", re.DOTALL)
+
+
+# Chunk: docs/chunks/federation_tree_discovery - Tree marker and boundary constants
+# A directory is a VE tree if it contains all of these (relative to itself).
+# Kept as a tuple so later federation work (pointer-only trees that carry
+# external.yaml edges but no trunk) can extend the marker set deliberately
+# rather than by accident.
+TREE_MARKERS: tuple[str, ...] = ("docs/trunk",)
+
+# Filenames that end the upward walk. Neither is parsed here: presence alone
+# marks a boundary.
+# - .ve-workspace.yaml delimits a federation of member trees. A member's
+#   references belong to the workspace, so the walk must not escape into an
+#   unrelated project above it.
+# - .ve-task.yaml marks a task directory, which is a different addressing
+#   regime (cross-repo mode routes on it explicitly).
+BOUNDARY_MARKERS: tuple[str, ...] = (".ve-workspace.yaml", ".ve-task.yaml")
+
+
+# Chunk: docs/chunks/federation_tree_discovery - VE tree detection
+def is_ve_tree(path: pathlib.Path) -> bool:
+    """Return True if path is the root of a VE documentation tree."""
+    return all((path / marker).is_dir() for marker in TREE_MARKERS)
+
+
+def _is_boundary(path: pathlib.Path) -> bool:
+    """Return True if path is an addressing boundary that ends the walk."""
+    return any((path / marker).exists() for marker in BOUNDARY_MARKERS)
+
+
+def _same_directory(a: pathlib.Path, b: pathlib.Path) -> bool:
+    """Return True if two paths name the same directory.
+
+    Compares fully resolved forms so that spellings of one directory — a
+    relative "." against its absolute path, or macOS's /var against
+    /private/var — are recognized as the same place and never reported as a
+    redirect.
+    """
+    return os.path.realpath(a) == os.path.realpath(b)
+
+
+# Chunk: docs/chunks/federation_tree_discovery - Nearest-enclosing-tree discovery
+def find_enclosing_tree(start: pathlib.Path) -> pathlib.Path | None:
+    """Find the nearest VE tree at or above start.
+
+    This is the resolution rule for bare backreferences: a bare
+    `# Chunk:` / `# Narrative:` / `# Subsystem:` comment in a source file
+    resolves against the nearest enclosing tree of *that file* — never the
+    current working directory, never the repository root. In a monorepo of
+    nested trees, the root tree is just another tree with no addressing
+    privilege.
+
+    Args:
+        start: Directory or file to resolve from. A file resolves from its
+               containing directory.
+
+    Returns:
+        The nearest enclosing tree root, or None if the walk reaches the
+        filesystem root or an addressing boundary (see BOUNDARY_MARKERS)
+        without finding one. None means "no tree governs this path" — callers
+        must not substitute a guess.
+    """
+    # Absolute but not symlink-resolved: an answer should come back in the same
+    # terms the caller used, so that "the tree I asked for" compares equal to
+    # "the tree I got" (see _same_directory).
+    current = pathlib.Path(os.path.abspath(start.expanduser()))
+
+    # A file is governed by the tree that encloses its directory.
+    if current.is_file():
+        current = current.parent
+
+    while True:
+        # A tree wins over a boundary at the same level: the workspace root
+        # itself may be a tree, and it is then its own answer.
+        if is_ve_tree(current):
+            return current
+        if _is_boundary(current):
+            return None
+        if current == current.parent:  # filesystem root, already tested above
+            return None
+        current = current.parent
+
+
+# Chunk: docs/chunks/federation_tree_discovery - CLI-facing resolution result
+@dataclass(frozen=True)
+class TreeResolution:
+    """The outcome of resolving a starting directory to a governing tree.
+
+    Attributes:
+        project_dir: The directory a command should act on.
+        start: The directory the caller asked for.
+        tree_root: The discovered tree, or None if no tree governs start.
+    """
+
+    project_dir: pathlib.Path
+    start: pathlib.Path
+    tree_root: pathlib.Path | None
+
+    @property
+    def redirected(self) -> bool:
+        """True if resolution chose a directory other than the one asked for."""
+        return not _same_directory(self.project_dir, self.start)
+
+    def notice(self) -> str | None:
+        """One-line report of a redirect, or None when there is nothing to report.
+
+        Emitted so that selecting a tree other than the literal starting
+        directory is never silent — the case-study failure was an agent
+        landing in a real-but-wrong tree with no indication it had happened.
+        """
+        if not self.redirected:
+            return None
+        return f"Using VE tree {self.project_dir} (nearest enclosing tree of {self.start})"
+
+
+# Chunk: docs/chunks/federation_tree_discovery - Resolution used at the CLI boundary
+def resolve_project_dir(start: pathlib.Path) -> TreeResolution:
+    """Resolve a starting directory to the VE tree that governs it.
+
+    Contract (the backward-compatibility guarantee):
+
+    - start is a tree                       -> start, no redirect
+    - start is not a tree, an ancestor is   -> that ancestor, redirected
+    - no enclosing tree at all              -> start unchanged, no redirect
+
+    The last case is why discovery is safe to apply broadly: it never invents a
+    failure. It only replaces a directory that could not have worked with one
+    that can, and otherwise leaves behavior exactly as it was.
+
+    When start already names the governing tree, start is returned verbatim
+    (a relative "." stays "."), so nothing downstream sees a changed value.
+    """
+    tree_root = find_enclosing_tree(start)
+    if tree_root is None or _same_directory(tree_root, start):
+        project_dir = start
+    else:
+        project_dir = tree_root
+    return TreeResolution(project_dir=project_dir, start=start, tree_root=tree_root)
 
 
 # Chunk: docs/chunks/claudemd_magic_markers - Named tuple for marker parsing results
@@ -41,14 +193,21 @@ class MarkerParseResult(NamedTuple):
 
 
 # Chunk: docs/chunks/claudemd_magic_markers - Marker detection and content segmentation logic
+# Chunk: docs/chunks/claudemd_marker_safety - Bare and annotated marker forms both parse
 def parse_markers(content: str) -> MarkerParseResult:
     """Parse magic markers from content.
+
+    Recognizes both the bare marker form (``<!-- VE:MANAGED:START -->``) and
+    the annotated form the template renders, where the marker comment carries
+    explanatory prose after the token.
 
     Returns a MarkerParseResult indicating whether valid markers exist and
     the content segments. If markers are malformed, returns an error message.
     """
-    start_count = content.count(MARKER_START)
-    end_count = content.count(MARKER_END)
+    start_matches = list(_MARKER_START_RE.finditer(content))
+    end_matches = list(_MARKER_END_RE.finditer(content))
+    start_count = len(start_matches)
+    end_count = len(end_matches)
 
     # No markers at all
     if start_count == 0 and end_count == 0:
@@ -85,11 +244,11 @@ def parse_markers(content: str) -> MarkerParseResult:
         )
 
     # Find positions
-    start_idx = content.index(MARKER_START)
-    end_idx = content.index(MARKER_END)
+    start_match = start_matches[0]
+    end_match = end_matches[0]
 
     # Wrong order
-    if end_idx < start_idx:
+    if end_match.start() < start_match.start():
         return MarkerParseResult(
             has_markers=False,
             before="",
@@ -99,13 +258,31 @@ def parse_markers(content: str) -> MarkerParseResult:
         )
 
     # Valid markers - split content
-    before = content[:start_idx]
-    inside = content[start_idx : end_idx + len(MARKER_END)]
-    after = content[end_idx + len(MARKER_END) :]
+    before = content[: start_match.start()]
+    inside = content[start_match.start() : end_match.end()]
+    after = content[end_match.end() :]
 
     return MarkerParseResult(
         has_markers=True, before=before, inside=inside, after=after, error=None
     )
+
+
+# Chunk: docs/chunks/claudemd_marker_safety - Line inventory for discard detection
+def _managed_block_lines(block: str) -> set[str]:
+    """The comparable content of a managed block: stripped, non-blank lines.
+
+    Marker lines themselves are excluded, so upgrading a bare marker to the
+    annotated self-documenting form is never reported as discarded content.
+    """
+    lines: set[str] = set()
+    for line in block.splitlines():
+        stripped = line.strip()
+        if not stripped:
+            continue
+        if _MARKER_START_RE.search(stripped) or _MARKER_END_RE.search(stripped):
+            continue
+        lines.add(stripped)
+    return lines
 
 
 @dataclass
@@ -116,6 +293,9 @@ class InitResult:
     warnings: list[str] = field(default_factory=list)
     # Chunk: docs/chunks/plugin_legacy_migration - Paths removed by legacy-layout migration
     removed: list[str] = field(default_factory=list)
+    # Chunk: docs/chunks/claudemd_symlink_notice - Informational lines about what init did
+    # (arrangement announcements), distinct from warnings (problems) and created (paths).
+    notices: list[str] = field(default_factory=list)
 
 
 # Chunk: docs/chunks/init_skill_symlink_migration - VE-generated file detection for symlink migration
@@ -430,8 +610,24 @@ class Project:
         agents_file = self.project_dir / "AGENTS.md"
         claude_file = self.project_dir / "CLAUDE.md"
 
-        # Render the template
-        context = TemplateContext()
+        # Chunk: docs/chunks/claudemd_symlink_notice - Track which arrangement
+        # outcome occurred so the run can announce it (output-only; no branch
+        # below changes behavior).
+        converted_claude = False
+        created_fresh = False
+        updated_in_place = False
+        symlink_created = False
+        symlink_repointed = False
+
+        # Render the template.
+        # Chunk: docs/chunks/template_workspace_awareness - Workspace detection
+        # gates the workspace-aware managed block: a tree at or under a
+        # .ve-workspace.yaml gets instructions for its actual working
+        # arrangement (qualified references, peer pointers, the workspace
+        # validator); a single tree renders byte-identically to before.
+        context = TemplateContext(
+            in_workspace=find_workspace_root(self.project_dir) is not None
+        )
         rendered = render_template(
             "claude",
             "AGENTS.md.jinja2",
@@ -443,11 +639,13 @@ class Project:
         # Rename it to AGENTS.md before proceeding
         if claude_file.exists() and not claude_file.is_symlink() and not agents_file.exists():
             claude_file.rename(agents_file)
+            converted_claude = True
 
         if not agents_file.exists():
             # Case A: Fresh init - write AGENTS.md with markers
             agents_file.write_text(rendered)
             result.created.append("AGENTS.md")
+            created_fresh = True
         else:
             # Cases C/D: AGENTS.md exists - check for markers and update
             existing_content = agents_file.read_text()
@@ -469,11 +667,32 @@ class Project:
                         "AGENTS.md template does not contain markers (internal error)"
                     )
                 else:
+                    # Chunk: docs/chunks/claudemd_marker_safety - Dropping
+                    # in-block content is never silent. Content above START
+                    # and below END is preserved by design (stated on the
+                    # markers themselves); anything inside the block that the
+                    # incoming render does not contain is about to be
+                    # destroyed, so say so.
+                    discarded = _managed_block_lines(
+                        parse_result.inside
+                    ) - _managed_block_lines(rendered_parse.inside)
                     new_content = (
                         parse_result.before + rendered_parse.inside + parse_result.after
                     )
                     agents_file.write_text(new_content)
                     result.created.append("AGENTS.md")
+                    updated_in_place = True
+                    if discarded:
+                        result.warnings.append(
+                            f"Discarded {len(discarded)} line(s) from the "
+                            "VE-managed block in AGENTS.md that are not part "
+                            "of the regenerated content. Anything added "
+                            "between the VE:MANAGED markers is destroyed on "
+                            "regeneration — recover the lines from git "
+                            "history and move them above the START marker or "
+                            "below the END marker; ve init preserves both "
+                            "regions."
+                        )
 
         # Ensure CLAUDE.md symlink exists and points to AGENTS.md
         if claude_file.is_symlink():
@@ -481,8 +700,10 @@ class Project:
             if claude_file.resolve() != agents_file.resolve():
                 claude_file.unlink()
                 claude_file.symlink_to("AGENTS.md")
+                symlink_repointed = True
         elif not claude_file.exists():
             claude_file.symlink_to("AGENTS.md")
+            symlink_created = True
         # else: claude_file exists as regular file AND agents_file exists
         # This shouldn't happen after the rename logic above, but if both
         # exist as regular files, leave them alone and warn
@@ -492,11 +713,88 @@ class Project:
                 "CLAUDE.md should be a symlink to AGENTS.md."
             )
 
+        # Chunk: docs/chunks/claudemd_symlink_notice - Announce the arrangement
+        # this run produced. Exactly one arrangement line per run; standalone
+        # symlink lines appear only when the arrangement line does not already
+        # imply them. The conversion notice names the git file-type change so
+        # the 'T' in git status is never a surprise.
+        if converted_claude:
+            result.notices.append(
+                "Converted CLAUDE.md to a symlink to AGENTS.md; its content now "
+                "lives in AGENTS.md (git status will show a file-type change)."
+            )
+        elif created_fresh:
+            result.notices.append(
+                "Created AGENTS.md (canonical agent instructions); "
+                "CLAUDE.md is a symlink to it."
+            )
+        else:
+            if updated_in_place:
+                result.notices.append(
+                    "Updated the VE-managed block in AGENTS.md in place."
+                )
+            if symlink_created:
+                result.notices.append(
+                    "Created CLAUDE.md as a symlink to AGENTS.md."
+                )
+        if symlink_repointed:
+            result.notices.append("Repointed the CLAUDE.md symlink to AGENTS.md.")
+
+        return result
+
+    # Chunk: docs/chunks/federation_template_pointers - Minting an addressing root inside a workspace is never silent
+    def _workspace_advisory(self) -> InitResult:
+        """Report that this `ve init` is about to mint a namespace in a workspace.
+
+        `ve init` inside a monorepo of VE trees creates a new addressing root:
+        from then on, bare references in files beneath this directory resolve
+        here instead of in the tree that governed them a moment ago. That is
+        sometimes exactly right — a package that owns intent needs a trunk — and
+        sometimes the mistake that grows a repository to dozens of parallel
+        namespaces, so it is stated rather than performed silently.
+
+        Advisory only: init still creates the tree, and the parent workspace
+        manifest is not modified. Registration is offered, not done, because a
+        command run on one directory should not rewrite a file above it.
+        """
+        result = InitResult()
+
+        # Re-initializing an existing tree mints nothing.
+        if is_ve_tree(self.project_dir):
+            return result
+
+        workspace_root = find_workspace_root(self.project_dir)
+        if workspace_root is None:
+            return result
+        if _same_directory(workspace_root, self.project_dir):
+            return result
+
+        relative = pathlib.Path(
+            os.path.relpath(self.project_dir, start=workspace_root)
+        ).as_posix()
+        suggested_name = suggest_member_names([relative], root=workspace_root)[0][0]
+        governing = find_enclosing_tree(self.project_dir)
+        if governing is not None:
+            result.warnings.append(
+                f"creating docs/trunk/ in {self.project_dir} makes it a new "
+                f"addressing root inside the workspace at {workspace_root}: bare "
+                f"references in files beneath it will resolve here instead of in "
+                f"{governing}. If this package only consumes documented intent, "
+                f"`ve package scaffold {relative} --interest "
+                f"'<member>::docs/<type>/<name>: why'` registers it as a "
+                f"pointer-only member and mints no namespace."
+            )
+
+        result.warnings.append(
+            f"register the new tree so '<member>::' references can address it: "
+            f"`ve workspace add {suggested_name} {relative}` "
+            f"(from {workspace_root}, which holds the {WORKSPACE_MANIFEST_NAME})."
+        )
         return result
 
     # Chunk: docs/chunks/plugin_init_slimdown - Init scaffolds project-owned artifacts only; commands distributed via the Claude Code plugin
     # Chunk: docs/chunks/plugin_legacy_migration - Re-init migrates legacy rendered layouts
-    def init(self) -> InitResult:
+    def init(self, advise_on_workspace: bool = True) -> InitResult:
         """Initialize the project with vibe engineering structure.
 
         Creates trunk documents, AGENTS.md, artifact directories, and the
@@ -507,10 +805,19 @@ class Project:
         symlinks (preserving user-authored files with a warning).
         Idempotent: skips files that already exist; a second run removes
         nothing.
+
+        Args:
+            advise_on_workspace: Whether to warn that this init mints a new
+                addressing root inside a workspace (see
+                :meth:`_workspace_advisory`). Callers that create a tree
+                deliberately *and* register it — `ve package scaffold
+                --full-tree` — pass False, because for them the advice is
+                already taken.
         """
         result = InitResult()
 
         for sub_result in [
+            self._workspace_advisory() if advise_on_workspace else InitResult(),
             self._migrate_legacy_layout(),
             self._init_trunk(),
             self._init_agents_md(),
@@ -523,6 +830,7 @@ class Project:
             result.skipped.extend(sub_result.skipped)
             result.warnings.extend(sub_result.warnings)
             result.removed.extend(sub_result.removed)
+            result.notices.extend(sub_result.notices)
 
         return result
 

@@ -7,6 +7,7 @@ references in the {file_path}#{symbol_path} format.
 # Subsystem: docs/subsystems/workflow_artifacts - Workflow artifact lifecycle
 
 import ast
+import re
 from pathlib import Path
 
 
@@ -147,6 +148,223 @@ def parse_reference(
         return project, file_path, symbol_path
 
     return project, file_and_symbol, None
+
+
+# Chunk: docs/chunks/crossref_glob_refs - Glob patterns in reference file parts
+_GLOB_MAGIC = re.compile(r"[*?\[]")
+
+
+def is_glob_pattern(file_part: str) -> bool:
+    """Return True when a reference file part is a glob pattern.
+
+    A file part containing glob magic (``*``, ``?``, ``[``) declares a
+    *shape* of paths ("this applies uniformly across everything matching
+    this pattern") rather than one literal path.
+    """
+    return bool(_GLOB_MAGIC.search(file_part))
+
+
+# Chunk: docs/chunks/crossref_glob_refs - Shared glob expansion for path validators
+def expand_glob(root: Path, pattern: str) -> list[Path]:
+    """Expand a glob pattern against a project root.
+
+    Returns the sorted matches. Malformed patterns (absolute paths, bad
+    bracket syntax) degrade to an empty list — every validator treats an
+    empty expansion as an error naming the pattern, which points the
+    operator at the bad pattern instead of crashing the validator.
+    """
+    try:
+        return sorted(root.glob(pattern))
+    except (ValueError, NotImplementedError, IndexError, re.error):
+        return []
+
+
+# Chunk: docs/chunks/crossref_reexport_absence - Re-export-only names are absent
+def name_is_reexport_only(content: str, name: str) -> bool | None:
+    """Decide whether `name` is only *bound* in this Python source, not defined.
+
+    A name whose every whole-word occurrence sits inside an `import`/`from …
+    import` statement or an `__all__` string-list statement is a re-export:
+    the definition lives in another file, and a reference anchored here is
+    silently wrong (the `# noqa: F401` field case). This is the one class of
+    occurrence the conservative whole-word scan provably misreads, so it is
+    the one class this predicate reclassifies.
+
+    Returns:
+        - True: occurrences exist and every one falls inside an import
+          statement span or a *simple* statement (assignment, augmented
+          assignment, expression such as ``__all__.append(...)``) that
+          mentions ``__all__``. Compound statements (``if``, ``try``, …) are
+          deliberately not excludable spans, so real code guarded by an
+          ``__all__`` test can never be misread as absent.
+        - False: at least one occurrence lives outside those spans (a
+          definition, an assignment, a call, a docstring, a comment off the
+          import lines) — the conservative default — or the name never
+          occurs at all.
+        - None: undecidable — `name` is not an identifier, or the content is
+          not parseable Python. Callers fall back to whole-word semantics so
+          unparseable files never gain new errors.
+
+    Line spans (``lineno..end_lineno``) are deliberately the unit of
+    exclusion: a ``# noqa`` comment on an import line is part of the
+    re-export idiom, and multi-line parenthesized imports are covered.
+    """
+    if not name.isidentifier():
+        return None
+    try:
+        tree = ast.parse(content)
+    except (SyntaxError, ValueError):
+        return None
+
+    excluded_spans: list[tuple[int, int]] = []
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import | ast.ImportFrom):
+            excluded_spans.append((node.lineno, node.end_lineno or node.lineno))
+        elif isinstance(node, ast.Assign | ast.AnnAssign | ast.AugAssign | ast.Expr):
+            mentions_all = any(
+                isinstance(inner, ast.Name) and inner.id == "__all__"
+                for inner in ast.walk(node)
+            )
+            if mentions_all:
+                excluded_spans.append((node.lineno, node.end_lineno or node.lineno))
+
+    pattern = re.compile(rf"\b{re.escape(name)}\b")
+    occurrence_lines = [
+        line_number
+        for line_number, line in enumerate(content.splitlines(), start=1)
+        if pattern.search(line)
+    ]
+    if not occurrence_lines:
+        return False
+    return all(
+        any(start <= line_number <= end for start, end in excluded_spans)
+        for line_number in occurrence_lines
+    )
+
+
+# Chunk: docs/chunks/crossref_generator_verify - Shared reference-existence check
+# Chunk: docs/chunks/crossref_glob_refs - Glob file parts: error only on empty expansion
+# Chunk: docs/chunks/crossref_unchecked_anchors - Uncheckable anchors warn instead of silently passing
+def check_reference_target(
+    project_dir: Path, ref: str
+) -> tuple[str | None, str | None]:
+    """Check a local (non-project-qualified) symbolic reference against a project.
+
+    This is the single existence check shared by chunk validation, the chunk
+    completion gate, and subsystem code_references validation, so every
+    reference-emitting flow agrees on what "absent" means.
+
+    Args:
+        project_dir: Project root to resolve the file part against.
+        ref: Reference in {file_path} or {file_path}#{symbol_path} form.
+
+    Returns:
+        Tuple of (error, warning):
+        - error: the target is provably absent — the file does not exist,
+          the symbol is neither defined nor mentioned in a parseable Python
+          file, or every mention of it sits inside import/`__all__`
+          re-export statements (the definition lives in another file).
+        - warning: the target is uncheckable (UNCHECKED) — a Python file
+          that could not be parsed, a name that occurs in the file without
+          being a def/class definition (module-level constants are
+          legitimate reference targets that AST extraction does not index),
+          a symbol anchor on a non-Python file, or an anchor whose last
+          ``::`` component is not an identifier (dotted/bracketed anchors
+          such as YAML workflow paths). Uncheckable is stated, never
+          silently passed, and never gates.
+        - (None, None): verified.
+
+    Glob file parts (``packages/tasks/*/Dockerfile``) are patterns, not
+    literal paths: an empty expansion is an error, a non-empty expansion is
+    verified, and a symbol anchor on a pattern is uncheckable (warning).
+    """
+    qualified_ref = qualify_ref(ref, ".")
+    _, file_path, symbol_path = parse_reference(qualified_ref)
+
+    if is_glob_pattern(file_path):
+        if not expand_glob(project_dir, file_path):
+            return (
+                f"Glob pattern matches nothing: {file_path} (ref: {ref})",
+                None,
+            )
+        if symbol_path is not None:
+            return (
+                None,
+                f"Symbol anchor '{symbol_path}' on glob pattern {file_path} "
+                f"is not checked across expansions (ref: {ref})",
+            )
+        return (None, None)
+
+    full_path = project_dir / file_path
+    if not full_path.exists():
+        return (f"File not found: {file_path} (ref: {ref})", None)
+
+    if symbol_path is None:
+        return (None, None)
+
+    # Chunk: docs/chunks/crossref_unchecked_anchors - Non-Python anchors are UNCHECKED, not passed
+    if not str(file_path).endswith(".py"):
+        # Non-Python files have no symbol checker; say so instead of passing.
+        return (
+            None,
+            f"Symbol anchor '{symbol_path}' in non-Python file {file_path} "
+            f"is not checked (ref: {ref})",
+        )
+
+    # Chunk: docs/chunks/crossref_unchecked_anchors - Non-identifier anchors are UNCHECKED
+    # The same undecidable signal name_is_reexport_only keys off: a leaf that
+    # is not an identifier can never appear in extract_symbols output, and
+    # whole-word \b semantics around dots/brackets are meaningless, so the
+    # honest disposition is a stated warning, not a scan with undefined
+    # behavior.
+    leaf = symbol_path.rsplit("::", 1)[-1].strip()
+    if not leaf.isidentifier():
+        return (
+            None,
+            f"Symbol anchor '{symbol_path}' is not a checkable identifier "
+            f"and is not checked in {file_path} (ref: {ref})",
+        )
+
+    symbols = extract_symbols(full_path)
+    if symbol_path in symbols:
+        return (None, None)
+
+    # AST extraction only indexes functions and classes. A reference to a
+    # module-level constant is legitimate, so before declaring provable
+    # absence, check whether the name occurs as a whole word anywhere in
+    # the file — but an occurrence confined to import/`__all__` re-export
+    # statements is *bound here, not defined here*, and counts as absent.
+    # Present-but-not-a-definition is uncheckable (warning); absent
+    # entirely, or re-export-only, is an invented, deleted, or relocated
+    # name (error). Unparseable Python stays a warning, never an error.
+    try:
+        content = full_path.read_text()
+        ast.parse(content)
+    except (OSError, UnicodeDecodeError, SyntaxError, ValueError):
+        # Unreadable or unparseable Python is uncheckable, never provably
+        # absent: warning, not error.
+        return (
+            None,
+            f"Could not extract symbols from {file_path} (ref: {ref})",
+        )
+    if not re.search(rf"\b{re.escape(leaf)}\b", content):
+        return (
+            f"Symbol not found: {symbol_path} in {file_path} (ref: {ref})",
+            None,
+        )
+    # Chunk: docs/chunks/crossref_reexport_absence - Re-export-only mention gates
+    if name_is_reexport_only(content, leaf):
+        return (
+            f"Symbol {symbol_path} appears only in import/__all__ re-export "
+            f"statements in {file_path}; the definition lives in another "
+            f"file (ref: {ref})",
+            None,
+        )
+    return (
+        None,
+        f"Symbol {symbol_path} is not a def/class definition in "
+        f"{file_path}; the name occurs but cannot be verified (ref: {ref})",
+    )
 
 
 def qualify_ref(ref: str, project: str) -> str:

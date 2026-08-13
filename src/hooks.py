@@ -30,16 +30,16 @@ from frontmatter import split_frontmatter_and_body
 from validation import validate_identifier
 
 
-# The set of valid event names: exactly the plugin's command names.
+# The set of valid event names: exactly the plugin's skill (command) names.
 #
 # A literal rather than a directory scan because no single path holds the
-# command files across all install layouts: a built wheel force-includes
-# commands/ as orchestrator/skills (see pyproject.toml), that directory does
+# skill files across all install layouts: a built wheel force-includes
+# skills/ as orchestrator/skills (see pyproject.toml), that directory does
 # not exist in a source checkout, and the separately-installed CLI (DEC-010)
 # cannot count on CLAUDE_PLUGIN_ROOT, which is only set inside hook execution.
 # A three-way fallback would be more machinery than a literal plus one test:
-# tests/test_plugin_commands.py pins this to commands/*.md by exact equality in
-# both directions, so a command added or removed without updating it fails.
+# tests/test_plugin_skills.py pins this to skills/*/SKILL.md by exact equality
+# in both directions, so a skill added or removed without updating it fails.
 KNOWN_EVENTS: frozenset[str] = frozenset(
     {
         "audit-intent",
@@ -80,6 +80,7 @@ KNOWN_EVENTS: frozenset[str] = frozenset(
         "swarm-request-response",
         "validate-fix",
         "ve-status",
+        "workspace-validate-fix",
     }
 )
 

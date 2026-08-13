@@ -1,1 +1,0 @@
-../../.agents/skills/migrate-managed-claude-md/SKILL.md

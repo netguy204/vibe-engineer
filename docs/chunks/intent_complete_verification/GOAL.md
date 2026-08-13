@@ -5,14 +5,14 @@ parent_chunk: null
 code_paths:
 - src/models/chunk.py
 - src/models/__init__.py
-- src/templates/commands/chunk-complete.md.jinja2
+- src/templates/plugin/skills/chunk-complete.md.jinja2
 - src/templates/chunk/GOAL.md.jinja2
 - tests/test_models.py
 - tests/test_reviewer_decision_create.py
 code_references:
   - ref: src/models/chunk.py#ChunkFrontmatter
     implements: "Removed bug_type field and added ConfigDict(extra='ignore') for backward compatibility with existing GOAL.md files"
-  - ref: commands/chunk-complete.md
+  - ref: skills/chunk-complete/SKILL.md
     implements: "Replaced bug_type-based status routing with retrospective framing rewrite (step 11), intent test (step 12), and HISTORICAL deletion prompt (step 13)"
   - ref: src/templates/chunk/GOAL.md.jinja2
     implements: "Removed bug_type from chunk GOAL.md frontmatter template and its documentation block"

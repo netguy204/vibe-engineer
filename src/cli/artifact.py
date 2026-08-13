@@ -7,6 +7,7 @@ Commands for artifact management operations.
 # Chunk: docs/chunks/copy_as_external - ve artifact copy-external command
 # Chunk: docs/chunks/remove_external_ref - ve artifact remove-external command
 
+import json
 import pathlib
 
 import click
@@ -17,6 +18,9 @@ from task import (
     copy_artifact_as_external,
     TaskCopyExternalError,
 )
+from external_refs import ARTIFACT_DIR_NAME, normalize_artifact_path
+from interest import ConsumerReport, InterestEdge, find_consumers
+from workspace import WorkspaceError, load_workspace
 
 
 # Chunk: docs/chunks/artifact_promote - CLI command group for artifact management commands
@@ -133,3 +137,200 @@ def remove_external(artifact_path, target_project, cwd):
             )
     else:
         click.echo(f"No external reference found for '{artifact_path}' in '{target_project}' (already removed)")
+
+
+# Subsystem: docs/subsystems/cross_repo_operations - Interest edges read backwards
+# Chunk: docs/chunks/federation_reverse_interest - ve artifact consumers
+@artifact.command()
+@click.argument("artifact_path")
+@click.option("--json", "json_output", is_flag=True, help="Output in JSON format")
+@click.option(
+    "--project-dir",
+    type=click.Path(exists=True, path_type=pathlib.Path),
+    default=".",
+    help="The tree that owns the artifact (default: the nearest enclosing tree).",
+)
+def consumers(artifact_path, json_output, project_dir):
+    """List the trees in this workspace that record interest in ARTIFACT_PATH.
+
+    Answers the reverse of an external.yaml pointer: instead of "what does this
+    pointer target?", it asks "who points at me?". Ownership stays with the tree
+    whose code enforces the intent; this is how that tree finds its readers.
+
+    ARTIFACT_PATH accepts "docs/subsystems/name", "subsystems/name", or just
+    "name" when it exists in this tree.
+
+    Peer (`tree:`) pointers are reported when they resolve to exactly this
+    artifact directory. Cross-repo (`repo:`) pointers naming the same artifact id
+    are reported separately, because nothing here can verify that a repository's
+    artifact is this one.
+    """
+    # Resolve before anything consults the manifest: `Workspace.find_member_for_path`
+    # interprets a relative path against the *workspace root*, so the default "."
+    # would name the root tree instead of the tree the operator is standing in -
+    # the exact class of silent misresolution this narrative exists to remove.
+    owner_root = pathlib.Path(project_dir).resolve()
+
+    try:
+        ws = load_workspace(owner_root)
+    except WorkspaceError as exc:
+        click.echo(
+            f"Error: {exc}\n"
+            f"Reverse interest lookup enumerates the trees a manifest names, so "
+            f"without one there is nothing to search; `ve workspace init --scan` "
+            f"proposes the trees it finds.",
+            err=True,
+        )
+        raise SystemExit(1)
+
+    try:
+        artifact_type, artifact_id = normalize_artifact_path(
+            artifact_path, search_path=owner_root
+        )
+    except ValueError as exc:
+        click.echo(f"Error: {exc}", err=True)
+        raise SystemExit(1)
+
+    report = find_consumers(
+        ws,
+        artifact_type=artifact_type,
+        artifact_id=artifact_id,
+        owner_root=owner_root,
+    )
+
+    # A peer pointer addresses a *member*, so an unregistered owning tree cannot
+    # be pointed at by anything. Reporting "no consumers" would answer a question
+    # that was never askable; report the configuration defect instead.
+    if report.owner_member is None:
+        enclosing_member = ws.find_member_for_path(owner_root)
+        enclosing = (
+            f" (it lies inside member '{enclosing_member.name}')"
+            if enclosing_member
+            else ""
+        )
+        click.echo(
+            f"Error: {owner_root} is not a registered member of the workspace at "
+            f"{ws.root}{enclosing}. A peer pointer names a member, so no pointer "
+            f"can address this tree's artifacts. Register it with "
+            f"`ve workspace add <name> <path>`.",
+            err=True,
+        )
+        raise SystemExit(1)
+
+    if json_output:
+        click.echo(json.dumps(_consumers_json(ws, report), indent=2))
+        return
+
+    _display_consumer_report(ws, report)
+
+
+def _edge_row(edge: InterestEdge, width: int, show_target: bool) -> str:
+    """Format one inbound edge as an aligned row."""
+    row = f"  {edge.member.ljust(width)}  {edge.pointer_rel}"
+    if show_target:
+        row += f" -> {edge.target_display}"
+    if edge.why:
+        row += f"\n  {' ' * width}  why: {edge.why}"
+    else:
+        row += f"\n  {' ' * width}  (no why: recorded)"
+    return row
+
+
+# Chunk: docs/chunks/federation_reverse_interest - Consumer report rendering
+def _display_consumer_report(ws, report: ConsumerReport) -> None:
+    """Print a consumer report, keeping resolved and id-matched answers apart."""
+    owner_member = report.owner_member
+    dir_name = ARTIFACT_DIR_NAME[report.artifact_type]
+    click.echo(
+        f"Artifact: docs/{dir_name}/{report.artifact_id} "
+        f"({report.artifact_type.value})"
+    )
+    click.echo(f"Owner: {owner_member.name} ({owner_member.path})")
+    click.echo(f"Workspace: {ws.root}")
+
+    if not report.target_exists:
+        click.echo(
+            f"Warning: {report.target_dir} does not exist. Any pointer listed "
+            f"below cannot resolve.",
+            err=True,
+        )
+
+    if report.peers:
+        width = max(len(edge.member) for edge in report.peers)
+        click.echo("")
+        click.echo(
+            f"Consumers ({len(report.peers)} peer pointer(s) addressing this artifact):"
+        )
+        for edge in report.peers:
+            click.echo(_edge_row(edge, width, show_target=False))
+    else:
+        click.echo("")
+        click.echo(
+            f"No consumers: no tree in this workspace holds a peer pointer at "
+            f"docs/{dir_name}/{report.artifact_id}."
+        )
+        click.echo(
+            f"A consuming tree records interest with "
+            f"`ve external point {owner_member.name} docs/{dir_name}/"
+            f"{report.artifact_id} --why '<what it depends on>'`."
+        )
+
+    if report.cross_repo:
+        width = max(len(edge.member) for edge in report.cross_repo)
+        click.echo("")
+        click.echo(
+            f"Cross-repo pointers naming artifact id '{report.artifact_id}' "
+            f"({len(report.cross_repo)}) - matched by artifact id, not verified to "
+            f"be this artifact:"
+        )
+        for edge in report.cross_repo:
+            click.echo(_edge_row(edge, width, show_target=True))
+
+    if report.malformed:
+        click.echo("")
+        click.echo(
+            f"Unreadable pointers ({len(report.malformed)}) - these could not be "
+            f"parsed, so their interest is unknown:",
+            err=True,
+        )
+        for bad in report.malformed:
+            click.echo(f"  {bad.member}  {bad.pointer_rel}: {bad.message}", err=True)
+
+
+def _consumers_json(ws, report: ConsumerReport) -> dict:
+    """Serialize a consumer report.
+
+    Both flavors share one `consumers` array so a caller does not have to know
+    the addressing model to enumerate interest, with `flavor` and `verified`
+    preserving the distinction the text report makes with sections.
+    """
+    owner_member = report.owner_member
+    dir_name = ARTIFACT_DIR_NAME[report.artifact_type]
+
+    def edge_dict(edge: InterestEdge, verified: bool) -> dict:
+        return {
+            "member": edge.member,
+            "flavor": edge.flavor,
+            "verified": verified,
+            "pointer": edge.pointer_rel,
+            "qualified_pointer": edge.qualified_pointer,
+            "target": edge.target_display,
+            "artifact_id": edge.ref.artifact_id,
+            "why": edge.why,
+        }
+
+    return {
+        "workspace_root": str(ws.root),
+        "artifact_type": report.artifact_type.value,
+        "artifact_id": report.artifact_id,
+        "artifact_path": f"docs/{dir_name}/{report.artifact_id}",
+        "owner": owner_member.name,
+        "owner_path": owner_member.path,
+        "target_exists": report.target_exists,
+        "consumers": [edge_dict(edge, True) for edge in report.peers]
+        + [edge_dict(edge, False) for edge in report.cross_repo],
+        "unreadable_pointers": [
+            {"member": bad.member, "pointer": bad.pointer_rel, "error": bad.message}
+            for bad in report.malformed
+        ],
+    }

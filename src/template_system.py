@@ -16,6 +16,30 @@ from constants import template_dir
 # Subsystem: docs/subsystems/template_system - Unified template rendering
 # Chunk: docs/chunks/template_lang_agnostic - Simplified config (removed is_ve_source_repo)
 # Chunk: docs/chunks/cluster_subsystem_prompt - cluster_subsystem_threshold configuration field
+# Chunk: docs/chunks/validation_backref_allowlist - Declared non-reference paths
+@dataclass(frozen=True)
+class IgnoredBackreferencePath:
+    """A path whose reference-shaped text is not a reference.
+
+    The reason is required, not decorative: an allowlist entry suppresses real
+    findings, so the next reader has to be able to tell whether it still earns
+    its place without excavating the file it names.
+    """
+
+    path: str  # glob, matched against project-relative POSIX paths
+    reason: str
+
+    def matches(self, relative_path: str) -> bool:
+        """True when this entry covers `relative_path`.
+
+        `pathlib` glob semantics, so `*` does not cross a directory boundary —
+        `tests/*.py` covers `tests/a.py` and not `tests/sub/a.py`. Silently
+        widening a suppression to nested directories is exactly how an
+        allowlist starts hiding defects nobody chose to hide.
+        """
+        return pathlib.PurePosixPath(relative_path).match(self.path)
+
+
 @dataclass
 class VeConfig:
     """VE project configuration loaded from .ve-config.yaml.
@@ -25,9 +49,13 @@ class VeConfig:
             clusters. When creating a chunk that would be the Nth chunk in a
             cluster (where N >= threshold), a warning is emitted suggesting
             the user consider documenting a subsystem.
+        ignore_backreferences: Paths whose backreference findings are
+            suppressed, because the text that looks like a reference is a
+            fixture, an example, or a quoted archive rather than a live link.
     """
 
     cluster_subsystem_threshold: int = 5  # Default: warn at 5th chunk in cluster
+    ignore_backreferences: tuple[IgnoredBackreferencePath, ...] = ()
 
     def as_dict(self) -> dict:
         """Return config as dict suitable for Jinja2 rendering."""
@@ -57,7 +85,46 @@ def load_ve_config(project_dir: pathlib.Path) -> VeConfig:
 
     return VeConfig(
         cluster_subsystem_threshold=data.get("cluster_subsystem_threshold", 5),
+        ignore_backreferences=_parse_ignore_backreferences(data, config_path),
     )
+
+
+# Chunk: docs/chunks/validation_backref_allowlist - Allowlist parsing rejects vague entries
+def _parse_ignore_backreferences(
+    data: dict, config_path: pathlib.Path
+) -> tuple[IgnoredBackreferencePath, ...]:
+    """Read `validation.ignore_backreferences`, rejecting unusable entries.
+
+    Malformed entries raise rather than being skipped. An allowlist that
+    silently drops what it cannot parse would report the paths as failing while
+    the author believes they are covered, which is the worst of both outcomes.
+    """
+    validation = data.get("validation") or {}
+    if not isinstance(validation, dict):
+        raise ValueError(f"{config_path}: 'validation' must be a mapping")
+
+    raw = validation.get("ignore_backreferences") or []
+    if not isinstance(raw, list):
+        raise ValueError(
+            f"{config_path}: 'validation.ignore_backreferences' must be a list"
+        )
+
+    entries = []
+    for i, item in enumerate(raw):
+        where = f"{config_path}: validation.ignore_backreferences[{i}]"
+        if not isinstance(item, dict):
+            raise ValueError(f"{where} must be a mapping with 'path' and 'reason'")
+        path = item.get("path")
+        reason = item.get("reason")
+        if not path or not isinstance(path, str):
+            raise ValueError(f"{where} needs a non-empty 'path'")
+        if not reason or not isinstance(reason, str) or not reason.strip():
+            raise ValueError(
+                f"{where} needs a non-empty 'reason' — a suppression that does "
+                "not say why it exists cannot be reviewed later"
+            )
+        entries.append(IgnoredBackreferencePath(path=path, reason=reason.strip()))
+    return tuple(entries)
 
 
 # Subsystem: docs/subsystems/template_system - Unified template rendering
@@ -217,11 +284,18 @@ class TaskContext:
 
 
 # Subsystem: docs/subsystems/template_system - Unified template rendering
+# Chunk: docs/chunks/template_workspace_awareness - in_workspace flag gates workspace-aware template content
 @dataclass
 class TemplateContext:
     """Holds project-level context for template rendering.
 
     Only one active artifact (chunk, narrative, subsystem, investigation, or migration) can be set at a time.
+
+    `in_workspace` records whether the project sits in a federated workspace
+    (a `.ve-workspace.yaml` manifest at or above the project directory).
+    The claude AGENTS.md/CLAUDE.md templates key workspace-aware content off
+    it as `project.in_workspace`; the default False keeps single-tree
+    renders byte-identical to a context that never mentions workspaces.
     """
 
     active_chunk: ActiveChunk | None = None
@@ -229,6 +303,7 @@ class TemplateContext:
     active_subsystem: ActiveSubsystem | None = None
     active_investigation: ActiveInvestigation | None = None
     active_migration: ActiveMigration | None = None
+    in_workspace: bool = False
 
     def __post_init__(self):
         count = sum(
@@ -313,9 +388,14 @@ def render_template(
     env = get_environment(collection)
     template = env.get_template(template_name)
 
+    # Chunk: docs/chunks/template_workspace_awareness - A default context always
+    # rides along so templates can test `project.in_workspace` (and other
+    # context fields) without guarding against an undefined `project`.
+    if context is None:
+        context = TemplateContext()
+
     render_context = {}
-    if context:
-        render_context.update(context.as_dict())
+    render_context.update(context.as_dict())
     render_context.update(kwargs)
 
     return template.render(**render_context)

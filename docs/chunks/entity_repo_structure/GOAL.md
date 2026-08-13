@@ -10,17 +10,26 @@ code_paths:
 - tests/test_entity_create_cli.py
 code_references:
 - ref: src/entity_repo.py#EntityRepoMetadata
-  implements: "Pydantic model for ENTITY.md frontmatter fields (name, created, specialization, origin, role)"
+  implements: Pydantic model for ENTITY.md frontmatter fields (name, created, specialization,
+    origin, role)
 - ref: src/entity_repo.py#create_entity_repo
-  implements: "Creates the full entity git repo structure, renders wiki templates, initializes git repo, and makes initial commit"
+  implements: Creates the full entity git repo structure, renders wiki templates,
+    initializes git repo, and makes initial commit
 - ref: src/entity_repo.py#is_entity_repo
-  implements: "Detects whether a given directory is a valid entity repo by checking ENTITY.md presence and frontmatter"
+  implements: Detects whether a given directory is a valid entity repo by checking
+    ENTITY.md presence and frontmatter
 - ref: src/entity_repo.py#read_entity_metadata
-  implements: "Reads and validates ENTITY.md frontmatter into EntityRepoMetadata"
+  implements: Reads and validates ENTITY.md frontmatter into EntityRepoMetadata
 - ref: src/cli/entity.py#create
-  implements: "ve entity create CLI command that invokes create_entity_repo with --role and --output-dir options"
+  implements: ve entity create CLI command that invokes create_entity_repo with --role
+    and --output-dir options
 - ref: src/templates/entity/entity_md.jinja2
-  implements: "Jinja2 template for ENTITY.md with name, created, specialization, origin, and role frontmatter"
+  implements: Jinja2 template for ENTITY.md with name, created, specialization, origin,
+    and role frontmatter
+- ref: tests/test_entity_create_cli.py
+  implements: CLI tests for standalone entity repo creation
+- ref: tests/test_entity_repo.py
+  implements: Entity repo structure tests
 narrative: null
 investigation: entity_wiki_memory
 subsystems: []

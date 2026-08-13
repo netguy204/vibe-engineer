@@ -6,17 +6,20 @@ code_paths:
 - src/chunks.py
 - src/ve.py
 - src/task/artifact_ops.py
-- src/templates/commands/chunk-create.md.jinja2
+- src/templates/plugin/skills/chunk-create.md.jinja2
 - tests/test_chunks.py
+- tests/test_chunk_scratchpad_cli.py
 code_references:
 - ref: src/chunks.py#Chunks::find_duplicates
-  implements: "Collision detection ignoring ticket_id (matches on short_name only)"
+  implements: Collision detection ignoring ticket_id (matches on short_name only)
 - ref: src/chunks.py#Chunks::create_chunk
-  implements: "Directory naming without ticket suffix (ticket in frontmatter only)"
+  implements: Directory naming without ticket suffix (ticket in frontmatter only)
 - ref: src/task/artifact_ops.py#create_task_chunk
-  implements: "Task context chunk creation without ticket in directory name"
+  implements: Task context chunk creation without ticket in directory name
 - ref: src/cli/utils.py#validate_combined_chunk_name
-  implements: "Chunk name validation after CLI modularization"
+  implements: Chunk name validation after CLI modularization
+- ref: tests/test_chunk_scratchpad_cli.py
+  implements: Directory uses short_name only
 narrative: null
 investigation: null
 subsystems:
@@ -29,7 +32,6 @@ bug_type: null
 created_after:
 - validation_chunk_name
 ---
-
 # Chunk Goal
 
 ## Minor Goal

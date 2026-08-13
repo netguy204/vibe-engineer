@@ -20,17 +20,25 @@ def write_chunk_goal(
     friction_entries: list[dict] | None = None,
     depends_on: list[str] | None = None,
     code_references: list[dict] | None = None,
+    status: str = "IMPLEMENTING",
+    code_paths: list[str] | None = None,
 ):
     """Helper to write a chunk GOAL.md with optional outbound references."""
     goal_path = chunk_path / "GOAL.md"
 
     frontmatter_lines = [
         "---",
-        "status: IMPLEMENTING",
+        f"status: {status}",
         "ticket: null",
         "parent_chunk: null",
-        "code_paths: []",
     ]
+
+    if code_paths:
+        frontmatter_lines.append("code_paths:")
+        for path in code_paths:
+            frontmatter_lines.append(f"  - {path}")
+    else:
+        frontmatter_lines.append("code_paths: []")
 
     if code_references:
         frontmatter_lines.append("code_references:")
@@ -650,6 +658,31 @@ class TestIntegrityValidatorCodeBackrefs:
         assert "nonexistent" in result.errors[0].message
         assert result.errors[0].link_type == "code→subsystem"
 
+    # Chunk: docs/chunks/federation_qualified_refs - Single-tree integrity defers cross-tree refs
+    def test_qualified_backrefs_are_not_checked_against_this_tree(self, temp_project):
+        """A qualified ref names another tree, so single-tree checks skip it.
+
+        The chunk/subsystem it names does not exist locally, and that is not an
+        error: resolution belongs to `ve workspace validate`. Reporting it here
+        would be the silent misresolution the qualifier grammar prevents.
+        """
+        make_ve_initialized_git_repo(temp_project)
+
+        src_dir = temp_project / "src"
+        src_dir.mkdir(parents=True)
+        (src_dir / "test.py").write_text(
+            '"""Test module."""\n'
+            "# Chunk: pybusiness::docs/chunks/commitment_key - Elsewhere\n"
+            "# Subsystem: acme/platform::docs/subsystems/baseline - Elsewhere\n"
+            "# Chunk: architecture/docs/chunks/legacy_prefix - Legacy prefix\n"
+        )
+
+        result = validate_integrity(temp_project)
+
+        assert result.success, [error.message for error in result.errors]
+        assert result.chunk_backrefs_found == 0
+        assert result.subsystem_backrefs_found == 0
+
     def test_multiple_backrefs_in_file(self, temp_project):
         """Multiple backreferences in one file are all validated."""
         make_ve_initialized_git_repo(temp_project)
@@ -789,6 +822,265 @@ class TestIntegrityValidatorMultipleErrors:
         assert len(result.errors) == 2
 
 
+# Chunk: docs/chunks/crossref_rename_integrity - Tests for chunk-declared file path existence
+class TestIntegrityValidatorFilePaths:
+    """Tests for the chunk→file existence check on code_paths/code_references."""
+
+    def _make_chunk(self, temp_project, name, **kwargs):
+        chunk_path = temp_project / "docs" / "chunks" / name
+        chunk_path.mkdir(parents=True)
+        write_chunk_goal(chunk_path, **kwargs)
+        return chunk_path
+
+    def _file_path_errors(self, temp_project):
+        result = IntegrityValidator(temp_project).validate()
+        return result, [e for e in result.errors if e.link_type == "chunk→file"]
+
+    def test_active_chunk_stale_code_path_errors(self, temp_project):
+        """ACTIVE chunk with a code_paths entry naming a missing file → error."""
+        make_ve_initialized_git_repo(temp_project)
+        self._make_chunk(
+            temp_project, "stale", status="ACTIVE", code_paths=["src/gone.py"]
+        )
+
+        result, errors = self._file_path_errors(temp_project)
+        assert result.success is False
+        assert len(errors) == 1
+        assert errors[0].source == "docs/chunks/stale/GOAL.md"
+        assert errors[0].target == "src/gone.py"
+        assert "code_paths" in errors[0].message
+        assert "moved or renamed" in errors[0].message
+
+    def test_active_chunk_stale_code_reference_errors(self, temp_project):
+        """ACTIVE chunk with a code_references ref to a missing file → error."""
+        make_ve_initialized_git_repo(temp_project)
+        self._make_chunk(
+            temp_project,
+            "stale_ref",
+            status="ACTIVE",
+            code_references=[{"ref": "src/gone.py#Symbol"}],
+        )
+
+        result, errors = self._file_path_errors(temp_project)
+        assert result.success is False
+        assert len(errors) == 1
+        assert errors[0].target == "src/gone.py"
+        assert "code_references" in errors[0].message
+
+    def test_active_chunk_existing_paths_clean(self, temp_project):
+        """ACTIVE chunk whose declared paths all exist → no chunk→file errors."""
+        make_ve_initialized_git_repo(temp_project)
+        (temp_project / "src").mkdir()
+        (temp_project / "src" / "present.py").write_text("x = 1\n")
+        self._make_chunk(
+            temp_project,
+            "healthy",
+            status="ACTIVE",
+            code_paths=["src/present.py"],
+            code_references=[{"ref": "src/present.py#x"}],
+        )
+
+        result, errors = self._file_path_errors(temp_project)
+        assert errors == []
+        assert result.success is True
+
+    # Chunk: docs/chunks/federation_member_refs - Qualified entries defer to workspace validation
+    def test_qualified_entries_are_deferred_to_workspace_validation(self, temp_project):
+        """Member- and repo-qualified entries name another tree or repository;
+        checking them against this project root would invent errors for
+        references that point elsewhere on purpose."""
+        make_ve_initialized_git_repo(temp_project)
+        self._make_chunk(
+            temp_project,
+            "federated",
+            status="ACTIVE",
+            code_paths=["engine::src/foo.py"],
+            code_references=[{"ref": "acme/hub::src/w.py#Widget"}],
+        )
+
+        result, errors = self._file_path_errors(temp_project)
+        assert errors == []
+        assert result.success is True
+
+    def test_directory_code_path_exists_clean(self, temp_project):
+        """A code_paths entry naming an existing directory is valid."""
+        make_ve_initialized_git_repo(temp_project)
+        (temp_project / "src").mkdir()
+        self._make_chunk(
+            temp_project, "dir_ref", status="ACTIVE", code_paths=["src"]
+        )
+
+        _, errors = self._file_path_errors(temp_project)
+        assert errors == []
+
+    # Chunk: docs/chunks/crossref_workspace_parity - Directory semantics workspace mode matches
+    def test_directory_code_reference_exists_clean(self, temp_project):
+        """A code_references file part naming an existing directory is valid.
+
+        This is the semantics `ve workspace validate` is aligned with:
+        'this chunk governs that package directory' is legitimate.
+        """
+        make_ve_initialized_git_repo(temp_project)
+        (temp_project / "src").mkdir()
+        self._make_chunk(
+            temp_project,
+            "dir_ref",
+            status="ACTIVE",
+            code_references=[{"ref": "src"}],
+        )
+
+        _, errors = self._file_path_errors(temp_project)
+        assert errors == []
+
+    @pytest.mark.parametrize(
+        "status", ["IMPLEMENTING", "FUTURE", "HISTORICAL", "SUPERSEDED"]
+    )
+    def test_non_owning_statuses_skip_check(self, temp_project, status):
+        """Stale paths on non-ACTIVE/COMPOSITE chunks are not errors."""
+        make_ve_initialized_git_repo(temp_project)
+        self._make_chunk(
+            temp_project,
+            "pending",
+            status=status,
+            code_paths=["src/not_yet_created.py"],
+            code_references=[{"ref": "src/gone.py#Symbol"}],
+        )
+
+        result, errors = self._file_path_errors(temp_project)
+        assert errors == []
+        assert result.success is True
+
+    def test_composite_chunk_stale_path_errors(self, temp_project):
+        """COMPOSITE chunks share intent ownership; stale paths are errors."""
+        make_ve_initialized_git_repo(temp_project)
+        self._make_chunk(
+            temp_project, "shared", status="COMPOSITE", code_paths=["src/gone.py"]
+        )
+
+        result, errors = self._file_path_errors(temp_project)
+        assert result.success is False
+        assert len(errors) == 1
+
+    def test_duplicate_references_report_once_per_field(self, temp_project):
+        """Several refs into one missing file report once per field type."""
+        make_ve_initialized_git_repo(temp_project)
+        self._make_chunk(
+            temp_project,
+            "dupes",
+            status="ACTIVE",
+            code_references=[
+                {"ref": "src/gone.py#SymbolA"},
+                {"ref": "src/gone.py#SymbolB"},
+            ],
+        )
+
+        _, errors = self._file_path_errors(temp_project)
+        assert len(errors) == 1
+
+    # Chunk: docs/chunks/crossref_glob_refs - Glob entries error only on empty expansion
+    def test_matching_glob_code_path_is_clean(self, temp_project):
+        """A code_paths glob matching existing files is a verified reference."""
+        make_ve_initialized_git_repo(temp_project)
+        for name in ("alpha", "beta"):
+            pkg = temp_project / "packages" / "tasks" / name
+            pkg.mkdir(parents=True)
+            (pkg / "Dockerfile").write_text("FROM scratch\n")
+        self._make_chunk(
+            temp_project,
+            "uniform",
+            status="ACTIVE",
+            code_paths=["packages/tasks/*/Dockerfile"],
+        )
+
+        result, errors = self._file_path_errors(temp_project)
+        assert errors == []
+        assert result.success is True
+
+    def test_empty_glob_code_path_errors(self, temp_project):
+        """A code_paths glob matching nothing is an error naming the pattern."""
+        make_ve_initialized_git_repo(temp_project)
+        self._make_chunk(
+            temp_project,
+            "hollow",
+            status="ACTIVE",
+            code_paths=["packages/tasks/*/Dockerfile"],
+        )
+
+        result, errors = self._file_path_errors(temp_project)
+        assert result.success is False
+        assert len(errors) == 1
+        assert errors[0].target == "packages/tasks/*/Dockerfile"
+        assert "matches nothing" in errors[0].message
+
+    def test_matching_glob_code_reference_is_clean(self, temp_project):
+        """A code_references file part may be a glob pattern with matches."""
+        make_ve_initialized_git_repo(temp_project)
+        pkg = temp_project / "packages" / "alpha"
+        pkg.mkdir(parents=True)
+        (pkg / "handler.py").write_text("class Handler:\n    pass\n")
+        self._make_chunk(
+            temp_project,
+            "uniform_ref",
+            status="ACTIVE",
+            code_references=[{"ref": "packages/*/handler.py"}],
+        )
+
+        _, errors = self._file_path_errors(temp_project)
+        assert errors == []
+
+    def test_empty_glob_code_reference_errors(self, temp_project):
+        """An empty glob expansion in a code_references file part is an error."""
+        make_ve_initialized_git_repo(temp_project)
+        self._make_chunk(
+            temp_project,
+            "hollow_ref",
+            status="ACTIVE",
+            code_references=[{"ref": "packages/*/handler.py#Handler"}],
+        )
+
+        _, errors = self._file_path_errors(temp_project)
+        assert len(errors) == 1
+        assert errors[0].target == "packages/*/handler.py"
+        assert "code_references" in errors[0].message
+        assert "matches nothing" in errors[0].message
+
+    # Chunk: docs/chunks/crossref_unchecked_anchors - ve validate states its symbol blind spot
+    def test_symbol_anchors_are_counted_as_unchecked(self, temp_project):
+        """ve validate checks file parts only; every symbol anchor on a
+        status-gated chunk is counted so the output can say what was not
+        seen."""
+        make_ve_initialized_git_repo(temp_project)
+        (temp_project / "src").mkdir()
+        (temp_project / "src" / "present.py").write_text("x = 1\n")
+        self._make_chunk(
+            temp_project,
+            "anchored",
+            status="ACTIVE",
+            code_references=[
+                {"ref": "src/present.py#x"},
+                {"ref": "src/present.py#Widget::method"},
+                {"ref": "src/present.py"},  # no anchor: not counted
+            ],
+        )
+
+        result, _ = self._file_path_errors(temp_project)
+        assert result.symbol_anchors_unchecked == 2
+
+    def test_non_owning_chunk_anchors_are_not_counted(self, temp_project):
+        """FUTURE/HISTORICAL chunks are not path-checked, so their anchors do
+        not contribute to the unchecked count."""
+        make_ve_initialized_git_repo(temp_project)
+        self._make_chunk(
+            temp_project,
+            "pending",
+            status="FUTURE",
+            code_references=[{"ref": "src/not_yet.py#Symbol"}],
+        )
+
+        result, _ = self._file_path_errors(temp_project)
+        assert result.symbol_anchors_unchecked == 0
+
+
 class TestIntegrityValidatorCLI:
     """Tests for the ve validate CLI command."""
 
@@ -824,6 +1116,21 @@ class TestIntegrityValidatorCLI:
         assert result.exit_code == 1
         assert "Validation failed" in result.output
 
+    # Chunk: docs/chunks/crossref_rename_integrity - Stale declared paths fail the CLI
+    def test_validate_stale_code_path_fails(self, runner, temp_project):
+        """ve validate exits non-zero when an ACTIVE chunk declares a missing file."""
+        from ve import cli
+
+        make_ve_initialized_git_repo(temp_project)
+
+        chunk_path = temp_project / "docs" / "chunks" / "renamed_away"
+        chunk_path.mkdir(parents=True)
+        write_chunk_goal(chunk_path, status="ACTIVE", code_paths=["src/old_name.py"])
+
+        result = runner.invoke(cli, ["validate", "--project-dir", str(temp_project)])
+        assert result.exit_code == 1
+        assert "src/old_name.py" in result.output
+
     def test_validate_verbose_shows_stats(self, runner, temp_project):
         """ve validate --verbose shows statistics."""
         from ve import cli
@@ -840,6 +1147,41 @@ class TestIntegrityValidatorCLI:
         assert result.exit_code == 0
         assert "Chunks: 1" in result.output
         assert "Scanning artifacts" in result.output
+
+    # Chunk: docs/chunks/crossref_unchecked_anchors - Unchecked anchor count in CLI output
+    def test_validate_reports_unchecked_symbol_anchors(self, runner, temp_project):
+        """ve validate states how many symbol anchors it did not check, and
+        where symbol checking does run — without gating on them."""
+        from ve import cli
+
+        make_ve_initialized_git_repo(temp_project)
+        (temp_project / "src").mkdir()
+        (temp_project / "src" / "present.py").write_text("x = 1\n")
+
+        chunk_path = temp_project / "docs" / "chunks" / "anchored"
+        chunk_path.mkdir(parents=True)
+        write_chunk_goal(
+            chunk_path,
+            status="ACTIVE",
+            code_references=[{"ref": "src/present.py#x"}],
+        )
+
+        result = runner.invoke(cli, ["validate", "--project-dir", str(temp_project)])
+        assert result.exit_code == 0
+        assert "1 symbol anchor(s) not checked" in result.output
+        assert "ve workspace validate" in result.output
+
+    def test_validate_without_symbol_anchors_prints_no_unchecked_line(
+        self, runner, temp_project
+    ):
+        """No symbol anchors, no coverage nag."""
+        from ve import cli
+
+        make_ve_initialized_git_repo(temp_project)
+
+        result = runner.invoke(cli, ["validate", "--project-dir", str(temp_project)])
+        assert result.exit_code == 0
+        assert "symbol anchor(s) not checked" not in result.output
 
 
 # Chunk: docs/chunks/integrity_bidirectional - Tests for bidirectional consistency warnings
@@ -1293,9 +1635,13 @@ class TestIntegrityValidatorChunkSubsystemBidirectional:
         )
 
         result = validate_integrity(temp_project)
-        # Should pass with no warnings - external chunks don't have subsystems field
+        # Should pass with no bidirectional warning - external chunks don't have
+        # a subsystems field to check.
+        # Chunk: docs/chunks/external_never_resolved - Narrowed from "no warnings at
+        # all": the external.yaml this fixture writes is a cross-repo pointer nobody
+        # has resolved, which legitimately raises its own unrelated warning.
         assert result.success
-        assert len(result.warnings) == 0
+        assert [w for w in result.warnings if w.link_type == "chunk↔subsystem"] == []
         assert len(result.errors) == 0
 
     def test_multiple_subsystems_each_checked(self, temp_project):

@@ -1,1 +1,0 @@
-../../.agents/skills/entity-startup/SKILL.md

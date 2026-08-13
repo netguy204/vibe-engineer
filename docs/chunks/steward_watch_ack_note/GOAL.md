@@ -3,9 +3,9 @@ status: ACTIVE
 ticket: null
 parent_chunk: null
 code_paths:
-- src/templates/commands/steward-watch.md.jinja2
+- src/templates/plugin/skills/steward-watch.md.jinja2
 code_references:
-  - ref: commands/steward-watch.md
+  - ref: skills/steward-watch/SKILL.md
     implements: "Ack-all callout in Step 5 of steward-watch skill template"
 narrative: null
 investigation: null

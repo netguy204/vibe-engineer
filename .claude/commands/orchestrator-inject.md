@@ -1,1 +1,0 @@
-../../.agents/skills/orchestrator-inject/SKILL.md

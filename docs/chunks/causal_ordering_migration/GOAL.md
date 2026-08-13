@@ -3,26 +3,26 @@ status: ACTIVE
 ticket: null
 parent_chunk: null
 code_paths:
-- docs/chunks/0042-causal_ordering_migration/migrate.py
-- tests/test_migration_utilities.py
+- docs/chunks/causal_ordering_migration/migrate.py
+- docs/chunks/causal_ordering_migration/migrate.py
 code_references:
-- ref: docs/chunks/0042-causal_ordering_migration/migrate.py#extract_short_name
+- ref: docs/chunks/causal_ordering_migration/migrate.py#extract_short_name
   implements: Extract short name from directory names with optional ticket suffixes
-- ref: docs/chunks/0042-causal_ordering_migration/migrate.py#extract_sequence_number
+- ref: docs/chunks/causal_ordering_migration/migrate.py#extract_sequence_number
   implements: Extract numeric prefix for sorting artifacts
-- ref: docs/chunks/0042-causal_ordering_migration/migrate.py#parse_frontmatter
+- ref: docs/chunks/causal_ordering_migration/migrate.py#parse_frontmatter
   implements: Parse YAML frontmatter from markdown files
-- ref: docs/chunks/0042-causal_ordering_migration/migrate.py#update_frontmatter
+- ref: docs/chunks/causal_ordering_migration/migrate.py#update_frontmatter
   implements: Update created_after field while preserving other frontmatter
-- ref: docs/chunks/0042-causal_ordering_migration/migrate.py#migrate_artifact_type
+- ref: docs/chunks/causal_ordering_migration/migrate.py#migrate_artifact_type
   implements: Migrate single artifact type creating linear created_after chain
-- ref: docs/chunks/0042-causal_ordering_migration/migrate.py#migrate_all
+- ref: docs/chunks/causal_ordering_migration/migrate.py#migrate_all
   implements: Orchestrate migration of all artifact types (chunks, narratives, investigations,
     subsystems)
-- ref: docs/chunks/0042-causal_ordering_migration/migrate.py#main
+- ref: docs/chunks/causal_ordering_migration/migrate.py#main
   implements: CLI entry point with dry-run preview and verification guidance
-- ref: tests/test_migration_utilities.py
-  implements: Unit tests for migration script utilities
+- ref: docs/chunks/causal_ordering_migration/migrate.py
+  implements: Causal ordering migration
 narrative: null
 subsystems:
 - subsystem_id: workflow_artifacts
@@ -30,7 +30,6 @@ subsystems:
 created_after:
 - artifact_list_ordering
 ---
-
 # Chunk Goal
 
 ## Minor Goal

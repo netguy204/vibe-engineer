@@ -5,14 +5,17 @@ parent_chunk: null
 code_paths:
 - src/cli/board.py
 - src/board/storage.py
-- src/templates/commands/steward-watch.md.jinja2
-- src/templates/commands/steward-changelog.md.jinja2
+- src/templates/plugin/skills/steward-watch.md.jinja2
+- src/templates/plugin/skills/steward-changelog.md.jinja2
 - tests/test_board_cli.py
 code_references:
 - ref: src/board/storage.py#ack_and_advance
-  implements: "Read-increment-write cursor advancement helper"
+  implements: Read-increment-write cursor advancement helper
 - ref: src/cli/board.py#ack_cmd
-  implements: "CLI command with optional position arg, auto-increment default, and deprecation warning"
+  implements: CLI command with optional position arg, auto-increment default, and
+    deprecation warning
+- ref: tests/test_board_cli.py
+  implements: Auto-increment cursor on ack
 narrative: null
 investigation: null
 subsystems: []
@@ -22,7 +25,6 @@ depends_on: []
 created_after:
 - watchmulti_manual_ack
 ---
-
 # Chunk Goal
 
 ## Minor Goal

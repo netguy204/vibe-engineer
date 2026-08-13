@@ -8,16 +8,17 @@ code_paths:
   - src/cli/__init__.py
   - src/frontmatter.py
   - src/integrity.py
-  - src/templates/claude/CLAUDE.md.jinja2
-  - commands/
+  - src/templates/claude/AGENTS.md.jinja2
+  - skills/
   - docs/hooks/chunk-complete.md
   - docs/trunk/ARTIFACTS.md
   - docs/trunk/DECISIONS.md
+  - docs/trunk/SPEC.md
   - docs/chunks/plugin_runtime_context/PORTING_GUIDE.md
   - tests/test_hooks.py
   - tests/test_hooks_cli.py
   - tests/test_frontmatter.py
-  - tests/test_plugin_commands.py
+  - tests/test_plugin_skills.py
 code_references:
   - ref: src/hooks.py#Hooks
     implements: "Resolution and rendering of docs/hooks/<command>.md fragments; total by construction"

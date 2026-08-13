@@ -1,1 +1,0 @@
-../../.agents/skills/chunk-rebase/SKILL.md

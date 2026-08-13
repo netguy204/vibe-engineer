@@ -4,11 +4,11 @@ ticket: null
 parent_chunk: null
 code_paths:
 - src/templates/narrative/OVERVIEW.md.jinja2
-- src/templates/commands/narrative-create.md.jinja2
+- src/templates/plugin/skills/narrative-create.md.jinja2
 code_references:
 - ref: src/templates/narrative/OVERVIEW.md.jinja2
   implements: "Corrected PROPOSED_CHUNKS comment block instructing agents to populate at narrative-creation time"
-- ref: commands/narrative-create.md
+- ref: skills/narrative-create/SKILL.md
   implements: "Updated Step 3 to explicitly direct agents to populate proposed_chunks frontmatter during narrative creation"
 narrative: null
 investigation: null

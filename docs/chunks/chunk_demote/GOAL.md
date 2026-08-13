@@ -5,23 +5,32 @@ parent_chunk: null
 code_paths:
 - src/cli/chunk.py
 - src/chunk_demote.py
-- src/templates/commands/chunk-demote.md.jinja2
+- src/templates/plugin/skills/chunk-demote.md.jinja2
 - docs/trunk/EXTERNAL.md
+- tests/test_chunk_demote.py
 code_references:
-  - ref: src/chunk_demote.py#validate_chunk_scope
-    implements: "Scope validation — rejects code_paths referencing repos other than the target"
-  - ref: src/chunk_demote.py#strip_project_prefix
-    implements: "Strips org/repo:: prefix from a single code_path or code_reference ref"
-  - ref: src/chunk_demote.py#rewrite_chunk_frontmatter
-    implements: "Rewrites GOAL.md/PLAN.md frontmatter in-place: strips prefixes, removes dependents block"
-  - ref: src/chunk_demote.py#demote_chunk
-    implements: "Full-collapse demotion: validates, copies, rewrites, cleans up pointers, removes architecture source"
-  - ref: src/cli/chunk.py#demote_cmd
-    implements: "ve chunk demote CLI command — wires demote_chunk() to the chunk subcommand group"
-  - ref: commands/chunk-demote.md
-    implements: "/chunk-demote skill template wrapping the CLI with operator confirmation"
-  - ref: docs/trunk/EXTERNAL.md
-    implements: "Documentation: when to demote, invariants enforced, step-by-step commit instructions"
+- ref: src/chunk_demote.py#validate_chunk_scope
+  implements: "Scope validation \u2014 rejects code_paths referencing repos other\
+    \ than the target"
+- ref: src/chunk_demote.py#strip_project_prefix
+  implements: 'Strips org/repo:: prefix from a single code_path or code_reference
+    ref'
+- ref: src/chunk_demote.py#rewrite_chunk_frontmatter
+  implements: 'Rewrites GOAL.md/PLAN.md frontmatter in-place: strips prefixes, removes
+    dependents block'
+- ref: src/chunk_demote.py#demote_chunk
+  implements: 'Full-collapse demotion: validates, copies, rewrites, cleans up pointers,
+    removes architecture source'
+- ref: src/cli/chunk.py#demote_cmd
+  implements: "ve chunk demote CLI command \u2014 wires demote_chunk() to the chunk\
+    \ subcommand group"
+- ref: skills/chunk-demote/SKILL.md
+  implements: /chunk-demote skill template wrapping the CLI with operator confirmation
+- ref: docs/trunk/EXTERNAL.md
+  implements: 'Documentation: when to demote, invariants enforced, step-by-step commit
+    instructions'
+- ref: tests/test_chunk_demote.py
+  implements: Full-collapse demotion path for cross-repo chunks
 narrative: null
 investigation: null
 subsystems: []
@@ -30,7 +39,6 @@ depends_on: []
 created_after:
 - entity_merge_preserve_conflicts
 ---
-
 # Chunk Goal
 
 ## Minor Goal

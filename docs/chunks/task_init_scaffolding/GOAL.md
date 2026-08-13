@@ -6,13 +6,13 @@ code_paths:
   - src/task_init.py
   - tests/test_task_init.py
   - src/templates/task/AGENTS.md.jinja2
-  - src/templates/commands/chunk-create.md.jinja2
-  - src/templates/commands/chunk-plan.md.jinja2
-  - src/templates/commands/chunk-implement.md.jinja2
-  - src/templates/commands/chunk-complete.md.jinja2
-  - src/templates/commands/narrative-create.md.jinja2
-  - src/templates/commands/subsystem-discover.md.jinja2
-  - src/templates/commands/investigation-create.md.jinja2
+  - src/templates/plugin/skills/chunk-create.md.jinja2
+  - src/templates/plugin/skills/chunk-plan.md.jinja2
+  - src/templates/plugin/skills/chunk-implement.md.jinja2
+  - src/templates/plugin/skills/chunk-complete.md.jinja2
+  - src/templates/plugin/skills/narrative-create.md.jinja2
+  - src/templates/plugin/skills/subsystem-discover.md.jinja2
+  - src/templates/plugin/skills/investigation-create.md.jinja2
   - docs/trunk/SPEC.md
 code_references:
   - ref: src/template_system.py#TaskContext
@@ -27,19 +27,19 @@ code_references:
     implements: "Project skills rendered with task_context=False for proper conditional block resolution"
   - ref: src/templates/task/CLAUDE.md.jinja2
     implements: "Task-specific CLAUDE.md template with project list and orientation"
-  - ref: commands/chunk-create.md
+  - ref: skills/chunk-create/SKILL.md
     implements: "Chunk create command with task context conditional block"
-  - ref: commands/chunk-implement.md
+  - ref: skills/chunk-implement/SKILL.md
     implements: "Chunk implement command with task context conditional block"
-  - ref: commands/chunk-plan.md
+  - ref: skills/chunk-plan/SKILL.md
     implements: "Chunk plan command with task context conditional block"
-  - ref: commands/chunk-complete.md
+  - ref: skills/chunk-complete/SKILL.md
     implements: "Chunk complete command with task context conditional block"
-  - ref: commands/narrative-create.md
+  - ref: skills/narrative-create/SKILL.md
     implements: "Narrative create command template (no task context block)"
-  - ref: commands/subsystem-discover.md
+  - ref: skills/subsystem-discover/SKILL.md
     implements: "Subsystem discover command with task context conditional block"
-  - ref: commands/investigation-create.md
+  - ref: skills/investigation-create/SKILL.md
     implements: "Investigation create command with task context conditional block"
   - ref: tests/test_task_init.py#TestTaskInitAgentsMd
     implements: "Tests for agents.md generation in task init"

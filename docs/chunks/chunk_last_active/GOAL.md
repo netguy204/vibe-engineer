@@ -5,7 +5,7 @@ parent_chunk: null
 code_paths:
   - src/chunks.py
   - src/ve.py
-  - src/templates/commands/chunk-commit.md.jinja2
+  - src/templates/plugin/skills/chunk-commit.md.jinja2
   - tests/test_chunks.py
   - tests/test_chunk_list.py
 code_references:
@@ -15,7 +15,7 @@ code_references:
     implements: "CLI handler with --last-active flag and mutual exclusivity check"
   - ref: src/ve.py#_list_task_chunks
     implements: "Cross-repo (task context) support for --last-active"
-  - ref: commands/chunk-commit.md
+  - ref: skills/chunk-commit/SKILL.md
     implements: "Fallback pattern using --last-active when --latest fails"
   - ref: tests/test_chunks.py#TestGetLastActiveChunk
     implements: "Unit tests for get_last_active_chunk method"

@@ -467,8 +467,8 @@ where the subcommand would otherwise emit a usage error into the context block.
 Hooks are **advisory**: the runtime-context bullet instructs the agent to treat
 the content as a binding operator requirement and to surface conflicts with the
 command's own instructions, but nothing verifies compliance. Wiring is universal
-— every command in `commands/` carries the line, so the set of valid hook events
-is exactly the set of command names. The fragment format is optional YAML
+— every plugin skill in `skills/*/SKILL.md` carries the line, so the set of valid
+hook events is exactly the set of command names. The fragment format is optional YAML
 frontmatter plus a Markdown body; no frontmatter key is meaningful today, but
 frontmatter is parsed rather than skipped so that a future enforced-check key
 (`checks:`, shell commands that must pass) is an additive change to an existing
@@ -505,7 +505,7 @@ is no event meaning "the agent is about to complete a chunk."
   `checks:` does, and `checklists` ages badly against that same future key.
   `hooks` is what an operator guesses first and is neutral on enforcement.
 - *Deriving the known-event set from disk*: rejected — no single path holds the
-  command files across install layouts (a wheel force-includes `commands/` as
+  skill files across install layouts (a wheel force-includes `skills/` as
   `orchestrator/skills`; a source checkout has neither). A literal plus one
   equality test is less machinery than a three-way fallback.
 
@@ -523,10 +523,10 @@ means enforcement lands without breaking anyone's existing hook files.
 - Every command invocation runs `ve hooks show`, which in the common case stats
   one absent path. That command must therefore always exit 0 and never raise —
   a failure inside a context block degrades commands unrelated to hooks.
-- Adding a command to `commands/` without the context line silently gives it no
-  hook support; `tests/test_plugin_commands.py` enforces the line, the
-  `allowed-tools` entry, and the runtime bullet on every command file.
-- `hooks.KNOWN_EVENTS` must be updated whenever a command is added or removed.
+- Adding a skill to `skills/` without the context line silently gives it no
+  hook support; `tests/test_plugin_skills.py` enforces the line, the
+  `allowed-tools` entry, and the runtime bullet on every skill file.
+- `hooks.KNOWN_EVENTS` must be updated whenever a skill is added or removed.
 - CLI and plugin version independently (DEC-011), so a hook naming a command only
   a newer plugin ships reports as unknown. Both `ve hooks list` and `ve validate`
   therefore warn rather than error.

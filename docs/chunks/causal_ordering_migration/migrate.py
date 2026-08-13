@@ -1,8 +1,8 @@
 """One-time migration to populate created_after fields for existing artifacts.
 
-# Chunk: docs/chunks/0042-causal_ordering_migration - Causal ordering migration
+# Chunk: docs/chunks/causal_ordering_migration - Causal ordering migration
 
-Run with: uv run python docs/chunks/0042-causal_ordering_migration/migrate.py
+Run with: uv run python docs/chunks/causal_ordering_migration/migrate.py
 
 This script populates `created_after` fields for all existing artifacts (chunks,
 narratives, investigations, subsystems) by using sequence number order to create

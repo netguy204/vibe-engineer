@@ -1,1 +1,0 @@
-../../.agents/skills/chunk-implement/SKILL.md

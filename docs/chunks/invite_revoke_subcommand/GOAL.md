@@ -7,9 +7,11 @@ code_paths:
 - tests/test_board_invite.py
 code_references:
 - ref: src/cli/board.py#revoke_cmd
-  implements: "Revoke command moved from board group to invite group"
+  implements: Revoke command moved from board group to invite group
 - ref: src/cli/board.py#revoke_deprecated
-  implements: "Deprecated alias at old ve board revoke location"
+  implements: Deprecated alias at old ve board revoke location
+- ref: tests/test_board_invite.py
+  implements: Moved revoke under invite group
 narrative: null
 investigation: agent_invite_links
 subsystems: []
@@ -19,7 +21,6 @@ depends_on: []
 created_after:
 - invite_list_revoke
 ---
-
 # Chunk Goal
 
 ## Minor Goal

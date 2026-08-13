@@ -7,7 +7,7 @@ code_paths:
   - src/ve.py
   - src/project.py
   - tests/test_cluster_subsystem_prompt.py
-  - src/templates/commands/chunk-plan.md.jinja2
+  - src/templates/plugin/skills/chunk-plan.md.jinja2
 code_references:
   - ref: src/cluster_analysis.py#ClusterSizeWarning
     implements: "Dataclass for cluster size warning result"
@@ -25,7 +25,7 @@ code_references:
     implements: "Cluster size warning at chunk creation"
   - ref: tests/test_cluster_subsystem_prompt.py
     implements: "Tests for cluster size warning feature"
-  - ref: commands/chunk-plan.md
+  - ref: skills/chunk-plan/SKILL.md
     implements: "Rename guidance mentioning subsystem documentation"
 narrative: null
 investigation: bug_chunk_semantic_value

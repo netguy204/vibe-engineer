@@ -3,12 +3,12 @@ status: ACTIVE
 ticket: null
 parent_chunk: null
 code_paths:
-- src/templates/commands/steward-watch.md.jinja2
-- src/templates/commands/steward-setup.md.jinja2
+- src/templates/plugin/skills/steward-watch.md.jinja2
+- src/templates/plugin/skills/steward-setup.md.jinja2
 code_references:
-- ref: commands/steward-watch.md
+- ref: skills/steward-watch/SKILL.md
   implements: "Conditional DO deploy step in orchestrator monitor loop for DONE chunks"
-- ref: commands/steward-setup.md
+- ref: skills/steward-setup/SKILL.md
   implements: "Deploy step in autonomous mode suggested behavior section"
 narrative: null
 investigation: null

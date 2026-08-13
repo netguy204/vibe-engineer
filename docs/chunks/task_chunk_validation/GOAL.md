@@ -3,28 +3,33 @@ status: ACTIVE
 ticket: null
 parent_chunk: null
 code_paths:
-  - src/chunks.py
-  - src/ve.py
-  - tests/test_chunk_validate.py
+- src/chunks.py
+- src/ve.py
+- tests/test_chunk_validate.py
 code_references:
-  - ref: src/chunks.py#ChunkLocation
-    implements: "Result dataclass for resolved chunk locations"
-  - ref: src/chunks.py#Chunks::resolve_chunk_location
-    implements: "External chunk resolution via task context"
-  - ref: src/chunks.py#Chunks::_parse_frontmatter_from_content
-    implements: "Parse frontmatter from cached content strings"
-  - ref: src/chunks.py#Chunks::validate_chunk_complete
-    implements: "Task-context awareness for validation (delegates to chunk_validation module)"
-  - ref: src/chunk_validation.py#_validate_symbol_exists_with_context
-    implements: "Cross-project code reference validation"
-  - ref: src/cli/chunk.py#validate
-    implements: "CLI chunk validate command with task context detection"
+- ref: src/chunks.py#ChunkLocation
+  implements: Result dataclass for resolved chunk locations
+- ref: src/chunks.py#Chunks::resolve_chunk_location
+  implements: External chunk resolution via task context
+- ref: src/chunks.py#Chunks::_parse_frontmatter_from_content
+  implements: Parse frontmatter from cached content strings
+- ref: src/chunks.py#Chunks::validate_chunk_complete
+  implements: Task-context awareness for validation (delegates to chunk_validation
+    module)
+- ref: src/chunk_validation.py#_validate_symbol_exists_with_context
+  implements: Cross-project code reference validation
+- ref: src/cli/chunk.py#validate
+  implements: CLI chunk validate command with task context detection
+- ref: tests/test_chunk_validate.py
+  implements: External chunk validation tests
 narrative: null
 investigation: null
 subsystems: []
-created_after: ["accept_full_artifact_paths", "investigation_chunk_refs", "chunk_list_repo_source"]
+created_after:
+- accept_full_artifact_paths
+- investigation_chunk_refs
+- chunk_list_repo_source
 ---
-
 # Chunk Goal
 
 ## Minor Goal

@@ -3,12 +3,12 @@ status: ACTIVE
 ticket: null
 parent_chunk: null
 code_paths:
-- src/templates/commands/chunk-review.md.jinja2
+- src/templates/plugin/skills/chunk-review.md.jinja2
 - src/ve.py
 - src/reviewers.py
 - tests/test_chunk_review_skill.py
 code_references:
-  - ref: commands/chunk-review.md
+  - ref: skills/chunk-review/SKILL.md
     implements: "Updated skill template using per-file decision workflow"
   - ref: tests/test_chunk_review_skill.py
     implements: "Tests verifying skill template uses new decision commands"

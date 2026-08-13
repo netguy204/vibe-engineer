@@ -1,2 +1,21 @@
 # VE Project Configuration
 # This file identifies project-level settings for vibe-engineer tooling.
+
+# Chunk: docs/chunks/validation_backref_allowlist
+#
+# Paths whose reference-shaped text is not a reference. The backreference
+# scanner is deliberately language-agnostic, so it reads a `# Chunk: ...` inside
+# a string literal exactly as it reads one in a comment. Each entry says why it
+# is here; `ve validate` reports any entry that stops suppressing anything.
+validation:
+  ignore_backreferences:
+    - path: "tests/test_narrative_consolidation.py"
+      reason: >-
+        Fixture source is written into temp files as string literals to exercise
+        the scanner and the consolidation rewrite; the chunk names in them
+        (chunk_one, chunk_a, my_subsystem) are inputs, never artifacts.
+    - path: "docs/investigations/*/prototypes/*.py"
+      reason: >-
+        Archived investigation prototypes embed sample source quoting the
+        retired numbered-prefix chunk names (0001-implement_chunk_start). They
+        are evidence of what was measured, not links into the current corpus.

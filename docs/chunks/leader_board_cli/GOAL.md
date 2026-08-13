@@ -17,43 +17,57 @@ code_paths:
 - tests/test_board_e2e.py
 code_references:
 - ref: src/board/crypto.py#generate_keypair
-  implements: "Ed25519 key pair generation (seed + public key)"
+  implements: Ed25519 key pair generation (seed + public key)
 - ref: src/board/crypto.py#derive_swarm_id
-  implements: "Base58 swarm ID derivation from public key"
+  implements: Base58 swarm ID derivation from public key
 - ref: src/board/crypto.py#derive_symmetric_key
-  implements: "Ed25519→Curve25519→HKDF symmetric key derivation for E2E encryption"
+  implements: "Ed25519\u2192Curve25519\u2192HKDF symmetric key derivation for E2E\
+    \ encryption"
 - ref: src/board/crypto.py#encrypt
-  implements: "XChaCha20-Poly1305 message encryption with nonce||ciphertext format"
+  implements: XChaCha20-Poly1305 message encryption with nonce||ciphertext format
 - ref: src/board/crypto.py#decrypt
-  implements: "XChaCha20-Poly1305 message decryption"
+  implements: XChaCha20-Poly1305 message decryption
 - ref: src/board/crypto.py#sign
-  implements: "Ed25519 message signing for auth handshake"
+  implements: Ed25519 message signing for auth handshake
 - ref: src/board/storage.py#save_keypair
-  implements: "Operator-global key persistence (~/.ve/keys/)"
+  implements: Operator-global key persistence (~/.ve/keys/)
 - ref: src/board/storage.py#load_keypair
-  implements: "Operator-global key retrieval"
+  implements: Operator-global key retrieval
 - ref: src/board/storage.py#list_swarms
-  implements: "List stored swarm IDs"
+  implements: List stored swarm IDs
 - ref: src/board/storage.py#save_cursor
-  implements: "Project-local cursor persistence (.ve/board/cursors/)"
+  implements: Project-local cursor persistence (.ve/board/cursors/)
 - ref: src/board/storage.py#load_cursor
-  implements: "Project-local cursor retrieval with default 0"
+  implements: Project-local cursor retrieval with default 0
 - ref: src/board/client.py#BoardClient
-  implements: "WebSocket client for Leader Board wire protocol (auth handshake, send, watch, channels, register_swarm)"
+  implements: WebSocket client for Leader Board wire protocol (auth handshake, send,
+    watch, channels, register_swarm)
 - ref: src/board/client.py#BoardError
-  implements: "Server error representation"
+  implements: Server error representation
 - ref: src/cli/board.py#board
-  implements: "CLI command group for 've board' subcommands"
+  implements: CLI command group for 've board' subcommands
 - ref: src/cli/board.py#swarm_create
-  implements: "ve board swarm create — key generation and server registration"
+  implements: "ve board swarm create \u2014 key generation and server registration"
 - ref: src/cli/board.py#send_cmd
-  implements: "ve board send — encrypt and transmit message"
+  implements: "ve board send \u2014 encrypt and transmit message"
 - ref: src/cli/board.py#watch_cmd
-  implements: "ve board watch — block, receive, decrypt, print (no cursor advance)"
+  implements: "ve board watch \u2014 block, receive, decrypt, print (no cursor advance)"
 - ref: src/cli/board.py#ack_cmd
-  implements: "ve board ack — advance persisted cursor"
+  implements: "ve board ack \u2014 advance persisted cursor"
 - ref: src/cli/board.py#channels_cmd
-  implements: "ve board channels — list channels in swarm"
+  implements: "ve board channels \u2014 list channels in swarm"
+- ref: src/board/__init__.py
+  implements: Leader Board CLI client
+- ref: tests/test_board_cli.py
+  implements: Leader Board CLI client
+- ref: tests/test_board_client.py
+  implements: Leader Board CLI client
+- ref: tests/test_board_crypto.py
+  implements: Leader Board CLI client
+- ref: tests/test_board_e2e.py
+  implements: Leader Board CLI client
+- ref: tests/test_board_storage.py
+  implements: Leader Board CLI client
 narrative: leader_board
 investigation: null
 subsystems: []
@@ -64,7 +78,6 @@ depends_on:
 created_after:
 - finalize_double_commit
 ---
-
 # Chunk Goal
 
 ## Minor Goal

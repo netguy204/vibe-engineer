@@ -3,19 +3,19 @@ status: ACTIVE
 ticket: null
 parent_chunk: null
 code_paths:
-- src/templates/commands/steward-setup.md.jinja2
-- src/templates/commands/steward-watch.md.jinja2
-- src/templates/commands/steward-send.md.jinja2
-- src/templates/commands/steward-changelog.md.jinja2
-- src/templates/claude/CLAUDE.md.jinja2
+- src/templates/plugin/skills/steward-setup.md.jinja2
+- src/templates/plugin/skills/steward-watch.md.jinja2
+- src/templates/plugin/skills/steward-send.md.jinja2
+- src/templates/plugin/skills/steward-changelog.md.jinja2
+- src/templates/claude/AGENTS.md.jinja2
 code_references:
-  - ref: commands/steward-setup.md
+  - ref: skills/steward-setup/SKILL.md
     implements: "Steward setup interview command - guides operator through SOP creation (static plugin command)"
-  - ref: commands/steward-watch.md
+  - ref: skills/steward-watch/SKILL.md
     implements: "Steward watch-respond-rewatch loop command with cursor management (static plugin command)"
-  - ref: commands/steward-send.md
+  - ref: skills/steward-send/SKILL.md
     implements: "Steward message sending command for cross-agent communication (static plugin command)"
-  - ref: commands/steward-changelog.md
+  - ref: skills/steward-changelog/SKILL.md
     implements: "Changelog watching command with independent cursor tracking (static plugin command)"
 narrative: leader_board
 investigation: null

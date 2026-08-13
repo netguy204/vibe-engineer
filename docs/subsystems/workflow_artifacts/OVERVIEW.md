@@ -77,14 +77,16 @@ chunks:
     relationship: implements
   - chunk_id: artifact_pattern_consolidation
     relationship: implements
+  - chunk_id: crossref_generator_verify
+    relationship: implements
 code_references:
 - ref: src/chunks.py#Chunks
   implements: Chunk workflow manager class
   compliance: COMPLIANT
-- ref: src/models.py#ChunkStatus
+- ref: src/models/chunk.py#ChunkStatus
   implements: Chunk lifecycle states
   compliance: COMPLIANT
-- ref: src/models.py#ChunkFrontmatter
+- ref: src/models/chunk.py#ChunkFrontmatter
   implements: Chunk frontmatter schema
   compliance: COMPLIANT
 - ref: src/narratives.py#Narratives
@@ -96,43 +98,43 @@ code_references:
 - ref: src/subsystems.py#Subsystems
   implements: Subsystem workflow manager class (canonical)
   compliance: COMPLIANT
-- ref: src/models.py#SubsystemStatus
+- ref: src/models/subsystem.py#SubsystemStatus
   implements: Subsystem lifecycle states
   compliance: COMPLIANT
-- ref: src/models.py#InvestigationStatus
+- ref: src/models/investigation.py#InvestigationStatus
   implements: Investigation lifecycle states
   compliance: COMPLIANT
-- ref: src/models.py#NarrativeStatus
+- ref: src/models/narrative.py#NarrativeStatus
   implements: Narrative lifecycle states
   compliance: COMPLIANT
-- ref: src/models.py#SubsystemFrontmatter
+- ref: src/models/subsystem.py#SubsystemFrontmatter
   implements: Subsystem frontmatter schema
   compliance: COMPLIANT
-- ref: src/models.py#NarrativeFrontmatter
+- ref: src/models/narrative.py#NarrativeFrontmatter
   implements: Narrative frontmatter schema
   compliance: COMPLIANT
-- ref: src/models.py#InvestigationFrontmatter
+- ref: src/models/investigation.py#InvestigationFrontmatter
   implements: Investigation frontmatter schema
   compliance: COMPLIANT
-- ref: src/models.py#ProposedChunk
+- ref: src/models/references.py#ProposedChunk
   implements: Proposed chunk schema (shared across types)
   compliance: COMPLIANT
-- ref: src/models.py#VALID_STATUS_TRANSITIONS
+- ref: src/models/subsystem.py#VALID_STATUS_TRANSITIONS
   implements: Subsystem state transition rules
   compliance: COMPLIANT
-- ref: src/models.py#VALID_CHUNK_TRANSITIONS
+- ref: src/models/chunk.py#VALID_CHUNK_TRANSITIONS
   implements: Chunk state transition rules
   compliance: COMPLIANT
-- ref: src/models.py#VALID_NARRATIVE_TRANSITIONS
+- ref: src/models/narrative.py#VALID_NARRATIVE_TRANSITIONS
   implements: Narrative state transition rules
   compliance: COMPLIANT
-- ref: src/models.py#VALID_INVESTIGATION_TRANSITIONS
+- ref: src/models/investigation.py#VALID_INVESTIGATION_TRANSITIONS
   implements: Investigation state transition rules
   compliance: COMPLIANT
-- ref: src/models.py#ExternalArtifactRef
+- ref: src/models/references.py#ExternalArtifactRef
   implements: Generic external artifact reference schema for any workflow type
   compliance: COMPLIANT
-- ref: src/models.py#ArtifactType
+- ref: src/models/references.py#ArtifactType
   implements: Workflow artifact type enum (moved from artifact_ordering.py)
   compliance: COMPLIANT
 - ref: src/scratchpad.py#Scratchpad
@@ -276,7 +278,7 @@ code_references:
 - ref: src/ve.py#suggest_prefix_cmd
   implements: CLI command for chunk prefix suggestion
   compliance: COMPLIANT
-- ref: src/models.py#ExternalFrictionSource
+- ref: src/models/friction.py#ExternalFrictionSource
   implements: External friction source reference schema for task contexts
   compliance: COMPLIANT
 - ref: src/task_utils.py#TaskFrictionError
@@ -703,6 +705,12 @@ from within a project directory to get complete corpus coverage.
   code backreferences (`# Chunk:`, `# Subsystem:`), frontmatter references (`chunk_id`,
   `parent_chunk`, `subsystem_id`), and template examples. Migration script created at
   `docs/chunks/update_crossref_format/migrate_crossrefs.py`
+
+- **crossref_generator_verify** - Made reference-emitting flows verify what they write.
+  Added the shared existence check `src/symbols.py#check_reference_target`, promoted
+  provable absence to an error in `ve chunk validate`, gated `ve chunk complete` on
+  declared references resolving (`Chunks.validate_chunk_references_exist`), and added
+  `Subsystems.validate_code_references` behind `ve subsystem validate`
 
 - **ordering_active_only** - Enhanced `ArtifactIndex.find_tips()` to filter by status,
   excluding "future/queued" artifacts from tip detection. Chunks only include ACTIVE or

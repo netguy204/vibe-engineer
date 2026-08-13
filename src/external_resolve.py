@@ -5,10 +5,20 @@
 # Chunk: docs/chunks/external_resolve_all_types - Generic artifact resolution
 # Chunk: docs/chunks/external_resolve_enhance - Enhanced resolve with local path and directory listing
 # Chunk: docs/chunks/external_artifact_unpin - Always resolve to HEAD
+# Chunk: docs/chunks/federation_peer_refs - Peer (intra-workspace) resolution
 
 This module provides functions to resolve external artifact references and
-read their content, supporting both task directory mode (using local worktrees)
-and single repo mode (using the repo cache).
+read their content, supporting three contexts:
+
+- task directory mode (using local worktrees),
+- single repo mode (using the repo cache), and
+- peer mode, for `tree:` pointers at another VE tree in the same workspace.
+
+Peer resolution is the existing mechanism minus its hardest parts: the target is
+in the same working copy, so there is no clone to cache and no track to resolve
+to a SHA - only a manifest lookup and a file read. Because a pointer's flavor is
+recorded in the pointer itself, both entry points dispatch on it rather than
+requiring callers to know which context they are in.
 
 Supports all artifact types: chunks, narratives, investigations, and subsystems.
 """
@@ -23,31 +33,56 @@ from external_refs import (
     detect_artifact_type_from_path,
     is_external_artifact,
     load_external_ref,
+    stamp_resolved,
 )
 from git_utils import get_current_sha
-from models import ArtifactType
+from models import ArtifactType, ExternalArtifactRef
 from task import (
     is_task_directory,
     load_task_config,
     resolve_repo_directory,
     TaskChunkError,
 )
+from workspace import (
+    WORKSPACE_MANIFEST_NAME,
+    WorkspaceError,
+    WorkspaceNotFoundError,
+    load_workspace,
+)
+
+# Chunk: docs/chunks/federation_peer_refs - Context label for peer resolution
+PEER_CONTEXT_MODE = "workspace_peer (same working copy)"
 
 
 @dataclass
 class ResolveResult:
-    """Result of resolving an external artifact reference."""
+    """Result of resolving an external artifact reference.
 
-    repo: str
+    `repo`/`track`/`resolved_sha` describe a cross-repository resolution and are
+    None for peer references, which have no separate history to pin; `tree` and
+    `why` describe a peer resolution and are None for cross-repo references.
+    """
+
+    repo: str | None
     artifact_type: ArtifactType
     artifact_id: str
-    track: str
-    resolved_sha: str
+    track: str | None
+    resolved_sha: str | None
     main_content: str | None  # GOAL.md for chunks, OVERVIEW.md for others
     secondary_content: str | None  # PLAN.md for chunks, None for others
     local_path: Path | None = None  # Filesystem path to artifact directory
     directory_contents: list[str] | None = None  # Files in the artifact directory
-    context_mode: str = "unknown"  # "task_directory" or "single_repo (via cache)"
+    context_mode: str = "unknown"  # task_directory, single_repo, or workspace_peer
+    tree: str | None = None  # Workspace member name, for peer references
+    why: str | None = None  # The interest note recorded on the pointer
+
+    # Chunk: docs/chunks/federation_peer_refs - Uniform target rendering
+    @property
+    def target_display(self) -> str:
+        """The resolved target, formatted for human output."""
+        if self.tree is not None:
+            return f"tree:{self.tree}"
+        return self.repo or "(no target)"
 
 
 def find_artifact_in_project(
@@ -77,6 +112,144 @@ def find_artifact_in_project(
                 return artifact_dir
 
     return None
+
+
+# Chunk: docs/chunks/federation_peer_refs - Manifest-based resolution of a peer pointer
+def resolve_peer_pointer(
+    pointer_dir: Path,
+    ref: ExternalArtifactRef,
+    artifact_type: ArtifactType,
+) -> ResolveResult:
+    """Resolve a `tree:` pointer through the workspace manifest.
+
+    The pointer directory - not the process's working directory - is the starting
+    point for finding the manifest, so a pointer resolves the same way no matter
+    where the command was run from. That is the whole defect this addresses: a
+    reference must not mean different things from different directories.
+
+    Args:
+        pointer_dir: The artifact directory holding the external.yaml.
+        ref: The loaded reference (must carry `tree`).
+        artifact_type: The type of artifact being resolved.
+
+    Returns:
+        ResolveResult describing the artifact in the member's tree.
+
+    Raises:
+        TaskChunkError: If the workspace, the member, or the artifact is missing.
+    """
+    artifact_type_name = artifact_type.value
+    main_file = ARTIFACT_MAIN_FILE[artifact_type]
+    dir_name = ARTIFACT_DIR_NAME[artifact_type]
+
+    try:
+        ws = load_workspace(pointer_dir)
+    except WorkspaceNotFoundError as e:
+        raise TaskChunkError(
+            f"'{pointer_dir}' points at tree '{ref.tree}', but no "
+            f"{WORKSPACE_MANIFEST_NAME} exists at or above it, so there is no "
+            f"registry to resolve member names against. Run `ve workspace init` "
+            f"at the root of the repository holding your VE trees, then "
+            f"`ve workspace add {ref.tree} <path>`. ({e})"
+        ) from e
+    except WorkspaceError as e:
+        raise TaskChunkError(f"Workspace manifest is unusable: {e}") from e
+
+    try:
+        member_root = ws.resolve(ref.tree)
+    except KeyError as e:
+        # Workspace.resolve's message already lists the registered members.
+        raise TaskChunkError(
+            f"'{pointer_dir}' points at tree '{ref.tree}', which is not "
+            f"registered: {e.args[0]}"
+        ) from e
+
+    external_artifact_dir = member_root / "docs" / dir_name / ref.artifact_id
+
+    if not external_artifact_dir.is_dir():
+        raise TaskChunkError(
+            f"{artifact_type_name.capitalize()} '{ref.artifact_id}' does not exist "
+            f"in tree '{ref.tree}': expected {external_artifact_dir}. Either the "
+            f"artifact was renamed or removed, or this pointer was never resolvable "
+            f"(check the target with `ve {artifact_type_name} list --project-dir "
+            f"{member_root}`)"
+        )
+
+    main_path = external_artifact_dir / main_file
+    if not main_path.exists():
+        raise TaskChunkError(
+            f"{artifact_type_name.capitalize()} directory '{external_artifact_dir}' "
+            f"exists in tree '{ref.tree}' but has no {main_file}, so it carries no "
+            f"content to resolve to"
+        )
+
+    secondary_file = "PLAN.md" if artifact_type == ArtifactType.CHUNK else None
+    main_content = main_path.read_text()
+    if secondary_file:
+        secondary_path = external_artifact_dir / secondary_file
+        secondary_content = secondary_path.read_text() if secondary_path.exists() else None
+    else:
+        secondary_content = None
+
+    return ResolveResult(
+        repo=None,
+        artifact_type=artifact_type,
+        artifact_id=ref.artifact_id,
+        track=None,
+        resolved_sha=None,
+        main_content=main_content,
+        secondary_content=secondary_content,
+        local_path=external_artifact_dir,
+        directory_contents=sorted(
+            f.name for f in external_artifact_dir.iterdir() if f.is_file()
+        ),
+        context_mode=PEER_CONTEXT_MODE,
+        tree=ref.tree,
+        why=ref.why,
+    )
+
+
+# Chunk: docs/chunks/federation_peer_refs - Peer resolution entry point
+def resolve_artifact_peer(
+    project_path: Path,
+    local_artifact_id: str,
+    artifact_type: ArtifactType,
+) -> ResolveResult:
+    """Resolve a peer artifact reference in `project_path` via the workspace manifest.
+
+    Args:
+        project_path: Path to the tree containing the pointer.
+        local_artifact_id: Local pointer directory name.
+        artifact_type: The type of artifact to resolve.
+
+    Returns:
+        ResolveResult with the target artifact's content.
+
+    Raises:
+        TaskChunkError: If the pointer is missing, is not external, is not a peer
+            reference, or cannot be resolved.
+    """
+    artifact_type_name = artifact_type.value
+    main_file = ARTIFACT_MAIN_FILE[artifact_type]
+
+    artifact_dir = find_artifact_in_project(project_path, local_artifact_id, artifact_type)
+    if not artifact_dir:
+        raise TaskChunkError(f"{artifact_type_name.capitalize()} '{local_artifact_id}' not found")
+
+    if not is_external_artifact(artifact_dir, artifact_type):
+        raise TaskChunkError(
+            f"{artifact_type_name.capitalize()} '{local_artifact_id}' is not an external "
+            f"reference (has {main_file} instead of external.yaml)"
+        )
+
+    ref = load_external_ref(artifact_dir)
+    if not ref.is_peer:
+        raise TaskChunkError(
+            f"{artifact_type_name.capitalize()} '{local_artifact_id}' is a cross-repository "
+            f"reference to '{ref.repo}', not a peer reference to a workspace member"
+        )
+
+    return resolve_peer_pointer(artifact_dir, ref, artifact_type)
 
 
 def find_chunk_in_project(project_path: Path, local_chunk_id: str) -> Path | None:
@@ -172,6 +345,12 @@ def resolve_artifact_task_directory(
     # Load external ref
     ref = load_external_ref(artifact_dir)
 
+    # Chunk: docs/chunks/federation_peer_refs - Peer pointers resolve inside their own workspace
+    # A `tree:` pointer inside a task project addresses that project's workspace,
+    # not the task's external artifact repo, so it never reaches the repo logic.
+    if ref.is_peer:
+        return resolve_peer_pointer(artifact_dir, ref, artifact_type)
+
     # Resolve external repo path
     try:
         external_repo_path = resolve_repo_directory(task_dir, ref.repo)
@@ -210,6 +389,11 @@ def resolve_artifact_task_directory(
     # This is intentional - the worktree is the user's source of truth in task mode
     local_path = external_artifact_dir
     directory_contents = sorted([f.name for f in external_artifact_dir.iterdir() if f.is_file()])
+
+    # Chunk: docs/chunks/external_never_resolved - Stamp the local pointer, not the
+    # worktree copy: artifact_dir is this tree's external.yaml, external_artifact_dir
+    # is the far side's content.
+    stamp_resolved(artifact_dir)
 
     return ResolveResult(
         repo=ref.repo,
@@ -292,6 +476,10 @@ def resolve_artifact_single_repo(
     # Load external ref
     ref = load_external_ref(artifact_dir)
 
+    # Chunk: docs/chunks/federation_peer_refs - Peer pointers never touch the repo cache
+    if ref.is_peer:
+        return resolve_peer_pointer(artifact_dir, ref, artifact_type)
+
     # Ensure repo is cached (this also fetches if already cached)
     try:
         repo_cache.ensure_cached(ref.repo)
@@ -338,6 +526,12 @@ def resolve_artifact_single_repo(
         directory_contents = sorted([f.name for f in local_path.iterdir() if f.is_file()])
     else:
         directory_contents = []
+
+    # Chunk: docs/chunks/external_never_resolved - The read succeeded, so record that
+    # somebody has now looked. Stamped here rather than in the CLI so every caller
+    # that reaches this point contributes, and so the raises above skip it: a failed
+    # resolve must never advance the timestamp.
+    stamp_resolved(artifact_dir)
 
     return ResolveResult(
         repo=ref.repo,

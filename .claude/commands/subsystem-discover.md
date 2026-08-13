@@ -1,1 +1,0 @@
-../../.agents/skills/subsystem-discover/SKILL.md

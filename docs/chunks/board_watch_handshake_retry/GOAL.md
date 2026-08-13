@@ -6,12 +6,14 @@ code_paths:
 - src/board/client.py
 - tests/test_board_client.py
 code_references:
-  - ref: src/board/client.py#_RETRYABLE_ERRORS
-    implements: "Centralized retryable exception tuple including TimeoutError and SSLCertVerificationError"
-  - ref: src/board/client.py#BoardClient::watch_with_reconnect
-    implements: "Handshake retry loop during reconnect for single-channel watch"
-  - ref: src/board/client.py#BoardClient::watch_multi_with_reconnect
-    implements: "Handshake retry loop during reconnect for multi-channel watch"
+- ref: src/board/client.py#_RETRYABLE_ERRORS
+  implements: Centralized retryable exception tuple including TimeoutError and SSLCertVerificationError
+- ref: src/board/client.py#BoardClient::watch_with_reconnect
+  implements: Handshake retry loop during reconnect for single-channel watch
+- ref: src/board/client.py#BoardClient::watch_multi_with_reconnect
+  implements: Handshake retry loop during reconnect for multi-channel watch
+- ref: tests/test_board_client.py
+  implements: Handshake retry tests
 narrative: null
 investigation: null
 subsystems: []
@@ -21,7 +23,6 @@ depends_on: []
 created_after:
 - entity_shutdown_memory_wipe
 ---
-
 # Chunk Goal
 
 ## Minor Goal

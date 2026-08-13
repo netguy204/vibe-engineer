@@ -1,1 +1,0 @@
-../../.agents/skills/narrative-execute/SKILL.md

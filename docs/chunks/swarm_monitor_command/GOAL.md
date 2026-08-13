@@ -3,10 +3,10 @@ status: ACTIVE
 ticket: null
 parent_chunk: null
 code_paths:
-- src/templates/commands/swarm-monitor.md.jinja2
-- src/templates/claude/CLAUDE.md.jinja2
+- src/templates/plugin/skills/swarm-monitor.md.jinja2
+- src/templates/claude/AGENTS.md.jinja2
 code_references:
-- ref: commands/swarm-monitor.md
+- ref: skills/swarm-monitor/SKILL.md
   implements: "Swarm monitor command with four-phase workflow (discover, cursor check, background watch, report) (static plugin command)"
 narrative: null
 investigation: null

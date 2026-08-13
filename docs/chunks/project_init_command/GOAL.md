@@ -5,7 +5,7 @@ parent_chunk: null
 code_paths:
 - src/ve.py
 - src/project.py
-- src/templates/claude/CLAUDE.md.jinja2
+- src/templates/claude/AGENTS.md.jinja2
 code_references:
 - ref: src/project.py#InitResult
   implements: Tracks created/skipped/warnings for idempotent operations
@@ -13,13 +13,11 @@ code_references:
   implements: Project class with lazy Chunks property
 - ref: src/project.py#Project::_init_trunk
   implements: Renders trunk templates to docs/trunk/ directory
-- ref: src/project.py#Project::_init_skills
-  implements: Renders skill templates to .agents/skills/ and creates backwards-compat symlinks in .claude/commands/; migrates VE-generated regular files to symlinks
 - ref: src/project.py#Project::_init_agents_md
   implements: Renders AGENTS.md Jinja2 template to project root
 - ref: src/project.py#Project::init
   implements: Orchestrates all initialization, aggregates results
-- ref: src/templates/claude/CLAUDE.md.jinja2
+- ref: src/templates/claude/AGENTS.md.jinja2
   implements: Jinja2 template for CLAUDE.md explaining vibe engineering workflow to
     agents
 - ref: tests/test_project.py

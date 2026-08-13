@@ -3,18 +3,18 @@ status: ACTIVE
 ticket: null
 parent_chunk: null
 code_paths:
-- src/models.py
+- src/models
 - src/subsystems.py
 - tests/test_subsystems.py
 code_references:
-- ref: src/models.py#SubsystemStatus
+- ref: src/models/subsystem.py#SubsystemStatus
   implements: Status enum for subsystem documentation lifecycle (DISCOVERING, DOCUMENTED,
     REFACTORING, STABLE, DEPRECATED)
-- ref: src/models.py#ChunkRelationship
+- ref: src/models/references.py#ChunkRelationship
   implements: Model for chunk-to-subsystem relationships with implements/uses distinction
-- ref: src/models.py#ChunkRelationship::validate_chunk_id
+- ref: src/models/references.py#ChunkRelationship::validate_chunk_id
   implements: Validation of chunk_id format ({short_name} pattern)
-- ref: src/models.py#SubsystemFrontmatter
+- ref: src/models/subsystem.py#SubsystemFrontmatter
   implements: Frontmatter schema for subsystem OVERVIEW.md files
 - ref: src/subsystems.py#Subsystems
   implements: Utility class for subsystem documentation management

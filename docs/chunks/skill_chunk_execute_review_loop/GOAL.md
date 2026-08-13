@@ -3,9 +3,9 @@ status: ACTIVE
 ticket: null
 parent_chunk: skill_chunk_execute
 code_paths:
-- src/templates/commands/chunk-execute.md.jinja2
+- src/templates/plugin/skills/chunk-execute.md.jinja2
 code_references:
-  - ref: commands/chunk-execute.md
+  - ref: skills/chunk-execute/SKILL.md
     implements: "Review → implement feedback loop in chunk-execute skill template (steps 5-7)"
 narrative: null
 investigation: null

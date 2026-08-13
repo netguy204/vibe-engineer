@@ -7,7 +7,9 @@ code_paths:
 - tests/test_entity_shutdown_cli.py
 code_references:
 - ref: src/cli/entity.py#resolve_entity_project_dir
-  implements: "Project root resolution for entity commands"
+  implements: Project root resolution for entity commands
+- ref: tests/test_entity_shutdown_cli.py
+  implements: Journal disk assertions
 narrative: null
 investigation: null
 subsystems: []
@@ -17,7 +19,6 @@ depends_on: []
 created_after:
 - entity_consolidate_existing
 ---
-
 # Chunk Goal
 
 ## Minor Goal

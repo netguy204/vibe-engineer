@@ -7,13 +7,11 @@ code_paths:
   - src/chunks.py
 code_references:
   - ref: src/chunk_validation.py
-    implements: "New module containing extracted validation logic - ValidationResult, plan_has_content, validate_chunk_complete, validate_chunk_injectable, _validate_symbol_exists, _validate_symbol_exists_with_context"
+    implements: "New module containing extracted validation logic - ValidationResult, plan_has_content, validate_chunk_complete, validate_chunk_injectable, _validate_symbol_exists_with_context"
   - ref: src/chunk_validation.py#ValidationResult
     implements: "Structured error reporting dataclass for validation outcomes"
   - ref: src/chunk_validation.py#plan_has_content
     implements: "Checks if PLAN.md has actual content beyond template"
-  - ref: src/chunk_validation.py#_validate_symbol_exists
-    implements: "Validates that a symbolic reference points to an existing symbol"
   - ref: src/chunk_validation.py#_validate_symbol_exists_with_context
     implements: "Cross-project code reference validation via task context"
   - ref: src/chunk_validation.py#validate_chunk_complete

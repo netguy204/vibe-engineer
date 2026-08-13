@@ -5,7 +5,7 @@ parent_chunk: null
 code_paths:
 - src/subsystems.py
 - src/cli/subsystem.py
-- src/templates/commands/chunk-complete.md.jinja2
+- src/templates/plugin/skills/chunk-complete.md.jinja2
 - tests/test_subsystem_overlap_logic.py
 - tests/test_subsystem_overlap_cli.py
 code_references:
@@ -17,7 +17,7 @@ code_references:
 - ref: src/cli/subsystem.py#subsystem::overlap
   implements: CLI command 've subsystem overlap <chunk_id>' that surfaces overlap
     detection
-- ref: commands/chunk-complete.md
+- ref: skills/chunk-complete/SKILL.md
   implements: Workflow steps 8-10 for subsystem analysis during chunk completion
 - ref: tests/test_subsystem_overlap_logic.py
   implements: Tests for find_overlapping_subsystems business logic

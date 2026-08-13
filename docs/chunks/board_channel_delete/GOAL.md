@@ -12,17 +12,20 @@ code_paths:
 - tests/test_board_cli.py
 code_references:
 - ref: workers/leader-board/src/storage.ts#SwarmStorage::deleteChannel
-  implements: "Delete all messages for a channel from SQLite storage"
+  implements: Delete all messages for a channel from SQLite storage
 - ref: workers/leader-board/src/protocol.ts#DeleteChannelFrame
-  implements: "Wire protocol frame for client channel deletion request"
+  implements: Wire protocol frame for client channel deletion request
 - ref: workers/leader-board/src/protocol.ts#ChannelDeletedFrame
-  implements: "Wire protocol frame for server channel deletion response"
+  implements: Wire protocol frame for server channel deletion response
 - ref: workers/leader-board/src/swarm-do.ts#SwarmDO::handleDeleteChannel
-  implements: "Channel deletion handler: storage cleanup, watcher notification, pending poll cleanup"
+  implements: 'Channel deletion handler: storage cleanup, watcher notification, pending
+    poll cleanup'
 - ref: src/board/client.py#BoardClient::delete_channel
-  implements: "Python client method to delete a channel via WebSocket protocol"
+  implements: Python client method to delete a channel via WebSocket protocol
 - ref: src/cli/board.py#channel_delete_cmd
-  implements: "CLI command with confirmation prompt and error handling"
+  implements: CLI command with confirmation prompt and error handling
+- ref: tests/test_board_cli.py
+  implements: Channel deletion CLI tests
 narrative: null
 investigation: null
 subsystems: []
@@ -32,7 +35,6 @@ depends_on: []
 created_after:
 - board_cursor_root_resolution
 ---
-
 # Chunk Goal
 
 ## Minor Goal

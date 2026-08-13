@@ -10,7 +10,7 @@ code_references:
     implements: "New function to ensure refs are project-qualified before comparison"
   - ref: src/symbols.py#is_parent_of
     implements: "Extended to compare projects first, different projects never overlap"
-  - ref: src/models.py#SymbolicReference::validate_ref
+  - ref: src/models/references.py#SymbolicReference::validate_ref
     implements: "Extended validation to accept org/repo::path format using _require_valid_repo_ref"
   - ref: src/chunks.py#compute_symbolic_overlap
     implements: "Updated to qualify refs with project context before comparison"

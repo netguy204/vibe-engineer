@@ -9,11 +9,15 @@ code_paths:
 - tests/test_board_cli.py
 code_references:
 - ref: src/board/client.py#BoardClient::watch_multi
-  implements: "auto_ack parameter that skips cursor re-send when False"
+  implements: auto_ack parameter that skips cursor re-send when False
 - ref: src/board/client.py#BoardClient::watch_multi_with_reconnect
-  implements: "auto_ack pass-through to inner watch_multi"
+  implements: auto_ack pass-through to inner watch_multi
 - ref: src/cli/board.py#watch_multi_cmd
-  implements: "--no-auto-ack CLI flag, position output format, save_cursor skip"
+  implements: --no-auto-ack CLI flag, position output format, save_cursor skip
+- ref: tests/test_board_cli.py
+  implements: CLI manual ack flag tests
+- ref: tests/test_board_client.py
+  implements: Manual ack mode tests
 narrative: null
 investigation: null
 subsystems: []

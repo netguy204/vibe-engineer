@@ -7,29 +7,34 @@ code_paths:
 - src/orchestrator/scheduler.py
 - src/orchestrator/models.py
 - src/orchestrator/state.py
-- src/templates/commands/chunk-review.md.jinja2
+- src/templates/plugin/skills/chunk-review.md.jinja2
 - tests/test_orchestrator_scheduler.py
+- tests/test_orchestrator_agent_review.py
 code_references:
-  - ref: src/orchestrator/models.py#ReviewToolDecision
-    implements: "Pydantic model capturing structured data from ReviewDecision tool calls"
-  - ref: src/orchestrator/models.py#AgentResult
-    implements: "Extended with review_decision field for captured tool call data"
-  - ref: src/orchestrator/models.py#WorkUnit
-    implements: "Extended with review_nudge_count field tracking nudge attempts"
-  - ref: src/orchestrator/backends/claude.py#create_review_decision_hook
-    implements: "PreToolUse hook that intercepts ReviewDecision tool calls and captures decision data"
-  - ref: src/orchestrator/agent.py#AgentRunner::run_phase
-    implements: "Updated to accept review_decision_callback for REVIEW phase tool interception"
-  - ref: src/orchestrator/scheduler.py#Scheduler::_handle_review_result
-    implements: "Review result handling with tool-based decision priority and in-session nudging"
-  - ref: src/orchestrator/scheduler.py#Scheduler::_run_work_unit
-    implements: "Sets up review_decision_callback during REVIEW phase dispatch"
-  - ref: src/orchestrator/state.py#StateStore::_migrate_v10
-    implements: "Schema migration adding review_nudge_count column to work_units table"
-  - ref: commands/chunk-review.md
-    implements: "Updated reviewer skill instructions requiring ReviewDecision tool usage"
-  - ref: tests/test_orchestrator_scheduler_review.py#TestReviewDecisionTool
-    implements: "Test class verifying tool submission, nudging, and escalation behavior"
+- ref: src/orchestrator/models.py#ReviewToolDecision
+  implements: Pydantic model capturing structured data from ReviewDecision tool calls
+- ref: src/orchestrator/models.py#AgentResult
+  implements: Extended with review_decision field for captured tool call data
+- ref: src/orchestrator/models.py#WorkUnit
+  implements: Extended with review_nudge_count field tracking nudge attempts
+- ref: src/orchestrator/backends/claude.py#create_review_decision_hook
+  implements: PreToolUse hook that intercepts ReviewDecision tool calls and captures
+    decision data
+- ref: src/orchestrator/agent.py#AgentRunner::run_phase
+  implements: Updated to accept review_decision_callback for REVIEW phase tool interception
+- ref: src/orchestrator/scheduler.py#Scheduler::_handle_review_result
+  implements: Review result handling with tool-based decision priority and in-session
+    nudging
+- ref: src/orchestrator/scheduler.py#Scheduler::_run_work_unit
+  implements: Sets up review_decision_callback during REVIEW phase dispatch
+- ref: src/orchestrator/state.py#StateStore::_migrate_v10
+  implements: Schema migration adding review_nudge_count column to work_units table
+- ref: skills/chunk-review/SKILL.md
+  implements: Updated reviewer skill instructions requiring ReviewDecision tool usage
+- ref: tests/test_orchestrator_scheduler_review.py#TestReviewDecisionTool
+  implements: Test class verifying tool submission, nudging, and escalation behavior
+- ref: tests/test_orchestrator_agent_review.py
+  implements: ReviewDecision tool for explicit review decisions
 narrative: null
 investigation: null
 subsystems: []
@@ -40,7 +45,6 @@ created_after:
 - orch_plan_merge_conflict
 - orch_tail_command
 ---
-
 # Chunk Goal
 
 ## Minor Goal

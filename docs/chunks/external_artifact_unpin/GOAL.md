@@ -3,22 +3,18 @@ status: ACTIVE
 ticket: null
 narrative: task_artifact_discovery
 code_paths:
-- src/models.py
+- src/models
 - src/external_refs.py
 - src/external_resolve.py
-- src/sync.py
 - src/ve.py
 - src/task/artifact_ops.py
-- src/templates/commands/chunk-complete.md.jinja2
+- src/templates/plugin/skills/chunk-complete.md.jinja2
 - docs/subsystems/cross_repo_operations/OVERVIEW.md
-- tests/test_sync.py
-- tests/test_sync_cli.py
-- tests/test_sync_integration.py
 - tests/test_external_refs.py
 - tests/test_external_resolve.py
 - tests/test_external_resolve_cli.py
 code_references:
-- ref: src/models.py#ExternalArtifactRef
+- ref: src/models/references.py#ExternalArtifactRef
   implements: "External artifact reference model with optional pinned field for backward compatibility"
 - ref: src/external_refs.py#create_external_yaml
   implements: "External.yaml creation without pinned SHA"

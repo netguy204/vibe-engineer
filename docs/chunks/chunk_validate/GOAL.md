@@ -19,7 +19,7 @@ code_references:
   implements: Validation that referenced investigations exist
 - ref: src/chunks.py#Chunks::validate_narrative_ref
   implements: Validation that referenced narratives exist
-- ref: src/chunk_validation.py#_validate_symbol_exists
+- ref: src/chunk_validation.py#_validate_symbol_exists_with_context
   implements: Symbol existence verification for code references
 - ref: tests/test_chunk_validate.py#TestInvestigationRefValidation
   implements: Test coverage for investigation reference validation

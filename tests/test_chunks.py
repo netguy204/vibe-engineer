@@ -659,11 +659,13 @@ invalid_yaml: [this is: broken
     def test_invalid_code_reference_format_returns_error(self, temp_project):
         """Invalid code_references format returns validation error."""
         chunk_mgr = Chunks(temp_project)
-        # Use a short project name (no org/) which should fail validation
+        # Chunk: docs/chunks/federation_member_refs - member-form refs are now
+        # valid, so the invalid fixture is a multi-slash qualifier, which is
+        # neither a member name nor org/repo.
         self._write_chunk_goal(temp_project, "test_chunk", """---
 status: IMPLEMENTING
 code_references:
-  - ref: pybusiness::src/foo.py
+  - ref: a/b/c::src/foo.py
     implements: "Something"
 ---
 
@@ -683,7 +685,7 @@ code_references:
         self._write_chunk_goal(temp_project, "test_chunk", """---
 status: IMPLEMENTING
 code_references:
-  - ref: shortname::src/foo.py
+  - ref: a/b/c::src/foo.py
     implements: "Something"
 ---
 
@@ -719,7 +721,7 @@ code_references: []
         self._write_chunk_goal(temp_project, "test_chunk", """---
 status: IMPLEMENTING
 code_references:
-  - ref: shortname::src/foo.py
+  - ref: a/b/c::src/foo.py
     implements: "Something"
 ---
 

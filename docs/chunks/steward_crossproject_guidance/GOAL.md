@@ -3,9 +3,9 @@ status: ACTIVE
 ticket: null
 parent_chunk: null
 code_paths:
-- src/templates/claude/CLAUDE.md.jinja2
+- src/templates/claude/AGENTS.md.jinja2
 code_references:
-- ref: commands/steward-send.md
+- ref: skills/steward-send/SKILL.md
   implements: "Cross-project steward messaging guidance (channel naming from target project, common-mistake warning) in the static plugin command"
 narrative: null
 investigation: null

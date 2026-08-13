@@ -10,11 +10,14 @@ code_paths:
 - tests/test_leader_board_e2e.py
 code_references:
 - ref: src/board/client.py#BoardClient::watch_with_reconnect
-  implements: "Automatic reconnect with exponential backoff on WebSocket disconnect"
+  implements: Automatic reconnect with exponential backoff on WebSocket disconnect
 - ref: src/board/client.py#BoardClient::connect
-  implements: "Configure client-side ping_interval/ping_timeout for dead connection detection"
+  implements: Configure client-side ping_interval/ping_timeout for dead connection
+    detection
 - ref: src/cli/board.py#watch_cmd
-  implements: "CLI watch command uses reconnect by default with --no-reconnect opt-out"
+  implements: CLI watch command uses reconnect by default with --no-reconnect opt-out
+- ref: tests/test_board_client.py
+  implements: Reconnect logic tests
 narrative: null
 investigation: null
 subsystems: []
@@ -24,7 +27,6 @@ depends_on: []
 created_after:
 - steward_deploy_step
 ---
-
 # Chunk Goal
 
 ## Minor Goal

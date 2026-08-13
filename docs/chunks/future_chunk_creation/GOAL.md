@@ -7,7 +7,7 @@ code_paths:
 - src/ve.py
 - src/task/artifact_ops.py
 - src/templates/chunk/GOAL.md.jinja2
-- src/templates/commands/chunk-create.md.jinja2
+- src/templates/plugin/skills/chunk-create.md.jinja2
 - tests/test_chunks.py
 - tests/test_chunk_start.py
 - tests/test_chunk_list.py
@@ -32,7 +32,7 @@ code_references:
   implements: "Extended with status parameter for cross-repo chunk creation supporting FUTURE/IMPLEMENTING"
 - ref: src/templates/chunk/GOAL.md.jinja2
   implements: "Template with FUTURE status documentation, Jinja status variable, and FUTURE/IMPLEMENTING examples"
-- ref: commands/chunk-create.md
+- ref: skills/chunk-create/SKILL.md
   implements: "Skill with step 8 checking for existing IMPLEMENTING chunk and informing the user about --future option"
 - ref: docs/trunk/SPEC.md
   implements: "Specification updated with FUTURE status, --future flag, and ve chunk activate command"

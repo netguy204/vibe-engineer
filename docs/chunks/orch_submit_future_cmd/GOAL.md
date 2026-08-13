@@ -3,10 +3,10 @@ status: ACTIVE
 ticket: null
 parent_chunk: null
 code_paths:
-  - src/templates/commands/orchestrator-submit-future.md.jinja2
-  - .claude/commands/orchestrator-submit-future.md
+  - src/templates/plugin/skills/orchestrator-submit-future.md.jinja2
+  - skills/orchestrator-submit-future/SKILL.md
 code_references:
-  - ref: commands/orchestrator-submit-future.md
+  - ref: skills/orchestrator-submit-future/SKILL.md
     implements: "Slash command template for batch-submitting FUTURE chunks to orchestrator"
 narrative: null
 investigation: null

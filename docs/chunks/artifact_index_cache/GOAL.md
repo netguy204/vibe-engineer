@@ -3,17 +3,22 @@ status: ACTIVE
 ticket: null
 parent_chunk: null
 code_paths:
-  - src/artifact_manager.py
-  - src/chunks.py
-  - src/orchestrator/state.py
-  - tests/test_orchestrator_state.py
+- src/artifact_manager.py
+- src/chunks.py
+- src/orchestrator/state.py
+- tests/test_orchestrator_state.py
+- tests/test_artifact_manager.py
 code_references:
-  - ref: src/artifact_manager.py#ArtifactManager::artifact_index
-    implements: "Lazy ArtifactIndex property caching per-manager instance"
-  - ref: src/orchestrator/state.py#StateStore::get_attention_queue
-    implements: "Single SQL query with subquery for blocks_count (N+1 fix)"
-  - ref: src/orchestrator/state.py#StateStore::get_ready_queue
-    implements: "Single SQL query with subquery for blocks_count (N+1 fix)"
+- ref: src/artifact_manager.py#ArtifactManager::artifact_index
+  implements: Lazy ArtifactIndex property caching per-manager instance
+- ref: src/orchestrator/state.py#StateStore::get_attention_queue
+  implements: Single SQL query with subquery for blocks_count (N+1 fix)
+- ref: src/orchestrator/state.py#StateStore::get_ready_queue
+  implements: Single SQL query with subquery for blocks_count (N+1 fix)
+- ref: src/chunks.py
+  implements: Uses cached artifact_index property
+- ref: tests/test_artifact_manager.py
+  implements: Test cached ArtifactIndex property
 narrative: arch_review_remediation
 investigation: null
 subsystems: []
@@ -26,7 +31,6 @@ created_after:
 - orchestrator_api_decompose
 - task_operations_decompose
 ---
-
 # Chunk Goal
 
 ## Minor Goal

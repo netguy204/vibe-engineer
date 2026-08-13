@@ -6,25 +6,34 @@ code_paths:
 - src/orchestrator/agent.py
 - src/orchestrator/review_parsing.py
 - src/orchestrator/scheduler.py
-- src/templates/commands/chunk-implement.md.jinja2
+- src/templates/plugin/skills/chunk-implement.md.jinja2
 - tests/test_orchestrator_feedback_injection.py
 - tests/test_orchestrator_review_parsing.py
 - tests/test_orchestrator_review_routing.py
 code_references:
 - ref: src/orchestrator/agent.py#AgentRunner::run_phase
-  implements: "Injects REVIEW_FEEDBACK.md content into the implementer prompt when re-implementing after FEEDBACK"
+  implements: Injects REVIEW_FEEDBACK.md content into the implementer prompt when
+    re-implementing after FEEDBACK
 - ref: src/orchestrator/review_parsing.py#validate_feedback_addressed
-  implements: "Checks whether implementer addressed review feedback by verifying REVIEW_FEEDBACK.md deletion"
+  implements: Checks whether implementer addressed review feedback by verifying REVIEW_FEEDBACK.md
+    deletion
 - ref: src/orchestrator/scheduler.py#Scheduler::_run_work_unit
-  implements: "Pre-review validation that routes back to IMPLEMENT if REVIEW_FEEDBACK.md still exists"
-- ref: commands/chunk-implement.md
-  implements: "Template instructions for implementer to read, address, and delete REVIEW_FEEDBACK.md"
+  implements: Pre-review validation that routes back to IMPLEMENT if REVIEW_FEEDBACK.md
+    still exists
+- ref: skills/chunk-implement/SKILL.md
+  implements: Template instructions for implementer to read, address, and delete REVIEW_FEEDBACK.md
+- ref: tests/test_orchestrator_feedback_injection.py
+  implements: Tests for review feedback injection
+- ref: tests/test_orchestrator_review_parsing.py
+  implements: Tests for validate_feedback_addressed
+- ref: tests/test_orchestrator_review_routing.py
+  implements: Tests for pre-review validation
 narrative: null
 investigation: null
 subsystems:
-- subsystem_id: "orchestrator"
+- subsystem_id: orchestrator
   relationship: implements
-- subsystem_id: "template_system"
+- subsystem_id: template_system
   relationship: uses
 friction_entries: []
 bug_type: semantic
@@ -32,7 +41,6 @@ depends_on: []
 created_after:
 - entity_consolidate_existing
 ---
-
 # Chunk Goal
 
 ## Minor Goal

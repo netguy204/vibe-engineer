@@ -7,11 +7,11 @@ code_paths:
 - tests/test_models.py
 - docs/reviewers/baseline/decisions/.gitkeep
 code_references:
-  - ref: src/models.py#ReviewerDecision
+  - ref: src/models/reviewer.py#ReviewerDecision
     implements: "StrEnum for decision outcomes (APPROVE/FEEDBACK/ESCALATE)"
-  - ref: src/models.py#FeedbackReview
+  - ref: src/models/reviewer.py#FeedbackReview
     implements: "Pydantic model for structured feedback variant of operator review"
-  - ref: src/models.py#DecisionFrontmatter
+  - ref: src/models/reviewer.py#DecisionFrontmatter
     implements: "Pydantic model for per-file decision frontmatter with union-typed operator_review"
   - ref: tests/test_models.py#TestReviewerDecision
     implements: "Tests for ReviewerDecision enum"

@@ -8,11 +8,15 @@ code_paths:
 - tests/test_board_cli.py
 code_references:
 - ref: src/cli/board.py#_fetch_channel_head
-  implements: "Private helper that queries the server for a channel's current head position"
+  implements: Private helper that queries the server for a channel's current head
+    position
 - ref: src/cli/board.py#ack_cmd
-  implements: "Head guard logic that rejects ack when new_position > channel head"
+  implements: Head guard logic that rejects ack when new_position > channel head
 - ref: src/board/storage.py#ack_and_advance
-  implements: "Remains pure-local by design; head guard intentionally lives in CLI layer"
+  implements: Remains pure-local by design; head guard intentionally lives in CLI
+    layer
+- ref: tests/test_board_cli.py
+  implements: Prevent ack past channel head
 narrative: null
 investigation: null
 subsystems: []
@@ -22,7 +26,6 @@ depends_on: []
 created_after:
 - board_watch_reconnect_fix
 ---
-
 # Chunk Goal
 
 ## Minor Goal

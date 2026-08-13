@@ -63,6 +63,25 @@ class TestInitCommand:
         assert "Skipped" in result2.output
         assert "existing" in result2.output.lower()
 
+    # Chunk: docs/chunks/claudemd_symlink_notice - ve init announces the arrangement it creates
+    def test_init_announces_agents_md_arrangement(self, runner, temp_project):
+        """Fresh ve init output names the AGENTS.md/CLAUDE.md arrangement."""
+        result = runner.invoke(cli, ["init", "--project-dir", str(temp_project)])
+        assert result.exit_code == 0
+        assert "CLAUDE.md is a symlink" in result.output
+
+    # Chunk: docs/chunks/claudemd_symlink_notice - Conversion is announced, not a surprise typechange
+    def test_init_announces_claude_md_conversion(self, runner, temp_project):
+        """Converting a regular CLAUDE.md is announced in ve init output."""
+        (temp_project / "CLAUDE.md").write_text(
+            "# My Project\n\n"
+            "<!-- VE:MANAGED:START -->\nOld\n<!-- VE:MANAGED:END -->\n"
+        )
+        result = runner.invoke(cli, ["init", "--project-dir", str(temp_project)])
+        assert result.exit_code == 0
+        assert "Converted CLAUDE.md to a symlink" in result.output
+        assert "file-type change" in result.output
+
     def test_init_creates_narratives_directory(self, runner, temp_project):
         """ve init creates docs/narratives/ directory."""
         result = runner.invoke(

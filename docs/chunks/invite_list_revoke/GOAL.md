@@ -10,17 +10,19 @@ code_paths:
 - workers/leader-board/test/gateway-keys.test.ts
 code_references:
 - ref: src/cli/board.py#invite
-  implements: "Click group restructuring invite from command to group with subcommands"
+  implements: Click group restructuring invite from command to group with subcommands
 - ref: src/cli/board.py#invite_list_cmd
-  implements: "CLI command to list all active invite tokens for a swarm"
+  implements: CLI command to list all active invite tokens for a swarm
 - ref: src/cli/board.py#revoke_cmd
-  implements: "Extended revoke command with --all flag for bulk revocation"
+  implements: Extended revoke command with --all flag for bulk revocation
 - ref: workers/leader-board/src/storage.ts#SwarmStorage::listGatewayKeys
-  implements: "Server-side storage method to enumerate all gateway keys"
+  implements: Server-side storage method to enumerate all gateway keys
 - ref: workers/leader-board/src/storage.ts#SwarmStorage::deleteAllGatewayKeys
-  implements: "Server-side storage method for bulk deletion of all gateway keys"
+  implements: Server-side storage method for bulk deletion of all gateway keys
 - ref: workers/leader-board/src/swarm-do.ts#SwarmDO::handleGatewayKeys
-  implements: "Extended handler dispatching GET/DELETE without token_hash to list/bulk-delete"
+  implements: Extended handler dispatching GET/DELETE without token_hash to list/bulk-delete
+- ref: tests/test_board_invite.py
+  implements: List and bulk revoke tests
 narrative: null
 investigation: agent_invite_links
 subsystems: []
@@ -33,7 +35,6 @@ created_after:
 - invite_cli_command
 - invite_instruction_page
 ---
-
 # Chunk Goal
 
 ## Minor Goal

@@ -235,28 +235,28 @@ class TestImplementTemplateIncludesFeedbackInstructions:
 
     def test_template_mentions_review_feedback(self):
         """The chunk-implement command references REVIEW_FEEDBACK.md."""
-        template_path = Path(__file__).parent.parent / "commands" / "chunk-implement.md"
+        template_path = Path(__file__).parent.parent / "skills" / "chunk-implement" / "SKILL.md"
         content = template_path.read_text()
 
         assert "REVIEW_FEEDBACK.md" in content
 
     def test_template_instructs_addressing_all_issues(self):
         """The template instructs implementer to address every issue."""
-        template_path = Path(__file__).parent.parent / "commands" / "chunk-implement.md"
+        template_path = Path(__file__).parent.parent / "skills" / "chunk-implement" / "SKILL.md"
         content = template_path.read_text()
 
         assert "MUST address EVERY issue" in content
 
     def test_template_mentions_non_functional_feedback(self):
         """The template mentions non-functional feedback importance."""
-        template_path = Path(__file__).parent.parent / "commands" / "chunk-implement.md"
+        template_path = Path(__file__).parent.parent / "skills" / "chunk-implement" / "SKILL.md"
         content = template_path.read_text()
 
         assert "Non-functional feedback" in content
 
     def test_template_instructs_delete_feedback_file(self):
         """The template instructs deleting the feedback file after addressing."""
-        template_path = Path(__file__).parent.parent / "commands" / "chunk-implement.md"
+        template_path = Path(__file__).parent.parent / "skills" / "chunk-implement" / "SKILL.md"
         content = template_path.read_text()
 
         assert "delete" in content.lower()
@@ -264,7 +264,7 @@ class TestImplementTemplateIncludesFeedbackInstructions:
 
     def test_template_mentions_fix_defer_dispute(self):
         """The template lists the three valid responses to feedback items."""
-        template_path = Path(__file__).parent.parent / "commands" / "chunk-implement.md"
+        template_path = Path(__file__).parent.parent / "skills" / "chunk-implement" / "SKILL.md"
         content = template_path.read_text()
 
         assert "Fix" in content

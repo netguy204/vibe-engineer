@@ -3,17 +3,17 @@ status: ACTIVE
 ticket: null
 parent_chunk: null
 code_paths:
-  - src/templates/claude/CLAUDE.md.jinja2
-  - src/templates/commands/chunk-create.md.jinja2
-  - src/templates/commands/narrative-create.md.jinja2
-  - src/templates/commands/narrative-compact.md.jinja2
+  - src/templates/claude/AGENTS.md.jinja2
+  - src/templates/plugin/skills/chunk-create.md.jinja2
+  - src/templates/plugin/skills/narrative-create.md.jinja2
+  - src/templates/plugin/skills/narrative-compact.md.jinja2
   - src/templates/chunk/PLAN.md.jinja2
   - src/templates/task/CLAUDE.md.jinja2
   - src/templates/subsystem/OVERVIEW.md.jinja2
 code_references:
-  - ref: src/templates/claude/CLAUDE.md.jinja2
+  - ref: src/templates/claude/AGENTS.md.jinja2
     implements: "Backreference section updated to remove scratchpad language"
-  - ref: commands/narrative-compact.md
+  - ref: skills/narrative-compact/SKILL.md
     implements: "Background and Phase 4 sections free of scratchpad references (static plugin command)"
   - ref: src/templates/chunk/PLAN.md.jinja2
     implements: "Backreference comments section updated to remove scratchpad language"

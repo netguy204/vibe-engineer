@@ -7,7 +7,7 @@ code_paths:
 - src/chunks.py
 - src/templates/chunk/GOAL.md.jinja2
 - CLAUDE.md
-- .claude/commands/chunk-create.md
+- skills/chunk-create/SKILL.md
 - tests/test_chunk_validate.py
 code_references:
   - ref: src/models/chunk.py#ChunkFrontmatter
@@ -20,7 +20,7 @@ code_references:
     implements: "Template with investigation field and documentation in comment block"
   - ref: CLAUDE.md
     implements: "Documentation of investigation field in Chunk Frontmatter References section"
-  - ref: .claude/commands/chunk-create.md
+  - ref: skills/chunk-create/SKILL.md
     implements: "Workflow guidance for populating investigation field from proposed_chunks"
   - ref: tests/test_chunk_validate.py#TestInvestigationRefValidation
     implements: "Tests for investigation reference validation"

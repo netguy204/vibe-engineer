@@ -28,6 +28,10 @@ def init(project_dir):
     for path in result.removed:
         click.echo(f"Removed {path}")
 
+    # Chunk: docs/chunks/claudemd_symlink_notice - Announce the AGENTS.md/CLAUDE.md arrangement
+    for notice in result.notices:
+        click.echo(notice)
+
     if result.skipped:
         click.echo(f"Skipped {len(result.skipped)} existing file(s)")
 
@@ -89,6 +93,27 @@ def validate(project_dir, verbose, strict):
         prefix = "Error" if strict else "Warning"
         click.echo(f"{prefix}: [{warning.link_type}] {warning.source} -> {warning.target}", err=True)
         click.echo(f"       {warning.message}", err=True)
+
+    # Chunk: docs/chunks/validation_backref_allowlist - Suppression is stated on every run
+    # Printed outside the verbose block on purpose: a reader deciding whether a
+    # clean run means anything has to know findings were withheld, and a count
+    # only visible under -v is a count nobody sees.
+    if result.backrefs_suppressed:
+        click.echo(
+            f"Suppressed {result.backrefs_suppressed} backreference finding(s) via "
+            "validation.ignore_backreferences in .ve-config.yaml"
+        )
+
+    # Chunk: docs/chunks/crossref_unchecked_anchors - What this validator is not seeing
+    # Also printed outside the verbose block: a clean run must not read as
+    # symbol coverage when this command checks declared file parts only.
+    if result.symbol_anchors_unchecked:
+        click.echo(
+            f"{result.symbol_anchors_unchecked} symbol anchor(s) not checked: "
+            "ve validate verifies declared file paths only. Symbol checking "
+            "runs in ve chunk validate, ve subsystem validate, and "
+            "ve workspace validate."
+        )
 
     # Summary
     error_count = len(result.errors)

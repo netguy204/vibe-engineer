@@ -10,22 +10,30 @@ code_paths:
 - src/cli/chunk.py
 - tests/test_task_demote.py
 code_references:
-  - ref: src/task/demote.py#demote_artifact
-    implements: "Core demotion logic: moves external artifact to project-local, validates dependents, copies files, restores created_after, cleans up external references"
-  - ref: src/task/demote.py#scan_demotable_artifacts
-    implements: "Auto-scan logic: iterates external artifacts, identifies single-dependent candidates eligible for demotion"
-  - ref: src/task/demote.py#read_artifact_frontmatter
-    implements: "Frontmatter parsing helper for reading dependents and metadata from external artifacts"
-  - ref: src/task/exceptions.py#TaskDemoteError
-    implements: "Exception class for demotion error handling"
-  - ref: src/task/__init__.py
-    implements: "Exports demote_artifact, scan_demotable_artifacts, read_artifact_frontmatter, and TaskDemoteError"
-  - ref: src/cli/task.py#demote
-    implements: "CLI command: ve task demote <artifact>, --auto, --auto --apply modes"
-  - ref: src/cli/chunk.py#_complete_task_chunk
-    implements: "Chunk completion in task context with auto-demotion for single-project chunks"
-  - ref: src/cli/chunk.py#_auto_demote_if_eligible
-    implements: "Auto-demotion helper for project context: checks external.yaml and demotes if eligible"
+- ref: src/task/demote.py#demote_artifact
+  implements: 'Core demotion logic: moves external artifact to project-local, validates
+    dependents, copies files, restores created_after, cleans up external references'
+- ref: src/task/demote.py#scan_demotable_artifacts
+  implements: 'Auto-scan logic: iterates external artifacts, identifies single-dependent
+    candidates eligible for demotion'
+- ref: src/task/demote.py#read_artifact_frontmatter
+  implements: Frontmatter parsing helper for reading dependents and metadata from
+    external artifacts
+- ref: src/task/exceptions.py#TaskDemoteError
+  implements: Exception class for demotion error handling
+- ref: src/task/__init__.py
+  implements: Exports demote_artifact, scan_demotable_artifacts, read_artifact_frontmatter,
+    and TaskDemoteError
+- ref: src/cli/task.py#demote
+  implements: 'CLI command: ve task demote <artifact>, --auto, --auto --apply modes'
+- ref: src/cli/chunk.py#_complete_task_chunk
+  implements: Chunk completion in task context with auto-demotion for single-project
+    chunks
+- ref: src/cli/chunk.py#_auto_demote_if_eligible
+  implements: 'Auto-demotion helper for project context: checks external.yaml and
+    demotes if eligible'
+- ref: tests/test_task_demote.py
+  implements: Demote external artifacts to project-local
 narrative: null
 investigation: null
 subsystems: []
@@ -35,7 +43,6 @@ depends_on: []
 created_after:
 - episodic_ingest_external
 ---
-
 # Chunk Goal
 
 ## Minor Goal

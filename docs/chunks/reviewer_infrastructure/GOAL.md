@@ -7,7 +7,7 @@ code_paths:
   - tests/test_models.py
   - docs/reviewers/baseline/METADATA.yaml
   - docs/reviewers/baseline/PROMPT.md
-  - docs/reviewers/baseline/DECISION_LOG.md
+  - docs/reviewers/baseline/decisions
 code_references:
   - ref: src/models/reviewer.py#TrustLevel
     implements: "Trust level enum for reviewer agent autonomy (observation/calibration/delegation/full)"

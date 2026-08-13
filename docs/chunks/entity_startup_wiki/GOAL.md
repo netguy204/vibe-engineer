@@ -4,7 +4,7 @@ ticket: null
 parent_chunk: null
 code_paths:
 - src/entities.py
-- src/templates/commands/entity-startup.md.jinja2
+- src/templates/plugin/skills/entity-startup.md.jinja2
 - tests/test_entities.py
 code_references:
 - ref: src/entities.py#Entities::has_wiki
@@ -13,7 +13,7 @@ code_references:
   implements: "Wiki-aware startup payload — branches on has_wiki() to include wiki index and maintenance protocol sections"
 - ref: src/entities.py#Entities::_wiki_index_content
   implements: "Helper to read wiki/index.md content for inclusion in startup payload"
-- ref: commands/entity-startup.md
+- ref: skills/entity-startup/SKILL.md
   implements: "Wiki-aware startup skill template — Steps 5/6 added for wiki orientation and maintenance commitment"
 - ref: tests/test_entities.py#TestHasWiki
   implements: "Tests for has_wiki() covering wiki and legacy entity paths"
