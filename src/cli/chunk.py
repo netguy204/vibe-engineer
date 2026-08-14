@@ -538,20 +538,79 @@ def list_chunks(current, last_active, recent, status_filter, future_flag, active
             raise SystemExit(0)
 
 
+# Chunk: docs/chunks/lifecycle_composite_ownership - complete performs only the transition it means
+def _guard_completion_transition(goal_path, chunk_name, force):
+    """Refuse completion writes the state machine forbids or the operator didn't ask for.
+
+    Returns True when the ACTIVE write should proceed. Exits without writing
+    for every other case: ACTIVE is an idempotent no-op (exit 0);
+    COMPOSITE -> ACTIVE is legal but collapses co-ownership, so it requires
+    --force; SUPERSEDED/HISTORICAL -> ACTIVE are not transitions at all
+    (VALID_CHUNK_TRANSITIONS) and were previously written anyway. Unreadable
+    state fails closed: a guard on a destructive write must not assume the
+    one status that permits the write.
+    """
+    from frontmatter import extract_frontmatter_dict
+
+    frontmatter_data = extract_frontmatter_dict(goal_path)
+    raw = (frontmatter_data or {}).get("status")
+    if raw is None:
+        click.echo(
+            f"Error: cannot read status from {goal_path} — refusing to complete "
+            f"a chunk whose current status is unknown",
+            err=True,
+        )
+        raise SystemExit(1)
+    try:
+        status = ChunkStatus(raw)
+    except ValueError:
+        click.echo(f"Error: chunk '{chunk_name}' has unknown status '{raw}'", err=True)
+        raise SystemExit(1)
+
+    if status == ChunkStatus.IMPLEMENTING:
+        return True
+    if status == ChunkStatus.ACTIVE:
+        click.echo(f"docs/chunks/{chunk_name} is already ACTIVE — nothing to do")
+        raise SystemExit(0)
+    if status == ChunkStatus.COMPOSITE:
+        if force:
+            click.echo(
+                f"Warning: collapsing COMPOSITE co-ownership of docs/chunks/{chunk_name} to sole ACTIVE (--force)",
+                err=True,
+            )
+            return True
+        click.echo(
+            f"Error: docs/chunks/{chunk_name} is COMPOSITE — it shares ownership of its "
+            f"intent with co-owner chunks, and completing it would collapse that to sole "
+            f"ownership. Pass --force if that is what you mean",
+            err=True,
+        )
+        raise SystemExit(1)
+    click.echo(
+        f"Error: docs/chunks/{chunk_name} is {status.value}; {status.value} -> ACTIVE is "
+        f"not a valid transition (see VALID_CHUNK_TRANSITIONS). Nothing was written",
+        err=True,
+    )
+    raise SystemExit(1)
+
+
 @chunk.command("complete")
 @click.argument("chunk_id", required=False, default=None)
 @click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=".")
-def complete_chunk(chunk_id, project_dir):
+@click.option("--force", is_flag=True, help="Allow COMPOSITE -> ACTIVE, collapsing co-ownership. Forces nothing else.")
+def complete_chunk(chunk_id, project_dir, force):
     """Complete a chunk by updating its status to ACTIVE.
 
     If no CHUNK_ID is provided, completes the current IMPLEMENTING chunk.
+    Only an IMPLEMENTING chunk completes; ACTIVE is an idempotent no-op, and
+    COMPOSITE requires --force because completion collapses co-ownership.
     """
     from frontmatter import update_frontmatter_field
 
     # Chunk: docs/chunks/artifact_demote_to_project - Enable chunk-complete in task context
     # Check if we're in a task directory (cross-repo mode)
     if is_task_directory(project_dir):
-        _complete_task_chunk(chunk_id, project_dir)
+        _complete_task_chunk(chunk_id, project_dir, force)
         return
 
     # Single-repo mode - complete in docs/chunks/
@@ -573,6 +632,7 @@ def complete_chunk(chunk_id, project_dir):
     _gate_completion_on_reference_existence(chunks, chunk_name)
 
     goal_path = project_dir / "docs" / "chunks" / chunk_name / "GOAL.md"
+    _guard_completion_transition(goal_path, chunk_name, force)
     update_frontmatter_field(goal_path, "status", "ACTIVE")
     click.echo(f"Completed docs/chunks/{chunk_name}")
 
@@ -609,7 +669,7 @@ def _gate_completion_on_reference_existence(chunks, chunk_name, task_dir=None):
 
 
 # Chunk: docs/chunks/artifact_demote_to_project - Task context chunk completion
-def _complete_task_chunk(chunk_id, task_dir):
+def _complete_task_chunk(chunk_id, task_dir, force=False):
     """Complete a chunk in task context (cross-repo mode).
 
     Completes the chunk in the external repo and auto-demotes if the chunk
@@ -657,6 +717,7 @@ def _complete_task_chunk(chunk_id, task_dir):
         Chunks(external_repo_path), chunk_name, task_dir=task_dir
     )
 
+    _guard_completion_transition(goal_path, chunk_name, force)
     update_frontmatter_field(goal_path, "status", "ACTIVE")
     click.echo(f"Completed docs/chunks/{chunk_name}")
 

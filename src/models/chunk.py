@@ -42,6 +42,16 @@ VALID_CHUNK_TRANSITIONS: dict[ChunkStatus, set[ChunkStatus]] = {
     ChunkStatus.HISTORICAL: set(),  # Terminal state
 }
 
+# Chunk: docs/chunks/lifecycle_composite_ownership - One ownership predicate, not per-site tuples
+# Statuses that hold live intent whose code references must resolve
+# (CHUNKS.md: IMPLEMENTING is being taken into ownership, ACTIVE fully owns,
+# COMPOSITE shares ownership). Completion validation consults this set;
+# restating it as a tuple at each call site is how COMPOSITE got rejected by
+# one validator while another treated it as first-class.
+COMPLETABLE_STATUSES: frozenset[ChunkStatus] = frozenset(
+    {ChunkStatus.IMPLEMENTING, ChunkStatus.ACTIVE, ChunkStatus.COMPOSITE}
+)
+
 
 # Chunk: docs/chunks/chunk_create_task_aware - Model for chunk GOAL.md frontmatter with dependents
 # Chunk: docs/chunks/consolidate_ext_refs - Updated to use ExternalArtifactRef for cross-repo references
