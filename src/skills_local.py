@@ -4,21 +4,26 @@
 # Chunk: docs/chunks/plugin_local_skills - Opt-in project-local skill reification
 
 `reify_local_skills` renders the plugin's claude-flavor skill templates into a
-project's `.claude/skills/<name>/SKILL.md` — the directory Claude Code scans
-for project-scoped skills. This is the render channel DEC-010 reserved when it
-rejected dual-mode distribution: the plugin remains the default (DEC-010
-stands), the templates remain the single source of truth, and nothing here
-runs unless an operator asks (DEC-015).
+project's `.agents/skills/<name>/SKILL.md` — the agentskills.io layout that any
+compliant harness discovers. Claude Code finds the same files through a
+relative compatibility symlink `.claude/skills -> ../.agents/skills` (the same
+symlink tradition the pre-DEC-010 `_init_skills` used for commands). This is
+the render channel DEC-010 reserved when it rejected dual-mode distribution:
+the plugin remains the default for Claude users (DEC-010 stands), the
+templates remain the single source of truth, and nothing here runs unless an
+operator asks (DEC-015, as amended).
 
-Ownership is explicit. `.claude/skills/.ve-local-skills.json` records which
+Ownership is explicit. `.agents/skills/.ve-local-skills.json` records which
 skill directories ve rendered and at which version; re-runs overwrite owned
 directories only, and a hand-made skill whose name collides is refused by
-name, never clobbered.
+name, never clobbered. A real `.claude/skills/` directory that ve does not own
+is never replaced by the symlink.
 """
 
 import json
 import pathlib
 import re
+import shutil
 from dataclasses import dataclass, field
 
 from plugin_render import (
@@ -43,6 +48,11 @@ _FRONTMATTER_RE = re.compile(r"\A---\n.*?\n---\n", re.DOTALL)
 
 
 def _local_skills_dir(project_root: pathlib.Path) -> pathlib.Path:
+    return project_root / ".agents" / "skills"
+
+
+def _legacy_skills_dir(project_root: pathlib.Path) -> pathlib.Path:
+    """The 0.6.0/0.7.0 destination, now only a compatibility symlink."""
     return project_root / ".claude" / "skills"
 
 
@@ -82,11 +92,20 @@ def _insert_marker(rendered: str, version: str) -> str:
 
 
 def load_manifest(project_root: pathlib.Path) -> dict | None:
-    """Return the parsed ownership manifest, or None when not opted in."""
-    path = _manifest_path(project_root)
-    if not path.is_file():
-        return None
-    return json.loads(path.read_text())
+    """Return the parsed ownership manifest, or None when not opted in.
+
+    Reads the current `.agents/skills/` location first, then falls back to the
+    legacy `.claude/skills/` location (0.6.0/0.7.0 renders) so already-reified
+    projects still surface drift before they re-reify and migrate.
+    """
+    project_root = pathlib.Path(project_root)
+    for path in (
+        _manifest_path(project_root),
+        _legacy_skills_dir(project_root) / MANIFEST_NAME,
+    ):
+        if path.is_file():
+            return json.loads(path.read_text())
+    return None
 
 
 @dataclass
@@ -94,10 +113,111 @@ class ReifyResult:
     root: pathlib.Path
     written: list[pathlib.Path] = field(default_factory=list)
     refused: list[str] = field(default_factory=list)
+    migrated: list[str] = field(default_factory=list)
+    warnings: list[str] = field(default_factory=list)
+    symlink: pathlib.Path | None = None
+
+
+def _migrate_legacy_layout(
+    project_root: pathlib.Path, result: ReifyResult
+) -> bool:
+    """Relocate a 0.6.0/0.7.0 `.claude/skills/` render to `.agents/skills/`.
+
+    Returns True when `.claude/skills` is (or may become) available for the
+    compatibility symlink, False when a real directory ve does not own stands
+    in the way.
+    """
+    legacy = _legacy_skills_dir(project_root)
+    if legacy.is_symlink() or not legacy.is_dir():
+        return True
+
+    legacy_manifest = legacy / MANIFEST_NAME
+    if not legacy_manifest.is_file():
+        # A real, hand-made .claude/skills/ — never ours to touch.
+        result.warnings.append(
+            f"{legacy} is a real directory not managed by ve; leaving it "
+            f"untouched and skipping the compatibility symlink. Claude Code "
+            f"will not see the reified skills in .agents/skills/ until the "
+            f"collision is resolved (move or remove .claude/skills, then "
+            f"re-run `ve skills reify`)."
+        )
+        return False
+
+    try:
+        owned = json.loads(legacy_manifest.read_text()).get("owned", [])
+    except (json.JSONDecodeError, OSError):
+        owned = []
+
+    new_root = _local_skills_dir(project_root)
+    new_root.mkdir(parents=True, exist_ok=True)
+    for name in owned:
+        src = legacy / name
+        if not src.is_dir():
+            continue
+        dest = new_root / name
+        if dest.exists():
+            shutil.rmtree(src)  # both sides ve-owned; the render refreshes dest
+        else:
+            src.rename(dest)
+        result.migrated.append(name)
+
+    new_manifest = _manifest_path(project_root)
+    if new_manifest.exists():
+        legacy_manifest.unlink()
+    else:
+        legacy_manifest.rename(new_manifest)
+
+    if any(legacy.iterdir()):
+        # Hand-made skills shared the legacy directory; their home survives,
+        # so the symlink cannot be placed.
+        result.warnings.append(
+            f"{legacy} still holds entries ve does not own; ve-owned skills "
+            f"moved to .agents/skills/ but the compatibility symlink was "
+            f"skipped. Claude Code will not see the reified skills until the "
+            f"collision is resolved."
+        )
+        return False
+
+    legacy.rmdir()
+    return True
+
+
+def _ensure_claude_symlink(
+    project_root: pathlib.Path, result: ReifyResult
+) -> None:
+    """Point `.claude/skills` at `.agents/skills` for Claude Code discovery.
+
+    Mirrors the pre-DEC-010 `_init_skills` convention: a relative symlink so
+    the project stays relocatable, with `.claude/` created as a plain
+    directory when absent. Never replaces a real directory.
+    """
+    link = _legacy_skills_dir(project_root)
+    target = _local_skills_dir(project_root)
+
+    if link.is_symlink():
+        if link.resolve() == target.resolve():
+            result.symlink = link
+        else:
+            result.warnings.append(
+                f"{link} is a symlink pointing elsewhere; leaving it as-is. "
+                f"Point it at ../.agents/skills for Claude Code discovery."
+            )
+        return
+    if link.exists():
+        # A real directory: _migrate_legacy_layout already warned.
+        return
+
+    link.parent.mkdir(parents=True, exist_ok=True)
+    link.symlink_to(pathlib.Path("..") / ".agents" / "skills")
+    result.symlink = link
 
 
 def reify_local_skills(project_root: pathlib.Path, version: str) -> ReifyResult:
-    """Render the claude-flavor plugin skills into project_root/.claude/skills.
+    """Render the claude-flavor plugin skills into project_root/.agents/skills.
+
+    Also maintains the `.claude/skills -> ../.agents/skills` compatibility
+    symlink, and migrates a legacy `.claude/skills/` render (0.6.0/0.7.0) into
+    the standard location first.
 
     Raises ValueError when project_root is the plugin source repository: that
     repo's skills/ tree is the plugin build product, rendered by
@@ -112,24 +232,25 @@ def reify_local_skills(project_root: pathlib.Path, version: str) -> ReifyResult:
         )
 
     skills_root = _local_skills_dir(project_root)
+    result = ReifyResult(root=skills_root)
+    symlink_ok = _migrate_legacy_layout(project_root, result)
+
     manifest = load_manifest(project_root) or {
         "schema": MANIFEST_SCHEMA,
         "ve_version": version,
         "owned": [],
     }
     owned = set(manifest.get("owned", []))
-
-    result = ReifyResult(root=skills_root)
     newly_owned: set[str] = set()
 
     for template_name in templates_for_flavor("claude"):
         parts = pathlib.PurePosixPath(template_name).parts
         if parts[0] != SKILLS_KIND:
-            continue  # agents/ are subagent definitions, not .claude/skills content
+            continue  # agents/ are subagent definitions, not skills content
         name = _skill_name(template_name)
         # output_path maps skills/<n>.md.jinja2 -> <root>/skills/<n>/SKILL.md;
-        # our root is .claude/, so the rendered file lands in .claude/skills/.
-        target = output_path(template_name, project_root / ".claude", "claude")
+        # our root is .agents/, so the rendered file lands in .agents/skills/.
+        target = output_path(template_name, project_root / ".agents", "claude")
 
         if target.parent.is_dir() and name not in owned:
             result.refused.append(name)
@@ -146,6 +267,9 @@ def reify_local_skills(project_root: pathlib.Path, version: str) -> ReifyResult:
     manifest["owned"] = sorted(owned | newly_owned)
     skills_root.mkdir(parents=True, exist_ok=True)
     _manifest_path(project_root).write_text(json.dumps(manifest, indent=2) + "\n")
+
+    if symlink_ok:
+        _ensure_claude_symlink(project_root, result)
     return result
 
 

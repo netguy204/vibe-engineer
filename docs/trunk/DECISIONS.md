@@ -605,3 +605,19 @@ no longer applies to this shape.
 (making reification unnecessary), or the skills grow runtime idioms that
 cannot render correctly outside the plugin root (at which point local renders
 would silently degrade and the channel should close again).
+
+**Amendment (2026-08-14)**: Destination corrected to the agent-agnostic
+`.agents/skills/<name>/SKILL.md` (agentskills.io layout), with a relative
+compatibility symlink `.claude/skills -> ../.agents/skills` so Claude Code
+discovers the same files — the symlink tradition the pre-DEC-010
+`_init_skills` established. The `.claude/skills/` destination shipped in
+0.6.0/0.7.0 made the feature Claude-only, contradicting its own motivation:
+the requirement that revived this channel was harnesses where the plugin
+cannot be installed, so any agentskills.io-compliant harness must be able to
+find the reified skills. The manifest moves to
+`.agents/skills/.ve-local-skills.json` (`load_manifest` falls back to the
+legacy location), `reify` migrates a legacy `.claude/skills/` render in
+place, and a real `.claude/skills/` directory ve does not own is never
+replaced. This fully reverses, for opted-in projects, DEC-010's narrowing of
+non-Claude harnesses to "the AGENTS.md pointer only"; the plugin remains the
+default for Claude users.

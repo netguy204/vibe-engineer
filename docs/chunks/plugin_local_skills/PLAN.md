@@ -113,6 +113,17 @@ and dualplugin_cursor_scaffold (FLAVOR_TEMPLATE_SUBSETS semantics) — both ACTI
 
 ## Deviations
 
+- **Destination corrected by operator (2026-08-14, one day after landing)**:
+  the plan's `.claude/skills/` destination made the feature Claude-only,
+  contradicting its own motivation. `reify_local_skills` now renders into the
+  standard `.agents/skills/` (agentskills.io layout, manifest alongside) and
+  maintains a relative `.claude/skills -> ../.agents/skills` compatibility
+  symlink, mirroring the pre-DEC-010 `_init_skills` relative-symlink
+  tradition (whole-dir rather than per-file, since both sides now share the
+  identical layout). A legacy `.claude/skills/` render is migrated in place;
+  a real unowned `.claude/skills/` is never replaced (warn + skip symlink).
+  `load_manifest` falls back to the legacy manifest location so the validator
+  warning survives the transition. DEC-015 carries a dated amendment.
 - Full-suite gate: 5004 passed, 1 failed —
   `test_entity_claude_cli.py::TestEntityValidation::test_errors_if_entity_missing`.
   Verified pre-existing and environmental, not this chunk's: with the entire

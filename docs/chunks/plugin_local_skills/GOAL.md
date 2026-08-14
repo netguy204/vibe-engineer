@@ -12,16 +12,20 @@ code_paths:
 code_references:
 - ref: src/skills_local.py#reify_local_skills
   implements: Opt-in render of the claude-flavor plugin skill templates into a consuming
-    project's .claude/skills/, refusing the plugin source repo and any name-colliding
-    directory the ownership manifest does not record; manifest written last so a crash
-    under-claims ownership rather than over-claims.
+    project's .agents/skills/ (agentskills.io layout), refusing the plugin source repo
+    and any name-colliding directory the ownership manifest does not record; manifest
+    written last so a crash under-claims ownership rather than over-claims; maintains
+    the .claude/skills compatibility symlink and migrates a legacy .claude/skills/
+    render in place, never replacing a real directory ve does not own.
 - ref: src/skills_local.py#local_skills_status
   implements: Drift reporting between the manifest's rendering version and the installed
     CLI.
 - ref: src/cli/skills.py#reify
-  implements: User-facing opt-in path; prints every path written, per-name refusals
-    (exit 2), and the platform limits (next-session discovery, Cursor served by .cursor-plugin
-    instead, plugin remains the default).
+  implements: User-facing opt-in path; prints migrations, every path written, the
+    symlink, per-name refusals (exit 2), warnings, and the platform notes (next-session
+    discovery, any agentskills.io-compliant harness served from .agents/skills/ with
+    Claude Code reading through the symlink, Cursor served by .cursor-plugin instead,
+    plugin remains the default for Claude users).
 - ref: src/cli/skills.py#status
   implements: Reified-state and drift report for operators.
 - ref: src/integrity.py#IntegrityValidator::_validate_local_skills_stale
@@ -35,8 +39,10 @@ code_references:
     \ fallback when the plugin cannot be installed."
 - ref: tests/test_skills_local.py
   implements: 'Contract pins: render/marker/manifest shape, idempotency, collision
-    refusal, plugin-source-repo refusal, outside-writes canary, drift statuses, validator
-    warning volume, CLI output including platform limits.'
+    refusal, plugin-source-repo refusal, compatibility-symlink creation and refusal
+    to replace a real unowned .claude/skills, legacy-layout migration, outside-writes
+    canary, drift statuses, validator warning volume, CLI output including platform
+    notes.'
 narrative: null
 investigation: null
 subsystems: []
@@ -52,10 +58,13 @@ created_after:
 
 A project can **opt in** to project-local reified skills: `ve skills reify`
 renders the plugin's skill templates into the project's
-`.claude/skills/<name>/SKILL.md`, where Claude Code discovers project-scoped
-skills. The plugin remains the default distribution channel; nothing renders
-unless the operator runs the command, and the one place the docs mention the
-alternative says exactly that.
+`.agents/skills/<name>/SKILL.md` — the standard agentskills.io layout that
+any compliant harness discovers — and maintains a relative compatibility
+symlink `.claude/skills -> ../.agents/skills` so Claude Code finds the same
+files (the symlink tradition the pre-DEC-010 `_init_skills` established).
+The plugin remains the default distribution channel for Claude users; nothing
+renders unless the operator runs the command, and the one place the docs
+mention the alternative says exactly that.
 
 The render source is the **same template collection the plugin is built from**
 — `src/templates/plugin/skills/*.md.jinja2`, rendered claude-flavor through
@@ -67,7 +76,7 @@ was two *sources of truth*, and there is still exactly one — the committed
 plugin files and the reified local skills are both build products of the same
 templates. A new ADR records the reintroduction as opt-in and single-source.
 
-**Ownership contract.** `.claude/skills/.ve-local-skills.json` records which
+**Ownership contract.** `.agents/skills/.ve-local-skills.json` records which
 skill directories ve owns and the ve version that rendered them. Re-running
 `reify` overwrites owned files only; a hand-made skill whose name collides is
 refused by name and reported, never clobbered. Every rendered SKILL.md carries
@@ -84,20 +93,34 @@ when reified skills exist at a version older than the installed CLI, naming
 broken, and an error would fail every project on the day after a ve release.
 
 **Safety lines, test-enforced.** The command writes only under the target
-project's `.claude/skills/`. It never touches `~/.claude` (user scope), never
-touches plugin caches (`~/.claude/plugins/...` — DEC-013's user-managed line),
-and never writes into the `skills/` directory at a repository root (that is the
-plugin build product in this repo). It prints every path it writes.
+project's `.agents/skills/`, plus the single `.claude/skills` compatibility
+symlink (and the legacy-layout migration that moves ve-owned content between
+those two places). It never replaces a real `.claude/skills/` directory it
+does not own — it warns and skips the symlink instead. It never touches
+`~/.claude` (user scope), never touches plugin caches (`~/.claude/plugins/...`
+— DEC-013's user-managed line), and never writes into the `skills/` directory
+at a repository root (that is the plugin build product in this repo). It
+prints every path it writes.
 
 ## Success Criteria
 
 - `ve skills reify` in a ve-initialized project creates
-  `.claude/skills/<name>/SKILL.md` for every claude-flavor plugin skill
+  `.agents/skills/<name>/SKILL.md` for every claude-flavor plugin skill
   template, each with valid YAML frontmatter and the managed marker after it,
-  plus the ownership manifest. Output lists every file written.
+  plus the ownership manifest, plus the relative `.claude/skills ->
+  ../.agents/skills` symlink. Output lists every file written and the
+  symlink.
+- A real `.claude/skills/` directory ve does not own is left untouched: the
+  render still lands in `.agents/skills/`, the symlink is skipped, and the
+  output warns that Claude Code will not see the reified skills until the
+  collision is resolved.
+- A legacy `.claude/skills/` render (0.6.0/0.7.0, identified by our manifest)
+  is migrated: ve-owned skill directories and the manifest relocate to
+  `.agents/skills/`, the symlink replaces the emptied directory, and the
+  output reports what moved.
 - Running `reify` twice is idempotent; running it after a version bump
   re-renders owned files in place.
-- A pre-existing `.claude/skills/<name>/` NOT in the manifest is refused by
+- A pre-existing `.agents/skills/<name>/` NOT in the manifest is refused by
   name; the run reports it and continues with the rest (no partial clobber, no
   abort of the unaffected skills).
 - `ve skills status` reports reified skill count, rendering version, installed
@@ -105,14 +128,24 @@ plugin build product in this repo). It prints every path it writes.
 - `ve validate` emits one `skills→stale` warning when the manifest version ≠
   installed version, silent otherwise, and performs no network access.
   Warning text names `ve skills reify`.
-- No file outside the target project's `.claude/skills/` is written by any
-  code path in this chunk (tested with a canary layout).
-- The reify output states the two platform limits: skills discovered at next
-  session start, and Cursor not served by this mechanism (`.cursor-plugin` is
-  that route).
+- No file outside the target project's `.agents/skills/` — plus the one
+  `.claude/skills` symlink — is written by any code path in this chunk
+  (tested with a canary layout).
+- The reify output states the platform notes: skills discovered at next
+  session start, `.agents/skills/` serving any agentskills.io-compliant
+  harness with Claude Code reading through the symlink, and Cursor not served
+  by this mechanism (`.cursor-plugin` is that route).
 - `uv run ve validate` exits zero; full suite passes.
 
 ## Rejected Ideas
+
+### `.claude/skills` as the destination
+
+Rejected after one day live: it made the feature Claude-only, which
+contradicted its own motivation — the requirement that revived this render
+channel was harnesses where the plugin cannot be installed. The standard
+directory (`.agents/skills/`, agentskills.io layout) plus a Claude
+compatibility symlink serves every compliant harness at the same cost.
 
 ### A `--local-skills` flag on `ve init`
 
