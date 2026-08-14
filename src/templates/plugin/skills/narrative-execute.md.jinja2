@@ -16,13 +16,13 @@
 
 Execute the narrative specified by the operator:
 
-$ARGUMENTS
+{{ idioms.arguments() }}
 
 ---
 
 ### Phase 1: Parse and validate the narrative
 
-1. The `$ARGUMENTS` value is the narrative short name (e.g., `gsr_coverage_integration`).
+1. {% if flavor == "claude" %}The `$ARGUMENTS` value is{% else %}The operator's request names{% endif %} the narrative short name (e.g., `gsr_coverage_integration`).
    We will refer to this as `<name>` below.
 
 2. Read `docs/narratives/<name>/OVERVIEW.md`.

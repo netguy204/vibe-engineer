@@ -36,14 +36,21 @@ MARKETPLACE_MANIFEST = CURSOR_DIR / "marketplace.json"
 
 SCHEMA_DIR = Path(__file__).parent / "fixtures" / "cursor_plugin_schemas"
 
-# Skills rendered for Cursor, derived from the renderer rather than frozen
-# here: dualplugin_cursor_render widens the Cursor subset to the full surface,
-# and these format checks should widen with it automatically rather than keep
-# vouching for two files while 37 go unchecked.
+# Skills and agents rendered for Cursor, derived from the renderer rather
+# than frozen here: dualplugin_cursor_render widened the Cursor flavor to the
+# full surface, so these span every skill and both agents, and any template
+# added later joins the checks automatically.
+# Chunk: docs/chunks/dualplugin_cursor_render - Full-surface Cursor render
 CURSOR_SKILLS = tuple(
     Path(name).stem.removesuffix(".md")
     for name in plugin_render.templates_for_flavor("cursor")
     if name.startswith("skills/")
+)
+
+CURSOR_AGENTS = tuple(
+    Path(name).stem.removesuffix(".md")
+    for name in plugin_render.templates_for_flavor("cursor")
+    if name.startswith("agents/")
 )
 
 # Component types Cursor discovers by folder, and the default location it
@@ -241,18 +248,22 @@ class TestDiscoveryCollision:
                 f"{component} declares {raw}, which does not exist"
             )
 
-    def test_declared_agents_dir_holds_no_agent_files_yet(self):
-        """dualplugin_cursor_render populates this; until then it must be
-        empty of anything Cursor would load. Cursor discovers agents as all
-        .md/.mdc/.markdown files here, so a stray README would become one."""
+    def test_declared_agents_dir_holds_only_rendered_agents(self):
+        """Cursor loads every .md/.mdc/.markdown file here as an agent, so
+        the directory must hold exactly the rendered agents — a stray README
+        or scratch file would ship as an agent nobody declared.
+
+        # Chunk: docs/chunks/dualplugin_cursor_render - Cursor agent renders
+        """
         agents_dir = REPO_ROOT / _declared_paths(_load_json(PLUGIN_MANIFEST), "agents")[0]
-        loadable = [
+        loadable = sorted(
             p.name
             for p in agents_dir.iterdir()
             if p.suffix in {".md", ".mdc", ".markdown"}
-        ]
-        assert not loadable, (
-            f"{agents_dir} holds files Cursor would load as agents: {loadable}"
+        )
+        assert loadable == sorted(f"{name}.md" for name in CURSOR_AGENTS), (
+            f"{agents_dir} must hold exactly the rendered agents; found "
+            f"{loadable}"
         )
 
     @pytest.mark.parametrize("component", ["skills", "agents"])
@@ -264,15 +275,20 @@ class TestDiscoveryCollision:
             assert ".." not in Path(raw).parts, f"{raw} escapes the plugin root"
 
 
-class TestPilotRender:
-    """The pilot skills as Cursor will actually read them."""
+class TestCursorSkillRenders:
+    """Every skill as Cursor will actually read it.
+
+    Parameterized over the full Cursor surface (39 skills, derived from the
+    renderer) since dualplugin_cursor_render deleted the two-skill pilot
+    boundary.
+    """
 
     def _skill(self, name: str) -> Path:
         declared = _declared_paths(_load_json(PLUGIN_MANIFEST), "skills")[0]
         return REPO_ROOT / declared / name / "SKILL.md"
 
     @pytest.mark.parametrize("name", CURSOR_SKILLS)
-    def test_pilot_skill_exists_at_the_declared_path(self, name):
+    def test_skill_exists_at_the_declared_path(self, name):
         """Rendering somewhere the manifest does not point is the same as not
         rendering at all."""
         assert self._skill(name).is_file(), (
@@ -316,5 +332,64 @@ class TestPilotRender:
     @pytest.mark.parametrize("name", CURSOR_SKILLS)
     def test_no_unrendered_jinja_residue(self, name):
         body = self._skill(name).read_text()
+        for token in ("{{", "{%", "{#"):
+            assert token not in body, f"{name} contains unrendered Jinja2 {token}"
+
+
+class TestCursorAgentRenders:
+    """Both agents as Cursor will load them (subagents).
+
+    # Chunk: docs/chunks/dualplugin_cursor_render - Cursor agent renders
+    """
+
+    def _agent(self, name: str) -> Path:
+        declared = _declared_paths(_load_json(PLUGIN_MANIFEST), "agents")[0]
+        return REPO_ROOT / declared / f"{name}.md"
+
+    def test_both_agents_render(self):
+        """The Cursor surface carries the same two agents as the Claude one."""
+        assert sorted(CURSOR_AGENTS) == ["chunk-executor", "intent-auditor"]
+
+    @pytest.mark.parametrize("name", CURSOR_AGENTS)
+    def test_agent_exists_at_the_declared_path(self, name):
+        assert self._agent(name).is_file(), (
+            f"{name} missing under the manifest's declared agents path; run "
+            "`uv run ve plugin render --flavor cursor`"
+        )
+
+    @pytest.mark.parametrize("name", CURSOR_AGENTS)
+    def test_frontmatter_matches_cursor_agent_format(self, name):
+        """Cursor's agent frontmatter is name + description (reference docs,
+        Agent frontmatter fields). Claude's `tools` list has no Cursor
+        counterpart and must not leak into this flavor."""
+        frontmatter = _parse_frontmatter(self._agent(name))
+        assert frontmatter["name"] == name
+        assert frontmatter["description"]
+        assert "tools" not in frontmatter, (
+            "tools is Claude-only agent frontmatter"
+        )
+        assert "allowed-tools" not in frontmatter
+
+    @pytest.mark.parametrize("name", CURSOR_AGENTS)
+    def test_no_claude_only_idioms(self, name):
+        body = self._agent(name).read_text()
+        offenders = re.findall(r"^\s*[-*].*!`", body, re.MULTILINE)
+        assert not offenders, (
+            f"{name} carries Claude `!`-backtick probe lines: {offenders}"
+        )
+        assert "allowed-tools:" not in body
+        assert "CLAUDE_PLUGIN_ROOT" not in body
+        assert "CLAUDE_PROJECT_DIR" not in body
+        assert "$ARGUMENTS" not in body
+
+    @pytest.mark.parametrize("name", CURSOR_AGENTS)
+    def test_carries_generated_marker(self, name):
+        body = self._agent(name).read_text()
+        assert plugin_render.GENERATED_MARKER_PREFIX in body
+        assert f"src/templates/plugin/agents/{name}.md.jinja2" in body
+
+    @pytest.mark.parametrize("name", CURSOR_AGENTS)
+    def test_no_unrendered_jinja_residue(self, name):
+        body = self._agent(name).read_text()
         for token in ("{{", "{%", "{#"):
             assert token not in body, f"{name} contains unrendered Jinja2 {token}"

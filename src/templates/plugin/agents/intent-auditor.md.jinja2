@@ -1,9 +1,9 @@
 {%- import "partials/" ~ flavor ~ "/idioms.md.jinja2" as idioms -%}
----
-name: intent-auditor
-description: Audits a batch of ~5 ACTIVE vibe-engineer chunks against the intent-ownership principles in docs/trunk/CHUNKS.md. Rewrites retrospective framing in place, logs over-claims to docs/trunk/INCONSISTENCIES/, fixes unambiguous code_paths drift, and historicalizes chunks with no enduring intent. Used by audit-intent's parallel fan-out (10 agents per wave, 5 chunks each).
-tools: Bash, Read, Edit, Write, Grep, Glob
----
+{{ idioms.agent_frontmatter(
+    "intent-auditor",
+    "Audits a batch of ~5 ACTIVE vibe-engineer chunks against the intent-ownership principles in docs/trunk/CHUNKS.md. Rewrites retrospective framing in place, logs over-claims to docs/trunk/INCONSISTENCIES/, fixes unambiguous code_paths drift, and historicalizes chunks with no enduring intent. Used by audit-intent's parallel fan-out (10 agents per wave, 5 chunks each).",
+    ["Bash", "Read", "Edit", "Write", "Grep", "Glob"]
+) }}
 
 {{ idioms.generated_marker(source_template) }}
 <!-- Chunk: docs/chunks/plugin_subagents - Named plugin agent promoted from audit-intent's sub-agent prompt template -->

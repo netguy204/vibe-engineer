@@ -51,7 +51,7 @@ Interpret the context above before following the instructions:
 
 ## Arguments
 
-`$ARGUMENTS` optionally scopes the pass. It may be a fix class
+{% if flavor == "claude" %}`$ARGUMENTS`{% else %}The operator's request{% endif %} optionally scopes the pass. It may be a fix class
 (`misrouted-bare`), a member name (`pybusiness`), or a path prefix
 (`packages/libs/`). Scope filters which defects you *fix*; always run the
 validator over the whole workspace, and always report the out-of-scope defects

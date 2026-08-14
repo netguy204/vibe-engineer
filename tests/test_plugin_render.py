@@ -33,8 +33,8 @@ PILOT_TEMPLATES = [
     "skills/ve-status.md.jinja2",
 ]
 
-# Chunk: docs/chunks/dualplugin_cursor_scaffold - Cursor render target
-CURSOR_TEMPLATES = list(plugin_render.FLAVOR_TEMPLATE_SUBSETS["cursor"])
+# Chunk: docs/chunks/dualplugin_cursor_render - Full-surface Cursor render
+CURSOR_TEMPLATES = plugin_render.templates_for_flavor("cursor")
 
 
 def _template_names() -> list[str]:
@@ -75,6 +75,34 @@ class TestCollectionLayout:
         assert not orphan_templates, (
             "templates without a committed render — run `uv run ve plugin "
             f"render`: {sorted(orphan_templates)}"
+        )
+
+    def test_collection_covers_every_committed_cursor_render(self):
+        """Same 1:1 mapping for the Cursor tree. Cursor loads whatever sits
+        at the manifest's declared paths, so a hand-added
+        .cursor-plugin/skills/*/SKILL.md or agents/*.md would ship to Cursor
+        users while silently escaping drift coverage.
+
+        # Chunk: docs/chunks/dualplugin_cursor_render - Full-surface Cursor render
+        """
+        templates = set(plugin_render.templates_for_flavor("cursor"))
+        cursor_root = REPO_ROOT / ".cursor-plugin"
+        committed = {
+            f"skills/{path.parent.name}.md.jinja2"
+            for path in (cursor_root / "skills").glob("*/SKILL.md")
+        } | {
+            f"agents/{path.name}.jinja2"
+            for path in (cursor_root / "agents").glob("*.md")
+        }
+        missing_templates = committed - templates
+        assert not missing_templates, (
+            "committed Cursor renders without a source template (hand-added "
+            f"file?): {sorted(missing_templates)}"
+        )
+        orphan_templates = templates - committed
+        assert not orphan_templates, (
+            "templates without a committed Cursor render — run `uv run ve "
+            f"plugin render --flavor cursor`: {sorted(orphan_templates)}"
         )
 
     def test_collection_spans_full_plugin_surface(self):
@@ -218,17 +246,17 @@ class TestCursorDrift:
 
 
 class TestCursorScope:
-    """The Cursor pilot boundary is deliberate and should stay legible.
+    """Both flavors render the full collection; subsets are for pilots only.
 
-    # Chunk: docs/chunks/dualplugin_cursor_scaffold - Pilot scope boundary
+    # Chunk: docs/chunks/dualplugin_cursor_render - Full-surface Cursor render
     """
 
-    def test_cursor_renders_only_the_pilot(self):
-        selected = plugin_render.templates_for_flavor("cursor")
-        assert sorted(selected) == sorted(CURSOR_TEMPLATES)
-        assert len(selected) < len(plugin_render.templates_for_flavor("claude")), (
-            "the Cursor subset should be a strict subset while the full "
-            "surface is dualplugin_cursor_render's work"
+    def test_cursor_renders_the_whole_collection(self):
+        """The scaffold chunk's pilot boundary is gone: the Cursor flavor
+        renders every template, same as Claude. A reappearing subset entry
+        would silently shrink the shipped Cursor surface."""
+        assert plugin_render.templates_for_flavor("cursor") == (
+            plugin_render.list_plugin_templates()
         )
 
     def test_claude_renders_the_whole_collection(self):
@@ -292,7 +320,8 @@ class TestRenderCli:
                 assert out.read_text() == plugin_render.render_plugin_template(
                     template_name, "cursor"
                 )
-            # The pilot boundary: no Claude-flavored tree appears at the root.
+            # The output-root split: the cursor flavor never writes the
+            # Claude-flavored tree at the repo root.
             assert not (root / "skills").exists()
 
     def test_renders_collection_into_skills(self):

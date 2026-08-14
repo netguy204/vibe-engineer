@@ -9,12 +9,15 @@ as idioms %}`. The Cursor flavor (partials/cursor/idioms.md.jinja2, added by
 dualplugin_cursor_scaffold) implements the same macro signatures:
 
   frontmatter(name, description, allowed_tools=None)
+  agent_frontmatter(name, description, tools)
   generated_marker(source_template)
   probe(label, command)
   probe_intro()                  -- framing for an ad-hoc probe block
   canonical_preamble()           -- task guidance via {% call %} body
   plugin_root()
   arguments()                    -- where the operator's request lands
+  arguments_ref()                -- inline prose reference to that request
+  arguments_token(placeholder)   -- the request embedded in a command
 
 All macros emit content WITHOUT a trailing newline; the calling template owns
 line structure.
@@ -25,6 +28,18 @@ name: {{ name }}
 description: {{ description }}
 {% if allowed_tools %}allowed-tools: {{ allowed_tools | join(", ") }}
 {% endif %}---
+{%- endmacro -%}
+
+{#- Chunk: docs/chunks/dualplugin_cursor_render - Agent (subagent) frontmatter.
+    Claude Code agents carry a `tools` list naming the tools the subagent may
+    use. Cursor's agent format is name + description, so its half of this
+    macro drops the list. -#}
+{%- macro agent_frontmatter(name, description, tools) -%}
+---
+name: {{ name }}
+description: {{ description }}
+tools: {{ tools | join(", ") }}
+---
 {%- endmacro -%}
 
 {%- macro generated_marker(source_template) -%}
@@ -87,5 +102,21 @@ ${CLAUDE_PLUGIN_ROOT}
     text before the model reads the file. Nothing substitutes it elsewhere, so
     the literal token must not leak into another flavor's render. -#}
 {%- macro arguments() -%}
+$ARGUMENTS
+{%- endmacro -%}
+
+{#- Chunk: docs/chunks/dualplugin_cursor_render - Inline prose reference to
+    the operator's argument text ("Interpret `$ARGUMENTS`:"). Emits its own
+    backticks; the Cursor half emits a plain noun phrase instead. -#}
+{%- macro arguments_ref() -%}
+`$ARGUMENTS`
+{%- endmacro -%}
+
+{#- Chunk: docs/chunks/dualplugin_cursor_render - The operator's argument
+    text embedded inside a command (`ve orch work-unit show $ARGUMENTS`).
+    Under Claude the harness substitutes the real value before the model
+    reads the file, so the token itself is emitted; the Cursor half emits
+    the caller's placeholder for the agent to substitute. -#}
+{%- macro arguments_token(placeholder) -%}
 $ARGUMENTS
 {%- endmacro -%}

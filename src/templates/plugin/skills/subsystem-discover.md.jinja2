@@ -21,20 +21,20 @@
 
 The operator has provided the following input:
 
-$ARGUMENTS
+{{ idioms.arguments() }}
 
 ---
 
 ## Determining Input Type
 
-Examine `$ARGUMENTS` to determine whether this is:
+Examine {{ idioms.arguments_ref() }} to determine whether this is:
 
-1. **Existing subsystem** (continuing discovery): If `$ARGUMENTS` matches pattern
+1. **Existing subsystem** (continuing discovery): If {{ idioms.arguments_ref() }} matches pattern
    `docs/subsystems/<short_name>` or just `<short_name>` (e.g., `validation`,
    `docs/subsystems/frontmatter`), this is a request to continue discovery
    on an existing subsystem. Skip to the **Resuming Discovery** section below.
 
-2. **New subsystem** (starting discovery): Otherwise, treat `$ARGUMENTS` as a
+2. **New subsystem** (starting discovery): Otherwise, treat {{ idioms.arguments_ref() }} as a
    high-level description of a subsystem pattern to discover. Continue with
    **Phase 0: Name Derivation** below.
 
@@ -64,7 +64,7 @@ If continuing an existing subsystem:
 
 ## Phase 0: Name Derivation
 
-When `$ARGUMENTS` is a new description, derive and confirm a short name:
+When {{ idioms.arguments_ref() }} is a new description, derive and confirm a short name:
 
 1. **Analyze the description** and propose a short name:
    - Extract key nouns from the description

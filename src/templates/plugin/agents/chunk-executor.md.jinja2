@@ -1,9 +1,9 @@
 {%- import "partials/" ~ flavor ~ "/idioms.md.jinja2" as idioms -%}
----
-name: chunk-executor
-description: Executes a single vibe-engineer chunk through its full lifecycle (plan, implement, review, complete) in a parallel session. Used by narrative-execute to run each chunk in a wave as a background agent. Use when a chunk needs to be driven end-to-end to ACTIVE status without occupying the main session.
-tools: Bash, Read, Edit, Write, Grep, Glob, SlashCommand
----
+{{ idioms.agent_frontmatter(
+    "chunk-executor",
+    "Executes a single vibe-engineer chunk through its full lifecycle (plan, implement, review, complete) in a parallel session. Used by narrative-execute to run each chunk in a wave as a background agent. Use when a chunk needs to be driven end-to-end to ACTIVE status without occupying the main session.",
+    ["Bash", "Read", "Edit", "Write", "Grep", "Glob", "SlashCommand"]
+) }}
 
 {{ idioms.generated_marker(source_template) }}
 <!-- Chunk: docs/chunks/plugin_subagents - Named plugin agent promoted from narrative-execute's inline prompt -->

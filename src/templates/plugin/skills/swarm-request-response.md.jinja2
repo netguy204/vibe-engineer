@@ -24,7 +24,7 @@ The most common channel pair is `<project>-steward` (request) /
 
 ### Phase 1: Parse arguments
 
-$ARGUMENTS
+{{ idioms.arguments() }}
 
 Extract from the arguments:
 - **Request channel** — where to send the request (e.g., `myproject-steward`)
@@ -131,8 +131,9 @@ activity.
    ```
 3. Report success: what was sent, what was received, and on which channels.
 
-**Watch timeout:** If the background watch exits with code 144 (Claude Code
-task timeout), the steward may not have responded yet. `TaskStop` the timed-out
+**Watch timeout:** If the background watch exits {% if flavor == "claude" %}with code 144 (Claude Code
+task timeout){% else %}because the editor's
+background task timed out{% endif %}, the steward may not have responded yet. `TaskStop` the timed-out
 task, then re-launch the watch (without `--offset` — use the persisted cursor
 position, since no acks have changed it):
 ```

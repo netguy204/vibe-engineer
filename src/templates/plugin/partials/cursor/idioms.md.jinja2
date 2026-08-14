@@ -8,12 +8,15 @@ partials/claude/idioms.md.jinja2. Both implement the same five signatures,
 so a command template imports one or the other and never knows which:
 
   frontmatter(name, description, allowed_tools=None)
+  agent_frontmatter(name, description, tools)
   generated_marker(source_template)
   probe(label, command)
   probe_intro()                  -- framing for an ad-hoc probe block
   canonical_preamble()           -- task guidance via {% call %} body
   plugin_root()
   arguments()                    -- where the operator's request lands
+  arguments_ref()                -- inline prose reference to that request
+  arguments_token(placeholder)   -- the request embedded in a command
 
 All macros emit content WITHOUT a trailing newline; the calling template owns
 line structure.
@@ -32,6 +35,18 @@ fallback chains, same interpretation guidance -- different actor.
     frontmatter, and Cursor's skill format is name + description. The
     parameter stays in the signature because call sites are shared between
     flavors. -#}
+---
+name: {{ name }}
+description: {{ description }}
+---
+{%- endmacro -%}
+
+{#- Chunk: docs/chunks/dualplugin_cursor_render - Agent (subagent) frontmatter.
+    tools is accepted and ignored: Cursor's agent format is name +
+    description only (cursor.com/docs/reference/plugins.md, Agent
+    frontmatter fields, fetched 2026-08-14). The parameter stays in the
+    signature because call sites are shared between flavors. -#}
+{%- macro agent_frontmatter(name, description, tools) -%}
 ---
 name: {{ name }}
 description: {{ description }}
@@ -113,4 +128,22 @@ ${PLUGIN_ROOT}
     already in context; point the agent at it instead. -#}
 {%- macro arguments() -%}
 (Use the operator's request — the message that caused this skill to load — as the input here.)
+{%- endmacro -%}
+
+{#- Chunk: docs/chunks/dualplugin_cursor_render - Inline prose reference to
+    the operator's input. The Claude half emits `$ARGUMENTS` in backticks;
+    here the request itself is the referent, so a plain noun phrase reads
+    correctly mid-sentence ("Interpret the operator's request:"). -#}
+{%- macro arguments_ref() -%}
+the operator's request
+{%- endmacro -%}
+
+{#- Chunk: docs/chunks/dualplugin_cursor_render - The operator's input
+    embedded inside a command. Claude's harness substitutes $ARGUMENTS with
+    the real value before the model reads the file; Cursor has no
+    substitution step, so the caller supplies a placeholder (e.g. "<chunk>")
+    and, at the point where the placeholder is introduced, an instruction to
+    substitute the value from the operator's request. -#}
+{%- macro arguments_token(placeholder) -%}
+{{ placeholder }}
 {%- endmacro -%}

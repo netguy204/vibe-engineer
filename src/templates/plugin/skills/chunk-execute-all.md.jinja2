@@ -46,8 +46,9 @@ Interpret the context above before following the instructions:
 
 This is the session-local alternative to orchestrator (`ve orch`) background
 execution, and the preferred one (see DEC-012 in `docs/trunk/DECISIONS.md`):
-sub-agents spawned inside an interactive session bill under the operator's
-Claude subscription, while Agent SDK-based execution bills at standard API
+sub-agents spawned inside an interactive session {% if flavor == "claude" %}bill under the operator's
+Claude subscription{% else %}run under the operator's
+editor subscription{% endif %}, while Agent SDK-based execution bills at standard API
 token rates. It differs from `/narrative-execute` in three ways: it accepts
 any chunk set (not only a narrative), it isolates parallel chunks in git
 worktrees instead of sharing the main working tree, and it merges and
@@ -57,13 +58,13 @@ verifies after every wave.
 
 Execute the chunks specified by the operator:
 
-$ARGUMENTS
+{{ idioms.arguments() }}
 
 ---
 
 ### Phase 1: Select target chunks
 
-Interpret `$ARGUMENTS`:
+Interpret {{ idioms.arguments_ref() }}:
 
 - **Empty** → all chunks with status FUTURE (from the Pending chunks context
   above; confirm with `ve chunk list`). Include an existing IMPLEMENTING
@@ -129,7 +130,7 @@ handoffs relevant to this chunk.
 
 **Parallel wave (two or more chunks)** — launch one `chunk-executor` agent
 per chunk, all in a single message so they run concurrently, each in an
-**isolated git worktree** (the Agent tool's worktree isolation). Each task
+**isolated git worktree** ({% if flavor == "claude" %}the Agent tool's worktree isolation{% else %}one worktree per sub-agent{% endif %}). Each task
 message contains: the chunk name; "worktree mode" (the agent definition
 documents the protocol: fast-forward the branch to the main tip, activate
 the chunk itself, commit on the branch, never merge, report branch +

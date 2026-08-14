@@ -67,18 +67,14 @@ FLAVOR_OUTPUT_ROOTS = {
     "cursor": ".cursor-plugin",
 }
 
-# Chunk: docs/chunks/dualplugin_cursor_scaffold - Cursor pilot scope boundary
-# The Cursor flavor renders only these templates. dualplugin_cursor_scaffold
-# proves the render target and the Cursor idiom partial on two pilots;
-# rendering the full surface is dualplugin_cursor_render's job. That chunk
-# removes this restriction by deleting the entry below, at which point
-# templates_for_flavor returns the whole collection for every flavor.
-FLAVOR_TEMPLATE_SUBSETS = {
-    "cursor": (
-        "skills/chunk-create.md.jinja2",
-        "skills/ve-status.md.jinja2",
-    ),
-}
+# Chunk: docs/chunks/dualplugin_cursor_render - Full-surface Cursor render
+# Empty by default: every flavor renders the whole collection. An entry here
+# is a deliberate, temporary pilot boundary for a new flavor (the Cursor
+# flavor carried one between dualplugin_cursor_scaffold, which proved the
+# render target on two skills, and dualplugin_cursor_render, which deleted
+# it). A subset is never a permanent difference in surface: the point of the
+# collection is that all flavors carry the same content.
+FLAVOR_TEMPLATE_SUBSETS: dict[str, tuple[str, ...]] = {}
 
 
 def plugin_collection_dir() -> pathlib.Path:
@@ -111,8 +107,8 @@ def templates_for_flavor(flavor: str = DEFAULT_FLAVOR) -> list[str]:
 
     Every flavor renders the whole collection unless FLAVOR_TEMPLATE_SUBSETS
     restricts it. A subset entry is a deliberate, temporary scope boundary
-    (see the Cursor entry there), never a permanent difference in surface:
-    the point of the collection is that both flavors carry the same content.
+    (see the comment there), never a permanent difference in surface: the
+    point of the collection is that both flavors carry the same content.
     """
     names = list_plugin_templates()
     subset = FLAVOR_TEMPLATE_SUBSETS.get(flavor)
