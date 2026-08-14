@@ -18,17 +18,11 @@ code_references:
 - ref: src/template_system.py#render_to_directory
   implements: skill_layout parameter for agentskills.io <name>/SKILL.md directory
     structure
-- ref: src/project.py#Project::_init_skills
-  implements: Renders skills to .agents/skills/ and creates .claude/commands/ backwards-compat
-    symlinks
 - ref: src/project.py#Project::_init_agents_md
   implements: AGENTS.md as canonical instructions file with CLAUDE.md symlink and
     migration from pre-existing CLAUDE.md
 - ref: src/task_init.py#TaskInit::_render_agents_md
   implements: Task-context AGENTS.md rendering with CLAUDE.md symlink
-- ref: src/task_init.py#TaskInit::_render_skills
-  implements: Task-context skill rendering to .agents/skills/ with .claude/commands/
-    symlinks
 - ref: src/orchestrator/worktree.py#WorktreeManager::_setup_agent_environment_symlinks
   implements: Worktree symlinks for AGENTS.md and .agents/ alongside existing CLAUDE.md
     and .claude/
