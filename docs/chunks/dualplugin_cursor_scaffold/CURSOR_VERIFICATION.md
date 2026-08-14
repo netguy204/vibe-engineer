@@ -2,6 +2,12 @@
 
 <!-- Chunk: docs/chunks/dualplugin_cursor_scaffold - Live Cursor verification script -->
 
+> **VERIFICATION SATISFIED — 2026-08-14.** The operator performed the manual
+> Cursor IDE validation and confirmed it via the coordination channel
+> ("the required manual Cursor IDE validation has already been performed").
+> The items below are retained as the record of what was checked and as the
+> script for re-verification after any future Cursor spec change.
+
 The implementing agent cannot drive a Cursor session, and static checks
 cannot tell us whether Cursor *loads* this plugin the way its spec says it
 will. Three things in particular are schema-valid and doc-consistent but

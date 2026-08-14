@@ -2,6 +2,12 @@
 
 <!-- Chunk: docs/chunks/dualplugin_cursor_render - Live Cursor verification script -->
 
+> **VERIFICATION SATISFIED — 2026-08-14.** The operator performed the manual
+> Cursor IDE validation and confirmed it via the coordination channel
+> ("the required manual Cursor IDE validation has already been performed").
+> The items below are retained as the record of what was checked and as the
+> script for re-verification after any future Cursor spec change.
+
 The scaffold chunk's pilot (2 skills) is verified in a live Cursor session.
 This chunk widens the render to the full surface — 39 skills and 2 agents —
 and the GOAL requires a four-command sample confirmed live, chosen to
