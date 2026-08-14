@@ -547,3 +547,56 @@ become contorted rather than merely parameterized (at which point the shared
 source is costing more than the duplication it prevents), Cursor and Claude
 Code converge on a single skill format that needs no substitution, or the
 plugin and the Python package stop releasing together.
+
+### DEC-015: Opt-in project-local skill reification from the plugin sources
+
+**Date**: 2026-08-14
+
+**Status**: ACCEPTED
+
+**Decision**: `ve skills reify` renders the plugin's claude-flavor skill
+templates into a consuming project's `.claude/skills/<name>/SKILL.md`, guarded
+by an ownership manifest (`.claude/skills/.ve-local-skills.json`) that records
+which directories ve rendered and at which version. The plugin remains the
+default distribution channel; nothing renders unless an operator runs the
+command. `ve validate` warns (`skills→stale`) when reified skills were
+rendered by an older ve than the one installed.
+
+**Context**: DEC-010 replaced render-based distribution with the Claude Code
+plugin and rejected dual-mode — but reserved exactly this channel: "if
+multi-agent support becomes a requirement later, a render channel can be
+reintroduced from the plugin sources." The requirement arrived: operators
+report harness setups where the plugin cannot be installed, and an agent
+working in a VE repository without the skills is a real hazard (it improvises
+the workflow instead). Since dualplugin_template_source, the committed plugin
+files are themselves build products of `src/templates/plugin/`, so a local
+render adds a destination, not a second source of truth — DEC-010's objection
+no longer applies to this shape.
+
+**Alternatives Considered**:
+- *Auto-reify when no plugin is detected*: rejected — plugin state of another
+  harness is not reliably observable from the CLI, and a false positive
+  silently converts a plugin project into a dual-channel one. Opt-in is the
+  product.
+- *Render into `~/.claude/skills` (user scope)*: rejected — crosses from
+  "this project" to "everything this user does" without the project-diff
+  review boundary; violates the DEC-013 spirit for user-managed surfaces.
+- *Copy the wheel's pre-rendered `orchestrator/skills`*: rejected — internal
+  packaging detail, frozen at build time, and sidesteps the marker-injection
+  and flavor seams of `render_plugin_template`.
+
+**Consequences**:
+- A project can equip agents with the skills via `uvx --from vibe-engineer ve
+  skills reify` with no plugin mechanism at all.
+- Reified skills carry a `VE:LOCAL-SKILL` marker naming the re-render command;
+  hand-made skills whose names collide are refused by name, never overwritten.
+- Claude Code only: `.claude/skills/` is a Claude Code discovery path. Cursor
+  is served by `.cursor-plugin/` (DEC-014); other harnesses remain limited to
+  the AGENTS.md pointer file.
+- A project with both the plugin and reified skills sees duplicates; the
+  command output says local reification is for setups without the plugin.
+
+**Revisit If**: Claude Code gains an agent-invocable plugin-install API
+(making reification unnecessary), or the skills grow runtime idioms that
+cannot render correctly outside the plugin root (at which point local renders
+would silently degrade and the channel should close again).

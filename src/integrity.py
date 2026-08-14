@@ -362,6 +362,9 @@ class IntegrityValidator:
         # 7. Report cross-repo pointers nobody has ever resolved
         warnings.extend(self._validate_external_ever_resolved())
 
+        # 8. Report reified local skills rendered by an older ve
+        warnings.extend(self._validate_local_skills_stale())
+
         return IntegrityResult(
             success=len(errors) == 0,
             backrefs_suppressed=backrefs_suppressed,
@@ -377,6 +380,48 @@ class IntegrityValidator:
             subsystem_backrefs_found=subsystem_backrefs_found,
             external_chunks_skipped=len(self._external_chunk_names),
         )
+
+    # Chunk: docs/chunks/plugin_local_skills - Stale reified local skills
+    def _validate_local_skills_stale(self) -> list[IntegrityWarning]:
+        """Warn when reified local skills were rendered by an older ve.
+
+        Reified skills (.claude/skills/, DEC-015 opt-in) are render products of
+        the installed CLI's templates; after a ve upgrade they carry the old
+        content until re-rendered. A warning, not an error: stale skills are
+        degraded, not broken, and an error would fail every opted-in project on
+        the day after a release. Silent when the project never opted in.
+        """
+        from importlib.metadata import PackageNotFoundError, version as package_version
+
+        from skills_local import load_manifest
+
+        try:
+            manifest = load_manifest(self.project_dir)
+        except Exception:
+            # A corrupt manifest is a defect, but not this check's: crashing
+            # the whole validation run over it helps nobody.
+            return []
+        if manifest is None:
+            return []
+        try:
+            installed = package_version("vibe-engineer")
+        except PackageNotFoundError:
+            return []
+        rendered = manifest.get("ve_version")
+        if rendered == installed:
+            return []
+        return [
+            IntegrityWarning(
+                source=".claude/skills/.ve-local-skills.json",
+                target=f"ve {installed}",
+                link_type="skills→stale",
+                message=(
+                    f"Reified local skills were rendered by ve {rendered} but "
+                    f"ve {installed} is installed — run `ve skills reify` to "
+                    f"refresh them"
+                ),
+            )
+        ]
 
     # Chunk: docs/chunks/external_never_resolved - Never-verified cross-repo pointers
     def _validate_external_ever_resolved(self) -> list[IntegrityWarning]:
