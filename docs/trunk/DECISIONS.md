@@ -537,10 +537,15 @@ exists to stop someone from tidying them away.
   interface is enforced by a parity test rather than by convention.
 - A future third ecosystem is a new partial plus a new output root, not a
   new copy of the content.
-- The Cursor manifest carries an explicitly empty `hooks` object until a
-  Cursor hook counterpart exists. Shipping no hooks is correct; shipping
+- The Cursor manifest carried an explicitly empty `hooks` object until a
+  Cursor hook counterpart existed. Shipping no hooks was correct; shipping
   Claude's would be wrong, and shipping nothing at all in the manifest would
-  ship Claude's by discovery.
+  ship Claude's by discovery. (Since dualplugin_lifecycle_release the
+  counterpart exists: the manifest points at
+  `.cursor-plugin/hooks/hooks.json`, whose `sessionStart` entry runs a JSON
+  adapter around the shared `hooks/session_start.sh` core — same DEC-013
+  bootstrap, same state markers. The declaration still performs the
+  discovery override this bullet exists for.)
 
 **Revisit If**: The two ecosystems' idioms diverge enough that shared bodies
 become contorted rather than merely parameterized (at which point the shared

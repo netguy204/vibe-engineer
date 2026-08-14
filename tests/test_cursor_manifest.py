@@ -205,17 +205,43 @@ class TestDiscoveryCollision:
                 CURSOR_DIR.resolve()
             ), f"{component} path {raw} is outside the Cursor render tree"
 
-    def test_hooks_declares_no_hook_events(self):
-        """The Cursor hook counterpart is dualplugin_lifecycle_release's work.
-        Until then the correct thing to ship is no hooks — an explicitly empty
-        inline config, which replaces discovery of Claude's hooks/hooks.json
-        without claiming any Cursor hook events."""
+    # Chunk: docs/chunks/dualplugin_lifecycle_release - hooks declaration
+    # points at the Cursor sessionStart config instead of the pre-hook empty
+    # placeholder. The declaration is still doing DEC-014's discovery-override
+    # job: it is what keeps Cursor away from the root hooks/hooks.json, whose
+    # event names (SessionStart) Cursor does not recognize.
+    def test_hooks_declares_the_cursor_hooks_config(self):
         hooks = _load_json(PLUGIN_MANIFEST)["hooks"]
-        assert isinstance(hooks, dict)
-        assert hooks.get("hooks", {}) == {}
-        assert not [k for k in hooks if k != "hooks"], (
-            "an empty inline hooks config must declare no events"
+        assert isinstance(hooks, str), (
+            "hooks must be a path to the Cursor hooks config; an inline "
+            "object was the pre-dualplugin_lifecycle_release placeholder"
         )
+        resolved = (REPO_ROOT / hooks).resolve()
+        claude_hooks = (REPO_ROOT / COLLIDING_COMPONENTS["hooks"]).resolve()
+        assert CURSOR_DIR.resolve() in resolved.parents, (
+            f"hooks config {hooks} lives outside the Cursor render tree"
+        )
+        assert resolved != (claude_hooks / "hooks.json").resolve(), (
+            "hooks points at the Claude hooks config"
+        )
+        assert resolved.is_file(), f"hooks declares {hooks}, which does not exist"
+
+    def test_declared_hooks_config_registers_session_start(self):
+        """The config the manifest names must actually declare sessionStart
+        running an existing, executable script — a declared-but-empty config
+        would silently drop the session-lifecycle story for Cursor users."""
+        hooks_path = REPO_ROOT / _load_json(PLUGIN_MANIFEST)["hooks"]
+        config = _load_json(hooks_path)
+        session_start = config["hooks"]["sessionStart"]
+        assert session_start, "sessionStart must register at least one hook"
+        for entry in session_start:
+            command = entry["command"]
+            # The command names the adapter via ${CURSOR_PLUGIN_ROOT}, which
+            # resolves to the repo root at install time.
+            relative = command.replace("${CURSOR_PLUGIN_ROOT}/", "")
+            script = REPO_ROOT / relative
+            assert script.is_file(), f"sessionStart command {command} not found"
+            assert script.stat().st_mode & 0o111, f"{relative} is not executable"
 
     @pytest.mark.parametrize("component", sorted(CURSOR_DEFAULT_LOCATIONS))
     def test_undeclared_component_has_no_default_location(self, component):
@@ -266,7 +292,7 @@ class TestDiscoveryCollision:
             f"{loadable}"
         )
 
-    @pytest.mark.parametrize("component", ["skills", "agents"])
+    @pytest.mark.parametrize("component", ["skills", "agents", "hooks"])
     def test_declared_paths_are_relative_and_contained(self, component):
         """Submission checklist: all manifest paths are relative and valid —
         no `..`, no absolute paths."""

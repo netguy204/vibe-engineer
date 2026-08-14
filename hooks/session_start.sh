@@ -3,6 +3,9 @@
 # plugin/CLI version compatibility (DEC-011), and current IMPLEMENTING chunk.
 # Chunk: docs/chunks/plugin_hook_cli_bootstrap - Polite CLI bootstrap from the
 # plugin checkout (DEC-013): announce, install, managed-install marker.
+# Chunk: docs/chunks/dualplugin_lifecycle_release - Shared session-start core:
+# also run by the Cursor adapter (.cursor-plugin/hooks/session_start.sh), so
+# both editors' hooks share one implementation and one set of state markers.
 #
 # Contract:
 # - Silent (no output, exit 0) outside ve projects. A ve project is detected
@@ -31,8 +34,13 @@ ROOT="${CLAUDE_PROJECT_DIR:-$PWD}"
 [ -f "$ROOT/docs/trunk/GOAL.md" ] || exit 0
 
 # Plugin version from the plugin manifest (needed by bootstrap and drift).
+# A Cursor-only install may lack .claude-plugin/plugin.json; fall back to the
+# Cursor manifest, which DEC-014's coupling test keeps at the same version.
 plugin_version=""
 plugin_manifest="${CLAUDE_PLUGIN_ROOT}/.claude-plugin/plugin.json"
+if [ -n "$CLAUDE_PLUGIN_ROOT" ] && [ ! -f "$plugin_manifest" ]; then
+    plugin_manifest="${CLAUDE_PLUGIN_ROOT}/.cursor-plugin/plugin.json"
+fi
 if [ -n "$CLAUDE_PLUGIN_ROOT" ] && [ -f "$plugin_manifest" ]; then
     plugin_version=$(sed -n 's/.*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$plugin_manifest" | head -n 1)
 fi

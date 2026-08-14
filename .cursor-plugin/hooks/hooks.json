@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "hooks": {
+    "sessionStart": [
+      {
+        "command": "${CURSOR_PLUGIN_ROOT}/.cursor-plugin/hooks/session_start.sh"
+      }
+    ]
+  }
+}

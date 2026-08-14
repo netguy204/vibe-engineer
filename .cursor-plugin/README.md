@@ -32,13 +32,20 @@ lands.
 `tests/test_cursor_manifest.py::TestDiscoveryCollision` fails if these
 declarations are removed. Do not "simplify" them away.
 
-## Why `hooks` is an empty object
+## Why `hooks` names `.cursor-plugin/hooks/hooks.json`
 
-Same reason, opposite intent: `hooks` is declared so that folder discovery
-does not reach `hooks/hooks.json`, and declared *empty* because this plugin
-ships no Cursor hooks yet. The Cursor counterpart of the Claude SessionStart
-hook is deliberate future work (`dualplugin_lifecycle_release`); until it
-exists, shipping no hooks is correct and shipping Claude's is not.
+<!-- Chunk: docs/chunks/dualplugin_lifecycle_release - Cursor sessionStart hook -->
+
+Same reason: `hooks` is declared so that folder discovery does not reach
+the root `hooks/hooks.json`, whose event names follow Claude's schema
+(`SessionStart`), which Cursor does not recognize. The declaration points at
+this directory's `hooks/hooks.json`, which registers Cursor's `sessionStart`
+event running `hooks/session_start.sh` — a thin JSON adapter around the
+shared session-start core at the repo root (`hooks/session_start.sh`). All
+behavior (ve-project detection, DEC-013 polite CLI bootstrap with its
+managed-install boundary, DEC-011 drift warning, current-chunk surfacing)
+lives in that one core, so both editors share the implementation and the
+state markers. The hook files are static, not rendered.
 
 ## Layout
 
@@ -46,9 +53,12 @@ exists, shipping no hooks is correct and shipping Claude's is not.
 .cursor-plugin/
 ├── plugin.json         # Cursor plugin manifest
 ├── marketplace.json    # single-entry marketplace, source "./"
+├── hooks/
+│   ├── hooks.json      # registers sessionStart (static, not rendered)
+│   └── session_start.sh  # JSON adapter over the shared root hooks/ core
 ├── skills/             # Cursor-flavored render (build product)
 │   └── <name>/SKILL.md
-└── agents/             # declared; populated by dualplugin_cursor_render
+└── agents/             # Cursor-flavored subagent renders (build product)
 ```
 
 Everything under `skills/` and `agents/` here is generated. Edit the
