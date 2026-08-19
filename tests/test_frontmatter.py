@@ -10,6 +10,7 @@ from frontmatter import (
     parse_frontmatter_from_content,
     parse_frontmatter_from_content_with_errors,
     extract_frontmatter_dict,
+    split_frontmatter_and_body,
     update_frontmatter_field,
 )
 
@@ -559,3 +560,82 @@ status: active
         content = file_path.read_text()
         assert "yaml: like" in content
         assert "content: here" in content
+
+
+# Chunk: docs/chunks/hooks_lifecycle_fragments - Optional-frontmatter splitting for hook fragments
+class TestSplitFrontmatterAndBody:
+    """Tests for split_frontmatter_and_body.
+
+    Unlike every other parser in this module, absent frontmatter is not an
+    error here: VE hook fragments are commonly bare prose written by an
+    operator who has no reason to know YAML exists.
+    """
+
+    def test_bare_prose_returns_empty_metadata_and_full_body(self):
+        """A file with no frontmatter yields ({}, content) unchanged."""
+        content = "Check the public docs.\n\nThey matter.\n"
+
+        metadata, body = split_frontmatter_and_body(content)
+
+        assert metadata == {}
+        assert body == content
+
+    def test_frontmatter_is_parsed_and_stripped_from_body(self):
+        """Frontmatter is returned separately and does not leak into the body."""
+        content = "---\nchecks:\n  - make docs\n---\nUpdate the docs.\n"
+
+        metadata, body = split_frontmatter_and_body(content)
+
+        assert metadata == {"checks": ["make docs"]}
+        assert body == "Update the docs.\n"
+        assert "checks" not in body
+
+    def test_malformed_yaml_preserves_content_as_body(self):
+        """Invalid YAML must not raise; the raw text survives as body."""
+        content = "---\nthis: [is: not: valid\n---\nStill useful prose.\n"
+
+        metadata, body = split_frontmatter_and_body(content)
+
+        assert metadata == {}
+        assert body == content
+
+    def test_non_mapping_frontmatter_preserves_content_as_body(self):
+        """Frontmatter parsing to a list, not a mapping, is treated as absent."""
+        content = "---\n- one\n- two\n---\nBody text.\n"
+
+        metadata, body = split_frontmatter_and_body(content)
+
+        assert metadata == {}
+        assert body == content
+
+    def test_horizontal_rule_in_body_is_not_a_frontmatter_terminator(self):
+        """A --- rule partway down a file without frontmatter stays in the body."""
+        content = "Do the thing.\n\n---\n\nThen do the other thing.\n"
+
+        metadata, body = split_frontmatter_and_body(content)
+
+        assert metadata == {}
+        assert body == content
+
+    def test_empty_frontmatter_block_yields_empty_metadata(self):
+        """An empty --- --- block is metadata-less but still strips."""
+        content = "---\n---\nJust prose.\n"
+
+        metadata, body = split_frontmatter_and_body(content)
+
+        assert metadata == {}
+        assert body == "Just prose.\n"
+
+    def test_empty_content_is_tolerated(self):
+        """An empty file yields no metadata and an empty body."""
+        metadata, body = split_frontmatter_and_body("")
+
+        assert metadata == {}
+        assert body == ""
+
+    def test_closing_marker_at_eof_without_body(self):
+        """Frontmatter with no trailing newline or body still strips."""
+        metadata, body = split_frontmatter_and_body("---\nchecks: []\n---")
+
+        assert metadata == {"checks": []}
+        assert body == ""

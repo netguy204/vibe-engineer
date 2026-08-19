@@ -1,6 +1,8 @@
 ---
 status: STABLE
 chunks:
+  - chunk_id: audit_corpus_health
+    relationship: uses
   - chunk_id: update_crossref_format
     relationship: implements
   - chunk_id: artifact_ordering_index

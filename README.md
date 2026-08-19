@@ -258,7 +258,55 @@ ve chunk list --latest
 # Validate a chunk is ready for completion
 ve chunk validate 0001-my-feature
 
+# Preview the project's own instructions for a lifecycle command
+# (authored in docs/hooks/<command-name>.md; see "Project Hooks" below)
+ve hooks show chunk-complete
+
+# List the project's hooks, flagging any that match no command
+ve hooks list
+
 ```
+
+#### Project Hooks
+
+A repository can attach its own requirements to a lifecycle command by writing
+`docs/hooks/<command-name>.md` — for example, `docs/hooks/chunk-complete.md`
+saying "if this chunk changed public-facing docs, update them." The matching
+command loads that file into its context when it runs, so the instruction
+arrives exactly at the inflection point it governs. Hooks are advisory prompt
+content (see [DEC-016](docs/trunk/DECISIONS.md)), not enforced checks. See
+`docs/trunk/ARTIFACTS.md#hooks`.
+
+#### Auditing the Chunk Corpus
+
+A corpus that has grown for a while drifts: chunks claim files that moved,
+describe behavior the code no longer has, hold a status that stopped being true,
+or quietly duplicate a neighbour. The `/audit-corpus` slash command reports that
+drift across every chunk — validity, freshness, accuracy, and redundancy — and
+proposes an action per finding. It never rewrites a chunk, so it is safe to
+point at a corpus you did not author. (`/audit-intent` is the companion that
+*does* rewrite, as a one-time migration to the present-tense standard.)
+
+Redundancy is the expensive axis: two chunks are only comparable when an agent
+reads them together, and reading every pair is quadratic. `ve chunk partition`
+bounds that cost by grouping chunks that could plausibly be redundant — those
+claiming the same file, and those whose goal text is similar — so an agent reads
+one cluster instead of the corpus:
+
+```bash
+# Machine-readable grouping, both relations, whole corpus
+ve chunk partition --json
+
+# Only ACTIVE chunks, human-readable
+ve chunk partition --active
+```
+
+The grouping is computed from `code_paths`, `code_references`, and GOAL.md text
+rather than by an agent, which is what lets successive audits converge on a
+cleaner corpus instead of reshuffling their findings. Chunks no relation grouped,
+and hub files skipped because half the corpus claims them, are both reported —
+an audit that quietly narrows its own coverage reads as one that covered
+everything.
 
 ### Cross-Repository Work
 

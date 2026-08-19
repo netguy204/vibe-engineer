@@ -29,7 +29,7 @@ from task import (
     parse_projects_option,
     check_task_project_context,
 )
-from cluster_analysis import check_cluster_size, format_cluster_warning
+from cluster_analysis import HEALTHY_MAX_SIZE, check_cluster_size, format_cluster_warning
 from chunks import get_chunk_prefix
 from artifact_ordering import ArtifactIndex
 
@@ -1406,6 +1406,121 @@ def cluster(chunk_ids, project_dir, min_similarity, cluster_all):
         click.echo(f"Unclustered chunks ({len(result.unclustered)}):")
         for name in result.unclustered:
             click.echo(f"  - {name}")
+
+
+# Subsystem: docs/subsystems/cluster_analysis - Chunk naming and clustering
+# Chunk: docs/chunks/audit_corpus_health - CLI surface for the deterministic corpus partition
+@chunk.command("partition")
+@click.option(
+    "--status",
+    "status_filter",
+    multiple=True,
+    help="Filter by status (case-insensitive). Can specify multiple times or comma-separated. "
+    "Valid statuses: FUTURE, IMPLEMENTING, ACTIVE, COMPOSITE, SUPERSEDED, HISTORICAL",
+)
+@click.option("--future", "future_flag", is_flag=True, help="Partition only FUTURE chunks")
+@click.option("--active", "active_flag", is_flag=True, help="Partition only ACTIVE chunks")
+@click.option(
+    "--implementing",
+    "implementing_flag",
+    is_flag=True,
+    help="Partition only IMPLEMENTING chunks",
+)
+@click.option("--min-similarity", type=float, default=0.3, help="Minimum similarity to cluster (default: 0.3)")
+@click.option(
+    "--fan-in-ceiling",
+    type=int,
+    default=HEALTHY_MAX_SIZE,
+    help=f"Skip files claimed by more than this many chunks (default: {HEALTHY_MAX_SIZE})",
+)
+@click.option("--json", "json_output", is_flag=True, help="Output in JSON format")
+@click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=".")
+def partition(
+    status_filter,
+    future_flag,
+    active_flag,
+    implementing_flag,
+    min_similarity,
+    fan_in_ceiling,
+    json_output,
+    project_dir,
+):
+    """Group the chunk corpus into clusters for auditing.
+
+    Groups chunks under two independent relations:
+
+    \b
+      code_overlap        - chunks claiming the same file (an overlapping
+                            cover: a chunk claiming five files appears in
+                            five clusters)
+      content_similarity  - chunks whose GOAL.md text is similar (TF-IDF)
+
+    Redundancy between chunks is only detectable when they are compared against
+    each other, and comparing every pair is quadratic. These clusters bound that
+    cost: an auditing agent reads one cluster instead of the corpus. The
+    assignment is deterministic, so an unchanged corpus audits the same way
+    twice.
+
+    Nothing is silently dropped. Chunks no relation grouped are listed as
+    unclustered, and hub files above --fan-in-ceiling are listed separately
+    (fifty chunks touching src/ve.py is evidence of a hub, not of redundancy).
+
+    Examples:
+        ve chunk partition --json           # Machine-readable, whole corpus
+        ve chunk partition --active         # Only ACTIVE chunks
+    """
+    from cluster_analysis import partition_chunks
+
+    status_set, error = parse_status_filters(status_filter, future_flag, active_flag, implementing_flag)
+    if error:
+        click.echo(f"Error: {error}", err=True)
+        raise SystemExit(1)
+
+    result = partition_chunks(
+        project_dir,
+        min_similarity=min_similarity,
+        statuses=status_set,
+        fan_in_ceiling=fan_in_ceiling,
+    )
+
+    if json_output:
+        click.echo(json.dumps(result.to_dict(), indent=2))
+        return
+
+    if not result.code_overlap and not result.content_similarity and not result.unclustered:
+        click.echo("No chunks to partition.")
+        return
+
+    click.echo(f"Code overlap: {len(result.code_overlap)} cluster(s)")
+    for cluster in result.code_overlap:
+        click.echo(f"  {cluster.id} ({len(cluster.members)} chunks): {', '.join(cluster.members)}")
+        if cluster.evidence:
+            shown = ", ".join(cluster.evidence[:3])
+            more = f" (+{len(cluster.evidence) - 3} more)" if len(cluster.evidence) > 3 else ""
+            click.echo(f"    shares: {shown}{more}")
+
+    click.echo("")
+    click.echo(f"Content similarity: {len(result.content_similarity)} cluster(s)")
+    for cluster in result.content_similarity:
+        click.echo(
+            f"  {cluster.id} ({len(cluster.members)} chunks, score {cluster.score}): "
+            f"{', '.join(cluster.members)}"
+        )
+
+    if result.unclustered:
+        click.echo("")
+        click.echo(f"Unclustered ({len(result.unclustered)}): {', '.join(result.unclustered)}")
+
+    if result.high_fan_in_paths:
+        click.echo("")
+        click.echo(
+            f"Hub files skipped ({len(result.high_fan_in_paths)}, "
+            f"claimed by more than {fan_in_ceiling} chunks):"
+        )
+        for path, count in result.high_fan_in_paths[:10]:
+            click.echo(f"  {path} ({count} chunks)")
+        if len(result.high_fan_in_paths) > 10:
+            click.echo(f"  ... and {len(result.high_fan_in_paths) - 10} more")
 
 
 # Subsystem: docs/subsystems/orchestrator - Parallel agent orchestration

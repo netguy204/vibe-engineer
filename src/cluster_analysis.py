@@ -26,6 +26,11 @@ SMALL_MAX_SIZE = 2
 HEALTHY_MIN_SIZE = 3
 HEALTHY_MAX_SIZE = 8
 
+# Chunk: docs/chunks/audit_corpus_health - Project qualifier standing for "this repository"
+# The qualifier `qualify_ref` stamps on an unqualified reference. Paths carrying
+# it are local; anything else names a file in another repository.
+LOCAL_PROJECT = "."
+
 
 # Chunk: docs/chunks/cluster_list_command - Cluster categorization dataclass with size-based buckets
 @dataclass
@@ -504,6 +509,10 @@ class ClusterResult:
     clusters: list[list[str]]  # Groups of related chunk IDs
     unclustered: list[str]  # Chunks that don't fit clusters
     cluster_themes: list[str]  # Inferred theme for each cluster
+    # Chunk: docs/chunks/audit_corpus_health - Cohesion score per cluster
+    # Mean pairwise cosine similarity within each cluster, parallel to
+    # `clusters`. Defaults to empty so existing constructions stay valid.
+    cluster_scores: list[float] = field(default_factory=list)
 
 
 # Chunk: docs/chunks/chunks_decompose - Moved from chunks.py
@@ -624,6 +633,20 @@ def cluster_chunks(
         else:
             unclustered.extend(members)
 
+    # Chunk: docs/chunks/audit_corpus_health - Cohesion score per cluster
+    # A cluster's score is the mean pairwise similarity among its members. The
+    # audit reports it so a reader can tell a tight cluster from one that
+    # merely cleared the threshold.
+    position = {name: idx for idx, name in enumerate(valid_chunk_ids)}
+    cluster_scores: list[float] = []
+    for cluster in clusters:
+        pairs = [
+            similarity_matrix[position[a]][position[b]]
+            for i, a in enumerate(cluster)
+            for b in cluster[i + 1 :]
+        ]
+        cluster_scores.append(round(float(sum(pairs) / len(pairs)), 4) if pairs else 0.0)
+
     # Infer themes from common prefixes in each cluster
     cluster_themes: list[str] = []
     for cluster in clusters:
@@ -638,15 +661,265 @@ def cluster_chunks(
             # No dominant prefix, use chunk names
             cluster_themes.append(f"mixed ({len(cluster)} chunks)")
 
-    # Sort clusters by size (largest first)
-    sorted_pairs = sorted(zip(clusters, cluster_themes), key=lambda x: -len(x[0]))
-    clusters = [c for c, _ in sorted_pairs]
-    cluster_themes = [t for _, t in sorted_pairs]
+    # Sort clusters by size (largest first), then by first member so that ties
+    # do not inherit filesystem enumeration order.
+    sorted_triples = sorted(
+        zip(clusters, cluster_themes, cluster_scores), key=lambda x: (-len(x[0]), x[0][0])
+    )
+    clusters = [c for c, _, _ in sorted_triples]
+    cluster_themes = [t for _, t, _ in sorted_triples]
+    cluster_scores = [s for _, _, s in sorted_triples]
 
     return ClusterResult(
         clusters=clusters,
         unclustered=sorted(unclustered),
         cluster_themes=cluster_themes,
+        cluster_scores=cluster_scores,
+    )
+
+
+# Chunk: docs/chunks/audit_corpus_health - Code-overlap cluster in the corpus partition
+@dataclass
+class OverlapCluster:
+    """A group of chunks connected by shared code references."""
+
+    id: str
+    members: list[str]
+    evidence: list[str]  # The shared paths (and symbols) that formed the edges
+
+
+# Chunk: docs/chunks/audit_corpus_health - Content-similarity cluster in the corpus partition
+@dataclass
+class SimilarityCluster:
+    """A group of chunks connected by TF-IDF similarity of their GOAL.md text."""
+
+    id: str
+    members: list[str]
+    score: float  # Mean pairwise cosine similarity within the cluster
+    theme: str
+
+
+# Chunk: docs/chunks/audit_corpus_health - Whole-corpus partition under both relations
+@dataclass
+class PartitionResult:
+    """The corpus grouped under two independent relations.
+
+    `code_overlap` is an overlapping cover — a chunk claiming several files
+    appears in several clusters. `content_similarity` is a true partition.
+
+    `unclustered` names every in-scope chunk that no relation grouped, and
+    `high_fan_in_paths` names the hub files excluded from the overlap relation.
+    Both are reported rather than dropped: anything the audit did not compare
+    has to be visible, or a partial run reads as a complete one.
+    """
+
+    code_overlap: list[OverlapCluster]
+    content_similarity: list[SimilarityCluster]
+    unclustered: list[str]
+    high_fan_in_paths: list[tuple[str, int]] = field(default_factory=list)
+
+    def to_dict(self) -> dict:
+        """Render as the JSON payload `ve chunk partition --json` emits."""
+        return {
+            "relations": {
+                "code_overlap": [
+                    {"id": c.id, "members": c.members, "evidence": c.evidence}
+                    for c in self.code_overlap
+                ],
+                "content_similarity": [
+                    {
+                        "id": c.id,
+                        "members": c.members,
+                        "score": c.score,
+                        "theme": c.theme,
+                    }
+                    for c in self.content_similarity
+                ],
+            },
+            "unclustered": self.unclustered,
+            "high_fan_in_paths": [
+                {"path": path, "chunk_count": count} for path, count in self.high_fan_in_paths
+            ],
+        }
+
+
+# Chunk: docs/chunks/audit_corpus_health - File paths a chunk's frontmatter claims
+def _chunk_reference_paths(frontmatter) -> dict[str, set[str]]:
+    """Map each file a chunk claims to the symbol refs it names there.
+
+    Draws from both `code_paths` (planning-time intent) and `code_references`
+    (post-implementation truth), because a corpus in drift has chunks that
+    carry one and not the other.
+
+    Keys keep the project qualifier for cross-repo references. In a task or
+    workspace context, `org/repo::src/foo.py` and a local `src/foo.py` are
+    different files, and collapsing them manufactures redundancy findings
+    between chunks in different repositories.
+
+    Returns:
+        {file key: {qualified symbol refs at that file}}. The symbol set is
+        empty for a bare path with no symbol anchor.
+    """
+    from symbols import parse_reference, qualify_ref
+
+    paths: dict[str, set[str]] = {}
+
+    for path in frontmatter.code_paths or []:
+        paths.setdefault(str(path), set())
+
+    for reference in frontmatter.code_references or []:
+        try:
+            project, file_path, symbol = parse_reference(
+                qualify_ref(reference.ref, LOCAL_PROJECT)
+            )
+        except ValueError:
+            continue
+        key = file_path if project == LOCAL_PROJECT else f"{project}::{file_path}"
+        symbols = paths.setdefault(key, set())
+        if symbol:
+            symbols.add(f"{key}#{symbol}")
+
+    return paths
+
+
+# Chunk: docs/chunks/audit_corpus_health - Per-file overlapping cover of the corpus
+def _code_overlap_clusters(
+    chunk_paths: dict[str, dict[str, set[str]]],
+    fan_in_ceiling: int = HEALTHY_MAX_SIZE,
+) -> tuple[list[OverlapCluster], list[tuple[str, int]]]:
+    """Group chunks by the file each one claims, one cluster per shared file.
+
+    This is an overlapping **cover**, not a strict partition: a chunk claiming
+    five files appears in five clusters. That is deliberate. Grouping by
+    connected component instead — unioning chunks transitively through shared
+    files — collapses a real corpus into one giant component, because A and B
+    share one file while B and C share another and the merge chains through B.
+    Measured on this repository, components put 423 of 454 chunks in a single
+    cluster, which is no partition at all.
+
+    A cover by file loses nothing the audit needs: two chunks can only be
+    redundant if they claim at least one file in common, and that file's cluster
+    contains them both. Each cluster also explains itself in one line — "these
+    six chunks all claim src/plugin_render.py".
+
+    Files claimed by more than `fan_in_ceiling` chunks generate no cluster.
+    Architectural hubs (`src/ve.py`, `src/chunks.py`) are claimed by fifty
+    chunks apiece, and "both of these touch the CLI entry point" is not evidence
+    of redundancy — it is evidence of a hub. The excluded paths are returned so
+    the caller can report them, because a silently dropped path reads as a
+    corpus that was fully audited when it was not.
+
+    Returns:
+        (clusters, excluded) where excluded is [(path, chunk_count)] for the
+        high-fan-in paths that generated no cluster.
+    """
+    index: dict[str, list[str]] = {}
+    for name, paths in chunk_paths.items():
+        for file_path in paths:
+            index.setdefault(file_path, []).append(name)
+
+    excluded: list[tuple[str, int]] = []
+    by_members: dict[frozenset[str], set[str]] = {}
+    for file_path, sharers in sorted(index.items()):
+        if len(sharers) < 2:
+            continue
+        if len(sharers) > fan_in_ceiling:
+            excluded.append((file_path, len(sharers)))
+            continue
+
+        members = frozenset(sharers)
+        evidence = by_members.setdefault(members, set())
+        evidence.add(file_path)
+        # Symbol-level evidence when two chunks name the same symbol, not merely
+        # the same file — a much stronger redundancy signal.
+        symbol_counts: Counter[str] = Counter()
+        for name in sharers:
+            symbol_counts.update(chunk_paths[name][file_path])
+        evidence.update(symbol for symbol, count in symbol_counts.items() if count >= 2)
+
+    # Files producing the same member set collapse into one cluster (the
+    # frozenset key above). Subsets are deliberately kept rather than folded
+    # into their supersets: folding would either lose the file that connects
+    # the smaller group or attach evidence to a cluster whose members do not
+    # all share it, and both make a finding harder to check.
+    clusters = [
+        OverlapCluster(id="", members=sorted(members), evidence=sorted(evidence))
+        for members, evidence in by_members.items()
+    ]
+
+    # Canonical order: largest first, ties broken by first member. Ids are
+    # positional and therefore stable only because this sort is total.
+    clusters.sort(key=lambda c: (-len(c.members), c.members[0]))
+    for position, cluster in enumerate(clusters):
+        cluster.id = f"c{position}"
+    return clusters, sorted(excluded, key=lambda item: (-item[1], item[0]))
+
+
+# Chunk: docs/chunks/audit_corpus_health - Whole-corpus partition for the audit-corpus skill
+def partition_chunks(
+    project_dir: Path,
+    chunk_ids: list[str] | None = None,
+    min_similarity: float = 0.3,
+    statuses: set | None = None,
+    fan_in_ceiling: int = HEALTHY_MAX_SIZE,
+) -> PartitionResult:
+    """Partition a chunk corpus under both the overlap and similarity relations.
+
+    The partition is what makes relational auditing affordable: redundancy is
+    only detectable between chunks compared against each other, and comparing
+    every pair is quadratic. It is computed here, deterministically, rather than
+    by an agent — an unchanged corpus must yield an unchanged assignment, or
+    findings churn between runs instead of converging.
+
+    Args:
+        project_dir: Path to the project directory.
+        chunk_ids: Explicit chunks to partition (default: the whole corpus).
+        min_similarity: Minimum similarity to cluster together (default 0.3,
+            matching `ve chunk cluster`).
+        statuses: Restrict to these ChunkStatus values (default: no filter).
+
+    Returns:
+        PartitionResult with both relations and the chunks neither grouped.
+    """
+    from chunks import Chunks
+
+    chunks_manager = Chunks(project_dir)
+
+    if chunk_ids is None:
+        chunk_ids = chunks_manager.enumerate_chunks()
+
+    scope: list[str] = []
+    chunk_paths: dict[str, dict[str, set[str]]] = {}
+    for name in sorted(chunk_ids):
+        frontmatter = chunks_manager.parse_chunk_frontmatter(name)
+        if frontmatter is None:
+            continue
+        if statuses is not None and frontmatter.status not in statuses:
+            continue
+        scope.append(name)
+        chunk_paths[name] = _chunk_reference_paths(frontmatter)
+
+    code_overlap, high_fan_in = _code_overlap_clusters(chunk_paths, fan_in_ceiling)
+
+    similarity = cluster_chunks(project_dir, chunk_ids=scope, min_similarity=min_similarity)
+    content_similarity = [
+        SimilarityCluster(
+            id=f"s{position}",
+            members=members,
+            score=(similarity.cluster_scores[position] if similarity.cluster_scores else 0.0),
+            theme=(similarity.cluster_themes[position] if similarity.cluster_themes else ""),
+        )
+        for position, members in enumerate(similarity.clusters)
+    ]
+
+    grouped = {name for cluster in code_overlap for name in cluster.members}
+    grouped |= {name for cluster in content_similarity for name in cluster.members}
+
+    return PartitionResult(
+        code_overlap=code_overlap,
+        content_similarity=content_similarity,
+        unclustered=sorted(name for name in scope if name not in grouped),
+        high_fan_in_paths=high_fan_in,
     )
 
 

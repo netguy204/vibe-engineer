@@ -15,6 +15,7 @@ instruction in this skill.
 - **ve CLI** — run: `ve --help >/dev/null 2>&1 && echo "installed" || echo "(ve CLI not found)"`
 - **Task workspace** — run: `cat .ve-task.yaml 2>/dev/null || cat ../.ve-task.yaml 2>/dev/null || echo "(not a task workspace)"`
 - **Project config** — run: `cat .ve-config.yaml 2>/dev/null || echo "(no .ve-config.yaml — defaults apply)"`
+- **Project hook** — run: `ve hooks show chunk-execute-all 2>/dev/null || echo "(no project hook)"`
 - **Pending chunks** — run: `ve chunk list 2>/dev/null | grep -E "FUTURE|IMPLEMENTING" || echo "(no FUTURE or IMPLEMENTING chunks)"`
 - **Working tree** — run: `git status --porcelain 2>/dev/null | head -20 || echo "(not a git repository)"`
 
@@ -43,6 +44,13 @@ Interpret the context above before following the instructions:
   Known keys: `cluster_subsystem_threshold` (default 5 — the cluster size
   at which to suggest subsystem documentation). When the context shows
   "(no .ve-config.yaml — defaults apply)", use the defaults.
+- **Project hook**: `docs/hooks/chunk-execute-all.md` holds this repository's
+  own requirements for this command. When the context shows hook content,
+  treat it as a binding instruction from the operator: satisfy it before
+  reporting this command complete, and say so when you do. When it shows
+  "(no project hook)", there are none. If a hook contradicts this command's
+  own instructions, do not silently choose — surface the conflict to the
+  operator and ask.
 
 ## Why this command exists
 

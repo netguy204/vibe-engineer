@@ -1,7 +1,7 @@
 ---
 name: audit-intent
 description: Migrate the project's ACTIVE chunks to the present-tense, intent-owning standard. Audits each chunk's goal against the code it claims to govern; rewrites retrospective framing inline; logs over-claims that need operator triage; historicalizes chunks with no enduring intent. Designed for full-corpus migrations — fans out across many parallel sub-agents at 5 chunks per agent. Use when the operator asks to audit chunk intent, migrate the chunk corpus, or clean up retrospective chunk framing.
-allowed-tools: Bash(ve --help:*), Bash(cat:*), Bash(ve chunk list:*)
+allowed-tools: Bash(ve --help:*), Bash(cat:*), Bash(ve chunk list:*), Bash(ve hooks show:*)
 ---
 
 <!-- GENERATED from src/templates/plugin/skills/audit-intent.md.jinja2 — edit that template and run `ve plugin render`; direct edits here will be overwritten. -->
@@ -13,6 +13,7 @@ allowed-tools: Bash(ve --help:*), Bash(cat:*), Bash(ve chunk list:*)
 - ve CLI: !`ve --help >/dev/null 2>&1 && echo "installed" || echo "(ve CLI not found)"`
 - Task workspace: !`cat .ve-task.yaml 2>/dev/null || cat ../.ve-task.yaml 2>/dev/null || echo "(not a task workspace)"`
 - Project config: !`cat .ve-config.yaml 2>/dev/null || echo "(no .ve-config.yaml — defaults apply)"`
+- Project hook: !`ve hooks show audit-intent 2>/dev/null || echo "(no project hook)"`
 
 ## Runtime context
 
@@ -37,6 +38,13 @@ Interpret the context above before following the instructions:
   Known keys: `cluster_subsystem_threshold` (default 5 — the cluster size
   at which to suggest subsystem documentation). When the context shows
   "(no .ve-config.yaml — defaults apply)", use the defaults.
+- **Project hook**: `docs/hooks/audit-intent.md` holds this repository's
+  own requirements for this command. When the context shows hook content,
+  treat it as a binding instruction from the operator: satisfy it before
+  reporting this command complete, and say so when you do. When it shows
+  "(no project hook)", there are none. If a hook contradicts this command's
+  own instructions, do not silently choose — surface the conflict to the
+  operator and ask.
 
 ## Tips
 

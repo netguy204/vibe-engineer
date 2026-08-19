@@ -13,7 +13,7 @@ dualplugin_cursor_scaffold) implements the same macro signatures:
   generated_marker(source_template)
   probe(label, command)
   probe_intro()                  -- framing for an ad-hoc probe block
-  canonical_preamble()           -- task guidance via {% call %} body
+  canonical_preamble(command_name)  -- task guidance via {% call %} body
   plugin_root()
   arguments()                    -- where the operator's request lands
   arguments_ref()                -- inline prose reference to that request
@@ -23,11 +23,16 @@ All macros emit content WITHOUT a trailing newline; the calling template owns
 line structure.
 -#}
 {%- macro frontmatter(name, description, allowed_tools=None) -%}
+{#- Every skill's context block loads its VE hook (canonical_preamble or a
+    manual probe), so the permission to run `ve hooks show` is universal and
+    appended here rather than repeated in every template's tool list.
+    Chunk: docs/chunks/hooks_lifecycle_fragments - Universal VE hook wiring -#}
+{%- set tools = (allowed_tools or []) + ["Bash(ve hooks show:*)"] -%}
 ---
 name: {{ name }}
 description: {{ description }}
-{% if allowed_tools %}allowed-tools: {{ allowed_tools | join(", ") }}
-{% endif %}---
+allowed-tools: {{ tools | join(", ") }}
+---
 {%- endmacro -%}
 
 {#- Chunk: docs/chunks/dualplugin_cursor_render - Agent (subagent) frontmatter.
@@ -58,12 +63,13 @@ tools: {{ tools | join(", ") }}
 {%- macro probe_intro() -%}
 {%- endmacro -%}
 
-{%- macro canonical_preamble() -%}
+{%- macro canonical_preamble(command_name) -%}
 ## Context
 {{ probe_intro() }}
 {{ probe("ve CLI", 've --help >/dev/null 2>&1 && echo "installed" || echo "(ve CLI not found)"') }}
 {{ probe("Task workspace", 'cat .ve-task.yaml 2>/dev/null || cat ../.ve-task.yaml 2>/dev/null || echo "(not a task workspace)"') }}
 {{ probe("Project config", 'cat .ve-config.yaml 2>/dev/null || echo "(no .ve-config.yaml — defaults apply)"') }}
+{{ probe("Project hook", 've hooks show ' ~ command_name ~ ' 2>/dev/null || echo "(no project hook)"') }}
 
 ## Runtime context
 
@@ -88,6 +94,13 @@ Interpret the context above before following the instructions:
   Known keys: `cluster_subsystem_threshold` (default 5 — the cluster size
   at which to suggest subsystem documentation). When the context shows
   "(no .ve-config.yaml — defaults apply)", use the defaults.
+- **Project hook**: `docs/hooks/{{ command_name }}.md` holds this repository's
+  own requirements for this command. When the context shows hook content,
+  treat it as a binding instruction from the operator: satisfy it before
+  reporting this command complete, and say so when you do. When it shows
+  "(no project hook)", there are none. If a hook contradicts this command's
+  own instructions, do not silently choose — surface the conflict to the
+  operator and ask.
 {%- if caller %}
 {{ caller() }}
 {%- endif %}

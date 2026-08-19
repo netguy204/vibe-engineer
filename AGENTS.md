@@ -51,6 +51,7 @@ VE supports additional artifact types. When you encounter these situations, read
 - **Investigations** (`docs/investigations/`) - Exploratory documents for understanding before acting. See: `docs/trunk/ARTIFACTS.md#investigations`
 - **Subsystems** (`docs/subsystems/`) - Emergent architectural patterns. See: `docs/trunk/ARTIFACTS.md#subsystems`
 - **Friction Log** (`docs/trunk/FRICTION.md`) - Accumulative ledger for pain points. See: `docs/trunk/ARTIFACTS.md#friction-log`
+- **VE Hooks** (`docs/hooks/`) - This project's own requirements for a specific lifecycle command, named `docs/hooks/<command-name>.md` and loaded into that command's context when it runs. If the directory exists, read the file matching the command you are running and treat its content as binding. See: `docs/trunk/ARTIFACTS.md#hooks`
 - **External Artifacts** (`external.yaml` files) - Cross-repository artifact pointers. See: `docs/trunk/EXTERNAL.md`
 - **Orchestrator** (`ve orch`) - Parallel chunk execution across worktrees. See: `docs/trunk/ORCHESTRATOR.md`
 

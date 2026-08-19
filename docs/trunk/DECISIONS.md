@@ -621,3 +621,93 @@ place, and a real `.claude/skills/` directory ve does not own is never
 replaced. This fully reverses, for opted-in projects, DEC-010's narrowing of
 non-Claude harnesses to "the AGENTS.md pointer only"; the plugin remains the
 default for Claude users.
+
+
+### DEC-016: VE hooks are advisory prompt injection, not enforced execution
+
+**Date**: 2026-07-22
+
+**Status**: ACCEPTED
+
+**Decision**: A project customizes a VE lifecycle command by writing
+`docs/hooks/<command-name>.md`. Every plugin command carries a
+`` !`ve hooks show <command-name> 2>/dev/null || echo "(no project hook)"` `` line
+in its canonical context block, so the fragment's body is injected into the
+agent's prompt when that command runs. The `2>/dev/null || echo` guard keeps the
+line benign on a CLI predating the `hooks` command (DEC-011 permits that skew),
+where the subcommand would otherwise emit a usage error into the context block.
+Hooks are **advisory**: the runtime-context bullet instructs the agent to treat
+the content as a binding operator requirement and to surface conflicts with the
+command's own instructions, but nothing verifies compliance. Wiring is universal
+— every plugin skill in `skills/*/SKILL.md` carries the line, so the set of valid
+hook events is exactly the set of command names. The fragment format is optional YAML
+frontmatter plus a Markdown body; no frontmatter key is meaningful today, but
+frontmatter is parsed rather than skipped so that a future enforced-check key
+(`checks:`, shell commands that must pass) is an additive change to an existing
+format rather than a migration of every operator's hook files.
+
+**Context**: VE's lifecycle has natural inflection points, and repositories
+accumulate their own requirements at them — "did this chunk change public-facing
+documentation? If so, update it." Before this, the only place to put such a
+requirement was `CLAUDE.md`, which is loaded on every turn regardless of what the
+agent is doing. DEC-010 made plugin command files static, so a customization
+mechanism cannot be a render-time conditional; it has to be runtime context
+detection, which the `plugin_runtime_context` porting convention already
+establishes for `.ve-task.yaml` and `.ve-config.yaml`. Claude Code's own hook
+system does not fit: its events are tool calls and session lifecycle, and there
+is no event meaning "the agent is about to complete a chunk."
+
+**Alternatives Considered**:
+- *`CLAUDE.md` (no new mechanism)*: rejected — always-on content pays context
+  cost every turn and competes for attention against the whole preamble, which
+  is precisely the condition under which agents drop instructions. Scoping
+  content to its inflection point is the entire value.
+- *Enforced shell checks from the start*: rejected for now, not forever. It
+  requires deciding what failure means at each phase and where the gate lives;
+  chunk completion is agent-driven and has no state-transition command to gate
+  on. Deferred deliberately, with the frontmatter seam reserved for it.
+- *Claude Code plugin hooks*: rejected — the harness fires on tool and session
+  events, not VE lifecycle phases.
+- *A hand-picked subset of wired commands*: rejected — the wired list would have
+  to exist in Python (so `ve hooks list` and `ve validate` can flag a hook that
+  will never fire) and in N markdown files, with nothing keeping them in
+  agreement. Universal wiring makes the vocabulary self-defining.
+- *Naming it `policies`, `rules`, or `checklists`*: rejected — `policy` and
+  `rules` over-promise deterministic enforcement that does not exist until
+  `checks:` does, and `checklists` ages badly against that same future key.
+  `hooks` is what an operator guesses first and is neutral on enforcement.
+- *Deriving the known-event set from disk*: rejected — no single path holds the
+  skill files across install layouts (a wheel force-includes `skills/` as
+  `orchestrator/skills`; a source checkout has neither). A literal plus one
+  equality test is less machinery than a three-way fallback.
+
+**Rationale**: Prompt injection at the inflection point is the cheapest mechanism
+that matches how the lifecycle actually works — the phases are agent-driven, so
+the intervention has to be agent-readable. Accepting advisory semantics keeps the
+first version small enough to evaluate honestly: if hooks turn out to be ignored
+in practice, that is evidence for building enforcement, and the frontmatter seam
+means enforcement lands without breaking anyone's existing hook files.
+
+**Consequences**:
+- Hooks can be skipped by an agent. This is the central limitation, and it is
+  accepted. Hooks suit judgement-shaped asks ("check whether X needs updating"),
+  not guarantees.
+- Every command invocation runs `ve hooks show`, which in the common case stats
+  one absent path. That command must therefore always exit 0 and never raise —
+  a failure inside a context block degrades commands unrelated to hooks.
+- Adding a skill to `skills/` without the context line silently gives it no
+  hook support; `tests/test_plugin_skills.py` enforces the line, the
+  `allowed-tools` entry, and the runtime bullet on every skill file.
+- `hooks.KNOWN_EVENTS` must be updated whenever a skill is added or removed.
+- CLI and plugin version independently (DEC-011), so a hook naming a command only
+  a newer plugin ships reports as unknown. Both `ve hooks list` and `ve validate`
+  therefore warn rather than error.
+- The name collides with the repository-root `hooks/` directory holding Claude
+  Code plugin hooks. Accepted knowingly; the two are unrelated, and consuming
+  projects have no root `hooks/`.
+
+**Revisit If**: Hooks are observably ignored in practice (build `checks:`), a
+repository wants hooks that differ per task workspace or external artifact repo
+(resolution currently reads the project root only), or Claude Code grows a
+lifecycle event that maps onto VE phases directly.
+
