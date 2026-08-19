@@ -1,6 +1,8 @@
 ---
 status: STABLE
 chunks:
+- chunk_id: audit_corpus_health
+  relationship: uses
 - chunk_id: crossref_generator_verify
   relationship: uses
 - chunk_id: template_artifact_guidance

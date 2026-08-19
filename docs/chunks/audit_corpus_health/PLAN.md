@@ -337,6 +337,57 @@ What this does not establish: behavior at fan-out scale, wave commit handling,
 or whether the read-only constraint survives contact with `intent-auditor`
 (Risk 2 remains open). A full-corpus run is the operator's call.
 
+### Step 8: one wave, not the full corpus
+
+After the bounded inline run above, the skill was validated under real parallel
+fan-out: 10 concurrent sub-agents over 50 ACTIVE chunks, from a clean working
+tree. The full-corpus run (91 per-chunk batches plus 294 overlap clusters) was
+not performed, and the GOAL criterion was rewritten to describe the wave rather
+than the corpus. The reasoning: the corpus-scale run tests volume, while the
+wave tests the two things actually in doubt.
+
+**The read-only constraint held.** Across the wave, agents decided on 10 prose
+rewrites and 2 `code_paths` fixes — both actions their protocol instructs them
+to perform in place — and wrote nothing. `git status` was clean during the wave
+and after it. This was the chunk's largest open risk.
+
+The delivery caveat is recorded in the GOAL: the protocol reached the agents as
+a file they read rather than as their system prompt, and a registered
+`intent-auditor` subagent type carries "rewrite in place" with more force.
+
+**The findings were actionable, and converged.** 21 of 50 chunks clean; roughly
+12 vetoes fired, each correctly suppressing a tense rewrite over a false claim.
+Six of ten batches independently traced their findings to one root cause: the
+`commands/` -> `skills/` migration and the `CLAUDE.md.jinja2` ->
+`AGENTS.md.jinja2` rename updated `code_paths` and `ref:` fields mechanically
+and left GOAL prose and success criteria naming surfaces that no longer exist.
+
+That convergence is the design working. Independent agents with no shared
+context reaching the same root cause is what a deterministic grouping plus
+per-chunk verification is supposed to produce, and it is what an agent-built
+classification could not have produced reproducibly.
+
+**The wave found defects in the plugin's own artifacts**, which is worth
+recording because the skill depends on them:
+
+- `agents/intent-auditor.md` states SUPERSEDED "is not a valid current status",
+  contradicted by `src/models/chunk.py` and three consumers. Two batches flagged
+  it independently; one named the hazard — a future auditor could read it as
+  license to rewrite accurate status references.
+- `README.md:394` documents a `commands/` directory that no longer exists
+  (three batches, independently).
+- 7 of 392 ACTIVE chunks still carry the GOAL template's instruction block,
+  whose own text promises removal at completion.
+- Three broken `code_references` symbol anchors in `backend_parity`. `ve
+  validate` verifies declared file paths only, so nothing catches these.
+
+**A better mechanism surfaced than the one built here.** One batch proposed a
+"path named in prose but absent from disk" detector: deterministic, no agents,
+no tense heuristics, and it would have found most of the wave's findings on its
+own. Filed as its own chunk. It does not replace this skill — it removes the
+cheapest class of finding from the skill's workload so agent judgment is spent
+on redundancy and over-claim, which no detector can reach.
+
 ### Step 2: `ClusterResult` gained `cluster_scores`
 
 The GOAL's illustrative JSON shows a `score` on each similarity cluster, but

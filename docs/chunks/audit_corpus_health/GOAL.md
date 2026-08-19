@@ -1,5 +1,5 @@
 ---
-status: IMPLEMENTING
+status: ACTIVE
 ticket: null
 parent_chunk: null
 code_paths:
@@ -12,7 +12,51 @@ code_paths:
 - tests/test_plugin_skills.py
 - tests/test_plugin_render.py
 - docs/subsystems/cluster_analysis/OVERVIEW.md
-code_references: []
+code_references:
+- ref: src/cluster_analysis.py#partition_chunks
+  implements: "Whole-corpus grouping under both relations in one call; the deterministic substrate the audit fans out over"
+- ref: src/cluster_analysis.py#_code_overlap_clusters
+  implements: "Per-file overlapping cover with a fan-in ceiling, replacing connected components, which collapsed 423 of 454 chunks into one cluster"
+- ref: src/cluster_analysis.py#_chunk_reference_paths
+  implements: "File keys drawn from both code_paths and code_references, keeping the project qualifier so a cross-repo path is not the local path of the same name"
+- ref: src/cluster_analysis.py#PartitionResult
+  implements: "Both relations plus the two blind spots — unclustered chunks and skipped hub files — so a partial run cannot read as a complete one"
+- ref: src/cluster_analysis.py#OverlapCluster
+  implements: "A code-overlap cluster and the shared paths and symbols that formed it"
+- ref: src/cluster_analysis.py#SimilarityCluster
+  implements: "A content-similarity cluster carrying its cohesion score and theme"
+- ref: src/cluster_analysis.py#LOCAL_PROJECT
+  implements: "The qualifier standing for this repository, distinguishing local from cross-repo reference paths"
+- ref: src/cluster_analysis.py#cluster_chunks
+  implements: "Mean pairwise cohesion score per cluster, and a total tie-break sort so cluster order does not inherit filesystem enumeration order"
+- ref: src/cluster_analysis.py#ClusterResult
+  implements: "cluster_scores field, additive so existing constructions stay valid"
+- ref: src/cli/chunk.py#partition
+  implements: "ve chunk partition: JSON and human output, status filtering matching ve chunk list, and --fan-in-ceiling"
+- ref: src/hooks.py#KNOWN_EVENTS
+  implements: "audit-corpus registered as a hook event, keeping the literal in sync with the skill surface"
+- ref: src/templates/plugin/skills/audit-corpus.md.jinja2
+  implements: "The audit-corpus skill: four defined axes, two passes partitioned by locality, read-only sub-agent contract, and blind-spot reporting"
+- ref: skills/audit-corpus/SKILL.md
+  implements: "Rendered skill shipped in the plugin"
+- ref: tests/test_chunk_partition.py#TestCodeOverlapRelation
+  implements: "Chunks sharing a file cluster with that path as evidence; chunks sharing nothing do not; a reference-less chunk is reported rather than dropped"
+- ref: tests/test_chunk_partition.py#TestCoverNotComponents
+  implements: "Transitive sharing does not merge clusters, and a chunk spanning files appears in each — the cover semantics that replaced components"
+- ref: tests/test_chunk_partition.py#TestHubFileExclusion
+  implements: "Hub files above the ceiling generate no cluster, are reported as skipped, and their exclusion does not cost narrower genuine overlaps"
+- ref: tests/test_chunk_partition.py#TestCrossRepoReferences
+  implements: "A qualified and a local path of the same name do not cluster, while two chunks inside one foreign repository still do"
+- ref: tests/test_chunk_partition.py#TestDeterminism
+  implements: "Byte-identical repeated runs, sorted output, and identical assignment for a corpus rebuilt in reverse creation order"
+- ref: tests/test_chunk_partition.py#TestStatusFiltering
+  implements: "Scope selection matching ve chunk list, including rejection of an invalid status"
+- ref: tests/test_chunk_partition.py#TestSymbolEvidence
+  implements: "A symbol named by two chunks appears in evidence as the stronger redundancy signal"
+- ref: tests/test_plugin_skills.py#TestAuditCorpusSkill
+  implements: "The skill's load-bearing properties: four axes, partition as grouping source, delegation to ve validate and intent-auditor, the read-only rule, blind-spot reporting, workspace route, and resume"
+- ref: tests/test_plugin_render.py#TestCollectionLayout
+  implements: "Skill surface count raised to 40 as the collection gained audit-corpus"
 narrative: null
 investigation: null
 subsystems:
@@ -31,207 +75,6 @@ created_after:
 - claudemd_symlink_notice
 - template_workspace_awareness
 ---
-<!--
-╔══════════════════════════════════════════════════════════════════════════════╗
-║  DO NOT DELETE THIS COMMENT BLOCK until the chunk complete command is run.   ║
-║                                                                              ║
-║  AGENT INSTRUCTIONS: When editing this file, preserve this entire comment    ║
-║  block. Only modify the frontmatter YAML and the content sections below      ║
-║  (Minor Goal, Success Criteria, Relationship to Parent). Use targeted edits  ║
-║  that replace specific sections rather than rewriting the entire file.       ║
-╚══════════════════════════════════════════════════════════════════════════════╝
-
-This comment describes schema information that needs to be adhered
-to throughout the process.
-
-STATUS VALUES (status answers: how much of the intent does this chunk own?):
-- FUTURE: Not yet owned. Queued for later.
-- IMPLEMENTING: Being taken into ownership. At most one per worktree.
-- ACTIVE: Fully owns the intent that governs the code.
-- COMPOSITE: Shares ownership with other chunks. Must be read alongside its co-owners.
-- HISTORICAL: No longer owns intent. Kept for archaeological context.
-
-See docs/trunk/CHUNKS.md for the full principle.
-
-FUTURE CHUNK APPROVAL REQUIREMENT:
-ALL FUTURE chunks require operator approval before committing or injecting.
-After refining this GOAL.md, you MUST present it to the operator and wait for
-explicit approval. Do NOT commit or inject until the operator approves.
-This applies whether triggered by "in the background", "create a future chunk",
-or any other mechanism that creates a FUTURE chunk.
-
-COMMIT BOTH FILES: When committing a FUTURE chunk after approval, add the entire
-chunk directory (both GOAL.md and PLAN.md) to the commit, not just GOAL.md. The
-`ve chunk create` command creates both files, and leaving PLAN.md untracked will
-cause merge conflicts when the orchestrator creates a worktree for the PLAN phase.
-
-PARENT_CHUNK:
-- null for new work
-- chunk directory name (e.g., "006-segment-compaction") for corrections or modifications
-
-CODE_PATHS:
-- Populated at planning time
-- List files you expect to create or modify
-- Example: ["src/segment/writer.rs", "src/segment/format.rs"]
-
-CODE_REFERENCES:
-- Populated after implementation, before PR
-- Uses symbolic references to identify code locations
-
-- Format: {file_path}#{symbol_path} where symbol_path uses :: as nesting separator
-- Example:
-  code_references:
-    - ref: src/segment/writer.rs#SegmentWriter
-      implements: "Core write loop and buffer management"
-    - ref: src/segment/writer.rs#SegmentWriter::fsync
-      implements: "Durability guarantees"
-    - ref: src/utils.py#validate_input
-      implements: "Input validation logic"
-
-
-NARRATIVE:
-- If this chunk was derived from a narrative document, reference the narrative directory name.
-- When setting this field during /chunk-create, also update the narrative's OVERVIEW.md
-  frontmatter to add this chunk to its `chunks` array with the prompt and chunk_directory.
-- If this is the final chunk of a narrative, the narrative status should be set to COMPLETED
-  when this chunk is completed.
-
-INVESTIGATION:
-- If this chunk was derived from an investigation's proposed_chunks, reference the investigation
-  directory name (e.g., "memory_leak" for docs/investigations/memory_leak/).
-- This provides traceability from implementation work back to exploratory findings.
-- When implementing, read the referenced investigation's OVERVIEW.md for context on findings,
-  hypotheses tested, and decisions made during exploration.
-- Validated by `ve chunk validate` to ensure referenced investigations exist.
-
-
-SUBSYSTEMS:
-- Optional list of subsystem references that this chunk relates to
-- Format: subsystem_id is the subsystem directory name, relationship is "implements" or "uses"
-- "implements": This chunk directly implements part of the subsystem's functionality
-- "uses": This chunk depends on or uses the subsystem's functionality
-- Example:
-  subsystems:
-    - subsystem_id: "validation"
-      relationship: implements
-    - subsystem_id: "frontmatter"
-      relationship: uses
-- Validated by `ve chunk validate` to ensure referenced subsystems exist
-- When a chunk that implements a subsystem is completed, a reference should be added to
-  that chunk in the subsystems OVERVIEW.md file front matter and relevant section.
-
-FRICTION_ENTRIES:
-- Optional list of friction entries that this chunk addresses
-- Provides "why did we do this work?" traceability from implementation back to accumulated pain points
-- Format: entry_id is the friction entry ID (e.g., "F001"), scope is "full" or "partial"
-  - "full": This chunk fully resolves the friction entry
-  - "partial": This chunk partially addresses the friction entry
-- When to populate: During /chunk-create if this chunk addresses known friction from FRICTION.md
-- Example:
-  friction_entries:
-    - entry_id: F001
-      scope: full
-    - entry_id: F003
-      scope: partial
-- Validated by `ve chunk validate` to ensure referenced friction entries exist in FRICTION.md
-- When a chunk addresses friction entries and is completed, those entries are considered RESOLVED
-
-CHUNK ARTIFACTS:
-- Single-use scripts, migration tools, or one-time utilities created for this chunk
-  should be stored in the chunk directory (e.g., docs/chunks/foo/migrate.py)
-- These artifacts help future archaeologists understand what the chunk did
-- Unlike code in src/, chunk artifacts are not expected to be maintained long-term
-- Examples: data migration scripts, one-time fixups, analysis tools used during implementation
-
-CREATED_AFTER:
-- Auto-populated by `ve chunk create` - DO NOT MODIFY manually
-- Lists the "tips" of the chunk DAG at creation time (chunks with no dependents yet)
-- Tips must be ACTIVE chunks (shipped work that has been merged)
-- Example: created_after: ["auth_refactor", "api_cleanup"]
-
-IMPORTANT - created_after is NOT implementation dependencies:
-- created_after tracks CAUSAL ORDERING (what work existed when this chunk was created)
-- It does NOT mean "chunks that must be implemented before this one can work"
-- FUTURE chunks can NEVER be tips (they haven't shipped yet)
-
-COMMON MISTAKE: Setting created_after to reference FUTURE chunks because they
-represent design dependencies. This is WRONG. If chunk B conceptually depends on
-chunk A's implementation, but A is still FUTURE, B's created_after should still
-reference the current ACTIVE tips, not A.
-
-WHERE TO TRACK IMPLEMENTATION DEPENDENCIES:
-- Investigation proposed_chunks ordering (earlier = implement first)
-- Narrative chunk sequencing in OVERVIEW.md
-- Design documents describing the intended build order
-- The `created_after` field will naturally reflect this once chunks ship
-
-DEPENDS_ON:
-- Declares explicit implementation dependencies that affect orchestrator scheduling
-- Format: list of chunk directory name strings, or null
-- Default: [] (empty list - explicitly no dependencies)
-
-VALUE SEMANTICS (how the orchestrator interprets this field):
-
-| Value             | Meaning                              | Oracle behavior   |
-|-------------------|--------------------------------------|-------------------|
-| `null` or omitted | "I don't know my dependencies"       | Consult oracle    |
-| `[]` (empty list) | "I explicitly have no dependencies"  | Bypass oracle     |
-| `["chunk_a"]`     | "I depend on these specific chunks"  | Bypass oracle     |
-
-CRITICAL: The default `[]` means "I have analyzed this chunk and it has no dependencies."
-This is an explicit assertion, not a placeholder. If you haven't analyzed dependencies yet,
-change the value to `null` (or remove the field entirely) to trigger oracle consultation.
-
-WHEN TO USE EACH VALUE:
-- Use `[]` when you have analyzed the chunk and determined it has no implementation dependencies
-  on other chunks in the same batch. This tells the orchestrator to skip conflict detection.
-- Use `null` when you haven't analyzed dependencies yet and want the orchestrator's conflict
-  oracle to determine if this chunk conflicts with others.
-- Use `["chunk_a", "chunk_b"]` when you know specific chunks must complete before this one.
-
-WHY THIS MATTERS:
-The orchestrator's conflict oracle adds latency and cost to detect potential conflicts.
-When you declare `[]`, you're asserting independence and enabling the orchestrator to
-schedule immediately. When you declare `null`, you're requesting conflict analysis.
-
-PURPOSE AND BEHAVIOR:
-- When a list is provided (empty or not), the orchestrator uses it directly for scheduling
-- When null, the orchestrator consults its conflict oracle to detect dependencies heuristically
-- Dependencies express order within a single injection batch (intra-batch scheduling)
-- The chunks listed in depends_on will be scheduled to complete before this chunk starts
-
-CONTRAST WITH created_after:
-- `created_after` tracks CAUSAL ORDERING (what work existed when this chunk was created)
-- `depends_on` tracks IMPLEMENTATION DEPENDENCIES (what must complete before this chunk runs)
-- `created_after` is auto-populated at creation time and should NOT be modified manually
-- `depends_on` is agent-populated based on design requirements and may be edited
-
-WHEN TO DECLARE EXPLICIT DEPENDENCIES:
-- When you know chunk B requires chunk A's implementation to exist before B can work
-- When the conflict oracle would otherwise miss a subtle dependency
-- When you want to enforce a specific execution order within a batch injection
-- When a narrative or investigation explicitly defines chunk sequencing
-
-EXAMPLE:
-  # Chunk has no dependencies (explicit assertion - bypasses oracle)
-  depends_on: []
-
-  # Chunk dependencies unknown (triggers oracle consultation)
-  depends_on: null
-
-  # Chunk B depends on chunk A completing first
-  depends_on: ["auth_api"]
-
-  # Chunk C depends on both A and B completing first
-  depends_on: ["auth_api", "auth_client"]
-
-VALIDATION:
-- `null` is valid and triggers oracle consultation
-- `[]` is valid and means "explicitly no dependencies" (bypasses oracle)
-- Referenced chunks should exist in docs/chunks/ (warning if not found)
-- Circular dependencies will be detected at injection time
-- Dependencies on ACTIVE chunks are allowed (they've already completed)
--->
 
 # Chunk Goal
 
@@ -363,9 +206,20 @@ detection criteria.
 - Redundancy findings name the resolution the operator would run
   (`ve chunk status`, `ve narrative create`, `ve chunk cluster-rename`) rather
   than describing the problem abstractly.
-- The skill is validated end-to-end against this repository's own corpus — 451
-  chunks at the time of writing, 391 of them ACTIVE — and the run produces
-  findings a reader can act on without re-reading the chunks themselves.
+- The skill is validated against this repository's own corpus under parallel
+  fan-out: a wave of 10 concurrent sub-agents over 50 ACTIVE chunks produces
+  findings a reader can act on without re-reading the chunks themselves, and
+  leaves the working tree unmodified. The second half is the load-bearing one.
+  `intent-auditor` rewrites by default, so the read-only constraint is an
+  instruction fighting the agent's own protocol; a wave in which agents decide
+  on rewrites and `code_paths` fixes and still write nothing is what makes the
+  skill safe to point at a corpus its operator did not author.
+
+  Known limitation, recorded because it bounds what that run proves: the
+  validation delivered the audit protocol to the sub-agents as a file they
+  read, not as their system prompt. A registered `intent-auditor` subagent
+  type carries "rewrite the prose in place" with more force than a file does.
+  The constraint has not been tested under that delivery.
 
 ### Whole-repo hygiene
 
