@@ -26,6 +26,14 @@ HOOK_SCRIPT = REPO_ROOT / "hooks" / "session_start.sh"
 HOOKS_MANIFEST = REPO_ROOT / "hooks" / "hooks.json"
 PLUGIN_MANIFEST = REPO_ROOT / ".claude-plugin" / "plugin.json"
 
+# Chunk: docs/chunks/dualplugin_cursor_scaffold - DEC-014 extends DEC-011's
+# co-versioning from two artifacts to three. Every manifest a plugin manager
+# keys update detection on must move with the package version.
+CO_VERSIONED_MANIFESTS = {
+    ".claude-plugin/plugin.json": REPO_ROOT / ".claude-plugin" / "plugin.json",
+    ".cursor-plugin/plugin.json": REPO_ROOT / ".cursor-plugin" / "plugin.json",
+}
+
 # A PATH that provides standard shell utilities but no `ve` binary.
 # ve is distributed via uv tool / pip user installs, never in /usr/bin or /bin.
 BARE_PATH = "/usr/bin:/bin"
@@ -408,8 +416,39 @@ class TestVersionSource:
         assert result.output.startswith("ve")
 
     def test_plugin_and_package_versions_are_coupled(self):
-        """DEC-011: plugin.json version equals the pyproject.toml version."""
+        """DEC-011, extended by DEC-014: every plugin manifest's version equals
+        the pyproject.toml version.
+
+        Plugin managers key update detection on the manifest version, so a
+        manifest left behind at a release means that ecosystem's users are
+        never offered the update — and nothing else would tell them. Naming
+        the drifting file matters: with three manifests, "versions disagree"
+        is not enough to act on.
+        """
         pyproject = (REPO_ROOT / "pyproject.toml").read_text()
         match = re.search(r'^version = "([^"]+)"', pyproject, re.MULTILINE)
         assert match, "pyproject.toml must declare a version"
-        assert PLUGIN_VERSION == match.group(1)
+        package_version = match.group(1)
+
+        drifted = {
+            label: json.loads(path.read_text()).get("version")
+            for label, path in CO_VERSIONED_MANIFESTS.items()
+            if json.loads(path.read_text()).get("version") != package_version
+        }
+        assert not drifted, (
+            f"pyproject.toml is {package_version}; these manifests disagree: "
+            f"{drifted}. Bump every co-versioned manifest together (DEC-014)."
+        )
+
+    def test_every_shipped_plugin_manifest_is_co_versioned(self):
+        """The co-versioning set must not silently fall behind the repo. A
+        fourth ecosystem added without joining the set would drift unnoticed,
+        which is exactly the failure DEC-014 exists to prevent."""
+        shipped = {
+            f"{path.parent.name}/{path.name}"
+            for path in REPO_ROOT.glob("*-plugin/plugin.json")
+        }
+        assert shipped == set(CO_VERSIONED_MANIFESTS), (
+            "a plugin manifest exists that is not co-versioned: "
+            f"{sorted(shipped ^ set(CO_VERSIONED_MANIFESTS))}"
+        )

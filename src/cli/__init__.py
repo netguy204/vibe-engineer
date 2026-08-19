@@ -52,6 +52,8 @@ from cli.exists_cmd import exists
 from cli.deletion import deletion
 # Chunk: docs/chunks/crossref_refactor_move - `ve refactor move` evidence-backed rename propagation
 from cli.refactor import refactor
+# Chunk: docs/chunks/plugin_local_skills - `ve skills` opt-in local reification
+from cli.skills import skills
 
 # Add top-level commands
 cli.add_command(init)
@@ -80,6 +82,7 @@ cli.add_command(config)
 cli.add_command(hooks)
 cli.add_command(deletion)
 cli.add_command(refactor)
+cli.add_command(skills)
 
 # Chunk: docs/chunks/federation_tree_discovery - Resolve --project-dir to the nearest enclosing VE tree
 # KEEP THIS LAST: the installer walks the command tree as it exists when called,

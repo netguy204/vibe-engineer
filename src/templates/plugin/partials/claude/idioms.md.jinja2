@@ -5,14 +5,19 @@ Chunk: docs/chunks/dualplugin_template_source - Flavor-substitutable editor idio
 
 This file is the Claude half of the flavor-substitution interface: command
 templates import it as `{% import "partials/" ~ flavor ~ "/idioms.md.jinja2"
-as idioms %}`. A Cursor flavor (partials/cursor/idioms.md.jinja2, added by
-dualplugin_cursor_scaffold) must implement the same macro signatures:
+as idioms %}`. The Cursor flavor (partials/cursor/idioms.md.jinja2, added by
+dualplugin_cursor_scaffold) implements the same macro signatures:
 
   frontmatter(name, description, allowed_tools=None)
+  agent_frontmatter(name, description, tools)
   generated_marker(source_template)
   probe(label, command)
+  probe_intro()                  -- framing for an ad-hoc probe block
   canonical_preamble(command_name)  -- task guidance via {% call %} body
   plugin_root()
+  arguments()                    -- where the operator's request lands
+  arguments_ref()                -- inline prose reference to that request
+  arguments_token(placeholder)   -- the request embedded in a command
 
 All macros emit content WITHOUT a trailing newline; the calling template owns
 line structure.
@@ -30,6 +35,18 @@ allowed-tools: {{ tools | join(", ") }}
 ---
 {%- endmacro -%}
 
+{#- Chunk: docs/chunks/dualplugin_cursor_render - Agent (subagent) frontmatter.
+    Claude Code agents carry a `tools` list naming the tools the subagent may
+    use. Cursor's agent format is name + description, so its half of this
+    macro drops the list. -#}
+{%- macro agent_frontmatter(name, description, tools) -%}
+---
+name: {{ name }}
+description: {{ description }}
+tools: {{ tools | join(", ") }}
+---
+{%- endmacro -%}
+
 {%- macro generated_marker(source_template) -%}
 <!-- GENERATED from {{ source_template }} — edit that template and run `ve plugin render`; direct edits here will be overwritten. -->
 {%- endmacro -%}
@@ -38,9 +55,17 @@ allowed-tools: {{ tools | join(", ") }}
 - {{ label }}: !`{{ command }}`
 {%- endmacro -%}
 
+{#- Chunk: docs/chunks/dualplugin_cursor_scaffold - probe_intro is empty under
+    Claude: the harness substitutes each !`command` before the model reads
+    the file, so there is nothing to instruct it to run. The macro exists so
+    templates that build an ad-hoc probe block can carry the framing Cursor
+    needs without either flavor's body diverging. -#}
+{%- macro probe_intro() -%}
+{%- endmacro -%}
+
 {%- macro canonical_preamble(command_name) -%}
 ## Context
-
+{{ probe_intro() }}
 {{ probe("ve CLI", 've --help >/dev/null 2>&1 && echo "installed" || echo "(ve CLI not found)"') }}
 {{ probe("Task workspace", 'cat .ve-task.yaml 2>/dev/null || cat ../.ve-task.yaml 2>/dev/null || echo "(not a task workspace)"') }}
 {{ probe("Project config", 'cat .ve-config.yaml 2>/dev/null || echo "(no .ve-config.yaml — defaults apply)"') }}
@@ -83,4 +108,28 @@ Interpret the context above before following the instructions:
 
 {%- macro plugin_root() -%}
 ${CLAUDE_PLUGIN_ROOT}
+{%- endmacro -%}
+
+{#- Chunk: docs/chunks/dualplugin_cursor_scaffold - $ARGUMENTS is a Claude Code
+    slash-command placeholder: the harness substitutes the operator's argument
+    text before the model reads the file. Nothing substitutes it elsewhere, so
+    the literal token must not leak into another flavor's render. -#}
+{%- macro arguments() -%}
+$ARGUMENTS
+{%- endmacro -%}
+
+{#- Chunk: docs/chunks/dualplugin_cursor_render - Inline prose reference to
+    the operator's argument text ("Interpret `$ARGUMENTS`:"). Emits its own
+    backticks; the Cursor half emits a plain noun phrase instead. -#}
+{%- macro arguments_ref() -%}
+`$ARGUMENTS`
+{%- endmacro -%}
+
+{#- Chunk: docs/chunks/dualplugin_cursor_render - The operator's argument
+    text embedded inside a command (`ve orch work-unit show $ARGUMENTS`).
+    Under Claude the harness substitutes the real value before the model
+    reads the file, so the token itself is emitted; the Cursor half emits
+    the caller's placeholder for the agent to substitute. -#}
+{%- macro arguments_token(placeholder) -%}
+$ARGUMENTS
 {%- endmacro -%}

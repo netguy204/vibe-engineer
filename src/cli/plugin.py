@@ -25,24 +25,27 @@ def plugin():
 @click.option(
     "--flavor",
     type=click.Choice(plugin_render.FLAVORS),
-    default="claude",
+    default=plugin_render.DEFAULT_FLAVOR,
     show_default=True,
     help="Editor flavor to render.",
 )
 def render(flavor: str) -> None:
     """Render src/templates/plugin/ into the committed plugin files.
 
-    Renders every template in the plugin collection (skills/ and agents/).
-    Run from the root of the plugin source repository after
+    Renders the plugin collection (skills/ and agents/) in the chosen editor
+    flavor: the claude flavor into the repo root, the cursor flavor into
+    .cursor-plugin/. Run from the root of the plugin source repository after
     editing a template; commit the regenerated files. The drift test
     (tests/test_plugin_render.py) fails until committed renders match the
     templates.
     """
     repo_root = pathlib.Path.cwd()
-    if not plugin_render.is_plugin_source_repo(repo_root):
+    # Chunk: docs/chunks/dualplugin_cursor_scaffold - Guard per flavor, since
+    # each flavor has its own manifest and its own output tree.
+    if not plugin_render.is_plugin_source_repo(repo_root, flavor):
         raise click.ClickException(
-            "not a plugin source repository: "
-            f"{plugin_render.PLUGIN_MANIFEST_RELPATH} not found under "
+            f"not a {flavor} plugin source repository: "
+            f"{plugin_render.flavor_manifest_relpath(flavor)} not found under "
             f"{repo_root}. `ve plugin render` regenerates the committed "
             "plugin files and only runs in the repo that ships the plugin."
         )

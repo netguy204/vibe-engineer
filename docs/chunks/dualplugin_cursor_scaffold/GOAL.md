@@ -1,263 +1,151 @@
 ---
-status: FUTURE
+status: ACTIVE
 ticket: null
 parent_chunk: null
-code_paths: []
-code_references: []
+code_paths:
+- .cursor-plugin/plugin.json
+- .cursor-plugin/marketplace.json
+- .cursor-plugin/skills/ve-status/SKILL.md
+- .cursor-plugin/skills/chunk-create/SKILL.md
+- src/plugin_render.py
+- src/cli/plugin.py
+- src/templates/plugin/partials/cursor/idioms.md.jinja2
+- tests/test_cursor_manifest.py
+- tests/test_plugin_render.py
+- tests/test_session_hook.py
+- tests/fixtures/cursor_plugin_schemas/plugin.schema.json
+- tests/fixtures/cursor_plugin_schemas/marketplace.schema.json
+- docs/trunk/DECISIONS.md
+- pyproject.toml
+code_references:
+- ref: .cursor-plugin/plugin.json
+  implements: Cursor plugin manifest; explicit skills/agents/hooks paths override
+    folder discovery so Cursor never reads the Claude build product
+- ref: .cursor-plugin/marketplace.json
+  implements: Single-entry marketplace pointing at the repo root, mirroring .claude-plugin/marketplace.json
+- ref: .cursor-plugin/README.md
+  implements: 'Rationale the JSON manifests cannot carry: why the component paths
+    are explicit and hooks is empty'
+- ref: .cursor-plugin/skills/ve-status/SKILL.md
+  implements: Cursor pilot render (ad-hoc probe block path)
+- ref: .cursor-plugin/skills/chunk-create/SKILL.md
+  implements: Cursor pilot render (canonical preamble and arguments-idiom path)
+- ref: src/templates/plugin/partials/cursor/idioms.md.jinja2
+  implements: 'Cursor half of the flavor-substitution interface: probes become agent-run
+    instructions, allowed-tools dropped, $ARGUMENTS mapped'
+- ref: src/templates/plugin/partials/claude/idioms.md.jinja2
+  implements: Claude half extended with probe_intro and arguments macros so both flavors
+    share one interface
+- ref: src/plugin_render.py#FLAVOR_MANIFESTS
+  implements: 'Per-flavor render-target guard: each flavor keys on its own plugin
+    manifest'
+- ref: src/plugin_render.py#FLAVOR_OUTPUT_ROOTS
+  implements: Cursor renders to .cursor-plugin/ so the two flavors never write the
+    same file
+- ref: src/plugin_render.py#FLAVOR_TEMPLATE_SUBSETS
+  implements: Cursor pilot scope boundary; dualplugin_cursor_render removes it
+- ref: src/plugin_render.py#templates_for_flavor
+  implements: Template selection per flavor
+- ref: src/plugin_render.py#output_path
+  implements: Flavor-aware mapping from template name to committed render path
+- ref: src/plugin_render.py#flavor_manifest_relpath
+  implements: Manifest lookup used by the render-target guard and its error message
+- ref: src/plugin_render.py#is_plugin_source_repo
+  implements: Refuses to scaffold a flavor's tree into a repo that does not ship that
+    flavor
+- ref: src/cli/plugin.py#render
+  implements: '`ve plugin render --flavor cursor` entry point and per-flavor guard
+    message'
+- ref: tests/test_cursor_manifest.py#TestDiscoveryCollision
+  implements: 'Success criterion: manifests steer Cursor away from Claude content;
+    guards the explicit-path overrides'
+- ref: tests/test_cursor_manifest.py#TestPluginManifest
+  implements: 'Success criterion: manifests validate against the current cursor/plugins
+    spec'
+- ref: tests/test_cursor_manifest.py#TestPilotRender
+  implements: 'Success criterion: pilot renders carry no Jinja2 residue and no Claude-only
+    idioms'
+- ref: tests/test_plugin_render.py#TestCursorDrift
+  implements: Committed Cursor renders stay in lockstep with their templates
+- ref: tests/test_plugin_render.py#TestCursorScope
+  implements: The Cursor pilot boundary is explicit and its entries name real templates
+- ref: tests/test_session_hook.py#TestVersionSource::test_plugin_and_package_versions_are_coupled
+  implements: 'Success criterion: version equality across all three manifests, naming
+    whichever drifts'
+- ref: tests/test_session_hook.py#TestVersionSource::test_every_shipped_plugin_manifest_is_co_versioned
+  implements: A fourth ecosystem cannot ship a manifest without joining the co-versioning
+    policy
+- ref: tests/fixtures/cursor_plugin_schemas/PROVENANCE.md
+  implements: Provenance and refresh instructions for the vendored upstream Cursor
+    schemas
 narrative: cursor_plugin_port
 investigation: null
 subsystems: []
 friction_entries: []
-depends_on: ["dualplugin_template_source"]
-created_after: ["plugin_hook_cli_bootstrap"]
+depends_on:
+- dualplugin_template_source
+created_after:
+- plugin_hook_cli_bootstrap
 ---
-
-<!--
-╔══════════════════════════════════════════════════════════════════════════════╗
-║  DO NOT DELETE THIS COMMENT BLOCK until the chunk complete command is run.   ║
-║                                                                              ║
-║  AGENT INSTRUCTIONS: When editing this file, preserve this entire comment    ║
-║  block. Only modify the frontmatter YAML and the content sections below      ║
-║  (Minor Goal, Success Criteria, Relationship to Parent). Use targeted edits  ║
-║  that replace specific sections rather than rewriting the entire file.       ║
-╚══════════════════════════════════════════════════════════════════════════════╝
-
-This comment describes schema information that needs to be adhered
-to throughout the process.
-
-STATUS VALUES (status answers: how much of the intent does this chunk own?):
-- FUTURE: Not yet owned. Queued for later.
-- IMPLEMENTING: Being taken into ownership. At most one per worktree.
-- ACTIVE: Fully owns the intent that governs the code.
-- COMPOSITE: Shares ownership with other chunks. Must be read alongside its co-owners.
-- HISTORICAL: No longer owns intent. Kept for archaeological context.
-
-See docs/trunk/CHUNKS.md for the full principle.
-
-FUTURE CHUNK APPROVAL REQUIREMENT:
-ALL FUTURE chunks require operator approval before committing or injecting.
-After refining this GOAL.md, you MUST present it to the operator and wait for
-explicit approval. Do NOT commit or inject until the operator approves.
-This applies whether triggered by "in the background", "create a future chunk",
-or any other mechanism that creates a FUTURE chunk.
-
-COMMIT BOTH FILES: When committing a FUTURE chunk after approval, add the entire
-chunk directory (both GOAL.md and PLAN.md) to the commit, not just GOAL.md. The
-`ve chunk create` command creates both files, and leaving PLAN.md untracked will
-cause merge conflicts when the orchestrator creates a worktree for the PLAN phase.
-
-PARENT_CHUNK:
-- null for new work
-- chunk directory name (e.g., "006-segment-compaction") for corrections or modifications
-
-CODE_PATHS:
-- Populated at planning time
-- List files you expect to create or modify
-- Example: ["src/segment/writer.rs", "src/segment/format.rs"]
-
-CODE_REFERENCES:
-- Populated after implementation, before PR
-- Uses symbolic references to identify code locations
-
-- Format: {file_path}#{symbol_path} where symbol_path uses :: as nesting separator
-- Example:
-  code_references:
-    - ref: src/segment/writer.rs#SegmentWriter
-      implements: "Core write loop and buffer management"
-    - ref: src/segment/writer.rs#SegmentWriter::fsync
-      implements: "Durability guarantees"
-    - ref: src/utils.py#validate_input
-      implements: "Input validation logic"
-
-
-NARRATIVE:
-- If this chunk was derived from a narrative document, reference the narrative directory name.
-- When setting this field during /chunk-create, also update the narrative's OVERVIEW.md
-  frontmatter to add this chunk to its `chunks` array with the prompt and chunk_directory.
-- If this is the final chunk of a narrative, the narrative status should be set to COMPLETED
-  when this chunk is completed.
-
-INVESTIGATION:
-- If this chunk was derived from an investigation's proposed_chunks, reference the investigation
-  directory name (e.g., "memory_leak" for docs/investigations/memory_leak/).
-- This provides traceability from implementation work back to exploratory findings.
-- When implementing, read the referenced investigation's OVERVIEW.md for context on findings,
-  hypotheses tested, and decisions made during exploration.
-- Validated by `ve chunk validate` to ensure referenced investigations exist.
-
-
-SUBSYSTEMS:
-- Optional list of subsystem references that this chunk relates to
-- Format: subsystem_id is the subsystem directory name, relationship is "implements" or "uses"
-- "implements": This chunk directly implements part of the subsystem's functionality
-- "uses": This chunk depends on or uses the subsystem's functionality
-- Example:
-  subsystems:
-    - subsystem_id: "validation"
-      relationship: implements
-    - subsystem_id: "frontmatter"
-      relationship: uses
-- Validated by `ve chunk validate` to ensure referenced subsystems exist
-- When a chunk that implements a subsystem is completed, a reference should be added to
-  that chunk in the subsystems OVERVIEW.md file front matter and relevant section.
-
-FRICTION_ENTRIES:
-- Optional list of friction entries that this chunk addresses
-- Provides "why did we do this work?" traceability from implementation back to accumulated pain points
-- Format: entry_id is the friction entry ID (e.g., "F001"), scope is "full" or "partial"
-  - "full": This chunk fully resolves the friction entry
-  - "partial": This chunk partially addresses the friction entry
-- When to populate: During /chunk-create if this chunk addresses known friction from FRICTION.md
-- Example:
-  friction_entries:
-    - entry_id: F001
-      scope: full
-    - entry_id: F003
-      scope: partial
-- Validated by `ve chunk validate` to ensure referenced friction entries exist in FRICTION.md
-- When a chunk addresses friction entries and is completed, those entries are considered RESOLVED
-
-CHUNK ARTIFACTS:
-- Single-use scripts, migration tools, or one-time utilities created for this chunk
-  should be stored in the chunk directory (e.g., docs/chunks/foo/migrate.py)
-- These artifacts help future archaeologists understand what the chunk did
-- Unlike code in src/, chunk artifacts are not expected to be maintained long-term
-- Examples: data migration scripts, one-time fixups, analysis tools used during implementation
-
-CREATED_AFTER:
-- Auto-populated by `ve chunk create` - DO NOT MODIFY manually
-- Lists the "tips" of the chunk DAG at creation time (chunks with no dependents yet)
-- Tips must be ACTIVE chunks (shipped work that has been merged)
-- Example: created_after: ["auth_refactor", "api_cleanup"]
-
-IMPORTANT - created_after is NOT implementation dependencies:
-- created_after tracks CAUSAL ORDERING (what work existed when this chunk was created)
-- It does NOT mean "chunks that must be implemented before this one can work"
-- FUTURE chunks can NEVER be tips (they haven't shipped yet)
-
-COMMON MISTAKE: Setting created_after to reference FUTURE chunks because they
-represent design dependencies. This is WRONG. If chunk B conceptually depends on
-chunk A's implementation, but A is still FUTURE, B's created_after should still
-reference the current ACTIVE tips, not A.
-
-WHERE TO TRACK IMPLEMENTATION DEPENDENCIES:
-- Investigation proposed_chunks ordering (earlier = implement first)
-- Narrative chunk sequencing in OVERVIEW.md
-- Design documents describing the intended build order
-- The `created_after` field will naturally reflect this once chunks ship
-
-DEPENDS_ON:
-- Declares explicit implementation dependencies that affect orchestrator scheduling
-- Format: list of chunk directory name strings, or null
-- Default: [] (empty list - explicitly no dependencies)
-
-VALUE SEMANTICS (how the orchestrator interprets this field):
-
-| Value             | Meaning                              | Oracle behavior   |
-|-------------------|--------------------------------------|-------------------|
-| `null` or omitted | "I don't know my dependencies"       | Consult oracle    |
-| `[]` (empty list) | "I explicitly have no dependencies"  | Bypass oracle     |
-| `["chunk_a"]`     | "I depend on these specific chunks"  | Bypass oracle     |
-
-CRITICAL: The default `[]` means "I have analyzed this chunk and it has no dependencies."
-This is an explicit assertion, not a placeholder. If you haven't analyzed dependencies yet,
-change the value to `null` (or remove the field entirely) to trigger oracle consultation.
-
-WHEN TO USE EACH VALUE:
-- Use `[]` when you have analyzed the chunk and determined it has no implementation dependencies
-  on other chunks in the same batch. This tells the orchestrator to skip conflict detection.
-- Use `null` when you haven't analyzed dependencies yet and want the orchestrator's conflict
-  oracle to determine if this chunk conflicts with others.
-- Use `["chunk_a", "chunk_b"]` when you know specific chunks must complete before this one.
-
-WHY THIS MATTERS:
-The orchestrator's conflict oracle adds latency and cost to detect potential conflicts.
-When you declare `[]`, you're asserting independence and enabling the orchestrator to
-schedule immediately. When you declare `null`, you're requesting conflict analysis.
-
-PURPOSE AND BEHAVIOR:
-- When a list is provided (empty or not), the orchestrator uses it directly for scheduling
-- When null, the orchestrator consults its conflict oracle to detect dependencies heuristically
-- Dependencies express order within a single injection batch (intra-batch scheduling)
-- The chunks listed in depends_on will be scheduled to complete before this chunk starts
-
-CONTRAST WITH created_after:
-- `created_after` tracks CAUSAL ORDERING (what work existed when this chunk was created)
-- `depends_on` tracks IMPLEMENTATION DEPENDENCIES (what must complete before this chunk runs)
-- `created_after` is auto-populated at creation time and should NOT be modified manually
-- `depends_on` is agent-populated based on design requirements and may be edited
-
-WHEN TO DECLARE EXPLICIT DEPENDENCIES:
-- When you know chunk B requires chunk A's implementation to exist before B can work
-- When the conflict oracle would otherwise miss a subtle dependency
-- When you want to enforce a specific execution order within a batch injection
-- When a narrative or investigation explicitly defines chunk sequencing
-
-EXAMPLE:
-  # Chunk has no dependencies (explicit assertion - bypasses oracle)
-  depends_on: []
-
-  # Chunk dependencies unknown (triggers oracle consultation)
-  depends_on: null
-
-  # Chunk B depends on chunk A completing first
-  depends_on: ["auth_api"]
-
-  # Chunk C depends on both A and B completing first
-  depends_on: ["auth_api", "auth_client"]
-
-VALIDATION:
-- `null` is valid and triggers oracle consultation
-- `[]` is valid and means "explicitly no dependencies" (bypasses oracle)
-- Referenced chunks should exist in docs/chunks/ (warning if not found)
-- Circular dependencies will be detected at injection time
-- Dependencies on ACTIVE chunks are allowed (they've already completed)
--->
 
 # Chunk Goal
 
 ## Minor Goal
 
-The repository is also a Cursor plugin: `.cursor-plugin/plugin.json` and
-`.cursor-plugin/marketplace.json` are valid per the cursor/plugins spec, and
-`ve plugin render` gains a Cursor target that renders the pilot content
-(ve-status, chunk-create) from the same templates using Cursor idiom
-partials. The dual-ecosystem decision is recorded as an ADR (DEC-014), and
-DEC-011's co-versioning extends to all three manifests — pyproject.toml,
-.claude-plugin/plugin.json, .cursor-plugin/plugin.json — test-enforced.
+The repository is also a Cursor plugin. `.cursor-plugin/plugin.json` and
+`.cursor-plugin/marketplace.json` validate against the cursor/plugins
+schemas, and `ve plugin render --flavor cursor` renders the pilot content
+(ve-status, chunk-create) from the same templates the Claude flavor uses,
+substituting Cursor idiom partials. DEC-014 records the dual-ecosystem
+decision, and DEC-011's co-versioning covers all three manifests —
+pyproject.toml, .claude-plugin/plugin.json, .cursor-plugin/plugin.json —
+test-enforced.
 
 ## Context
 
-- Cursor plugin facts (June 2026 — verify against the live spec at
-  github.com/cursor/plugins and cursor.com/docs/reference/plugins before
-  implementing): manifest `.cursor-plugin/plugin.json` (name kebab-case,
-  displayName, author, description, keywords, license, version); root
-  `.cursor-plugin/marketplace.json` for the repo; plugin components include
-  skills (skills/<name>/SKILL.md with frontmatter — the cross-agent
-  standard Cursor 2.4+ loads), commands, rules (.mdc), agents/subagents,
-  hooks, and mcp.json. Install paths: cursor.com/marketplace submission,
-  `/add-plugin` in the editor, and team marketplaces (Cursor 2.6).
-- Decide skills-vs-commands placement for our content from the spec; bias
-  toward SKILL.md skills (cross-agent standard; Cursor docs state a Claude
-  Code skill works unmodified) unless the spec makes commands the better
-  fit for slash-invocation parity.
-- Cursor idiom partials replace the Claude ones: no `!` preprocessing
-  exists in Cursor files, so the context-probe preamble becomes explicit
-  "run these probes before proceeding" instructions (same probe commands,
-  same fallback chains, same Runtime context interpretation guidance);
-  `allowed-tools` and `$CLAUDE_PLUGIN_ROOT` references are omitted or
-  mapped to Cursor equivalents.
-- Live verification checkpoint: static rendering is not sufficient — the
-  pilot must be exercised in a real Cursor session via `/add-plugin` from a
-  local checkout or a team marketplace. The implementing agent cannot drive
-  Cursor; prepare exact operator steps (add, install, run /ve-status in a
-  ve project, expected output) and treat operator confirmation as the
-  verification gate. The operator has Cursor-using colleagues for this.
-- ADR DEC-014: dual-ecosystem distribution from one template source; triple
-  co-versioning (extend the existing equality test in
-  tests/test_plugin_manifest.py / test_session_hook.py); note the release
-  consequence — plugin managers key updates to manifest versions, so all
-  three bump together (see DEC-011 and the 0.3.0 release).
+- Cursor plugin facts, verified against the live spec on 2026-08-07
+  (github.com/cursor/plugins schemas at commit `0701892`, vendored under
+  `tests/fixtures/cursor_plugin_schemas/`, plus
+  cursor.com/docs/reference/plugins): the manifest is
+  `.cursor-plugin/plugin.json`, requiring only a kebab-case `name` and
+  permitting no keys outside its documented set (`additionalProperties:
+  false`). `author` is an **object** `{name, email}`, not a string.
+  `.cursor-plugin/marketplace.json` indexes plugins in a repository.
+  Components are skills (`skills/<name>/SKILL.md`, the cross-agent
+  standard), commands, rules (`.mdc`), agents, hooks, and MCP servers.
+- Two June 2026 recollections did not survive verification and are not
+  relied on: there is no `/add-plugin` command in current Cursor (install
+  paths are the Customize page, cursor.com/marketplace, and team
+  marketplaces imported from a repository), and Cursor's client versions
+  are 3.x rather than 2.4/2.6, so the manifest declares no
+  `minClientVersions` floor rather than guess one.
+- Content ships as SKILL.md skills rather than Cursor commands: it is the
+  cross-agent standard, it matches the layout the Claude flavor already
+  uses, and Cursor's docs state a Claude Code skill loads unmodified.
+- Cursor idiom partials substitute for the Claude ones. Cursor has no `!`
+  preprocessing, so probes become explicit "run these first" instructions
+  carrying the same commands, the same fallback chains, and the same
+  Runtime context interpretation guidance — the agent runs them instead of
+  the harness. `allowed-tools` is dropped, `$CLAUDE_PLUGIN_ROOT` maps to
+  `${PLUGIN_ROOT}`, and `$ARGUMENTS` maps to a pointer at the request that
+  invoked the skill, since Cursor has no argument string to substitute.
+- Component discovery is folder-based by default, which makes this
+  repository's dual nature hazardous: its root already holds the Claude
+  build product at `skills/`, `agents/`, and `hooks/hooks.json`. The Cursor
+  manifest therefore names those component paths explicitly — a specified
+  path replaces folder discovery — so Cursor reads `.cursor-plugin/` and
+  never the Claude tree.
+- Live verification remains open. Static rendering is not sufficient; the
+  pilot must be exercised in a real Cursor session. The implementing agent
+  cannot drive Cursor, so `CURSOR_VERIFICATION.md` in this chunk directory
+  is the operator script (install, expected component inventory, both
+  skills, and the three schema-valid-but-unconfirmed behaviors to check),
+  and operator confirmation is the verification gate.
+- DEC-014 records dual-ecosystem distribution from one template source and
+  triple co-versioning, enforced by
+  `tests/test_session_hook.py::TestVersionSource`. Plugin managers key
+  update detection to manifest versions, so all three bump together (see
+  DEC-011 and the 0.3.0 release).
 
 ## Success Criteria
 
@@ -269,5 +157,14 @@ DEC-011's co-versioning extends to all three manifests — pyproject.toml,
   confirmed working in a live Cursor session (or the chunk's review
   ESCALATEs pending that confirmation rather than approving on static
   checks alone).
+
+  **Status: partially met, deliberately.** The script exists at
+  `CURSOR_VERIFICATION.md` and everything statically checkable is checked,
+  but no live Cursor session has run it. Three behaviors are schema-valid
+  and doc-consistent yet unconfirmed against a client: `"hooks": {}`
+  suppressing folder discovery, component paths pointing inside the
+  `.cursor-plugin/` dot-directory, and a marketplace entry with
+  `"source": "./"` sitting beside a `plugin.json` in the same directory.
+  Per this criterion's own terms, that is an ESCALATE, not an approval.
 - DEC-014 recorded; the version-equality test covers all three manifests
   and fails if any one drifts.

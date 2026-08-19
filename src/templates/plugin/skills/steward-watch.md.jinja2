@@ -172,8 +172,9 @@ autonomously until the agent session ends.
 2. **Multi-channel watch requires separate tasks** — if watching N channels,
    run N separate background `ve board watch` commands (or one
    `ve board watch-multi`). Restart each independently on failure.
-3. **Watch timeout does not kill the OS process** — when Claude Code's
-   background task times out (exit 144), the `ve board watch` OS process may
+3. **Watch timeout does not kill the OS process** — when {% if flavor == "claude" %}Claude Code's
+   background task times out (exit 144){% else %}the editor's
+   background task times out{% endif %}, the `ve board watch` OS process may
    continue running and reconnecting. Always `TaskStop` the previous task
    AND let the CLI's PID-based kill handle any stragglers before starting a
    new watch.

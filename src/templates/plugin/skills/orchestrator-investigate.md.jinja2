@@ -1,4 +1,5 @@
 {%- import "partials/" ~ flavor ~ "/idioms.md.jinja2" as idioms -%}
+{%- set chunk = idioms.arguments_token("<chunk>") -%}
 {{ idioms.frontmatter(
     "orchestrator-investigate",
     "Investigate and resolve a stuck orchestrator work unit. Use when a chunk is in NEEDS_ATTENTION, a background chunk failed or stalled, a merge from an orch/ branch did not land, or the operator asks why orchestrator work is not progressing.",
@@ -15,8 +16,11 @@
 This command investigates why an orchestrator work unit is stuck (typically in
 NEEDS_ATTENTION status) and guides you through resolution.
 
-**Chunk to investigate:** `$ARGUMENTS`
-
+**Chunk to investigate:** `{{ chunk }}`
+{% if flavor != "claude" %}
+(Substitute the chunk name from the operator's request for `<chunk>`
+in every command below.)
+{% endif %}
 If no chunk name is provided, first run `ve orch status` to identify
 chunks needing attention.
 
@@ -39,7 +43,7 @@ unit counts.
 ### 1.2 Check work unit details
 
 ```bash
-ve orch work-unit show $ARGUMENTS
+ve orch work-unit show {{ chunk }}
 ```
 
 Note the `status`, `phase`, `attention_reason`, and `displaced_chunk` fields.
@@ -47,7 +51,7 @@ Note the `status`, `phase`, `attention_reason`, and `displaced_chunk` fields.
 ### 1.3 Check log directory structure
 
 ```bash
-ls -la .ve/chunks/$ARGUMENTS/log/
+ls -la .ve/chunks/{{ chunk }}/log/
 ```
 
 Determine current phase by which logs exist:
@@ -59,19 +63,19 @@ Determine current phase by which logs exist:
 
 ```bash
 # Does worktree exist?
-ls -la .ve/chunks/$ARGUMENTS/worktree 2>/dev/null && echo "worktree exists" || echo "no worktree"
+ls -la .ve/chunks/{{ chunk }}/worktree 2>/dev/null && echo "worktree exists" || echo "no worktree"
 
 # Check git worktree list
-git worktree list | grep $ARGUMENTS
+git worktree list | grep {{ chunk }}
 
 # Check if branch exists
-git branch -a | grep $ARGUMENTS
+git branch -a | grep {{ chunk }}
 ```
 
 ### 1.5 Check orchestrator log for errors
 
 ```bash
-grep -i "$ARGUMENTS\|error\|failed\|merge" .ve/orchestrator.log | tail -50
+grep -i "{{ chunk }}\|error\|failed\|merge" .ve/orchestrator.log | tail -50
 ```
 
 Look for error messages that explain why the chunk is stuck.
@@ -81,9 +85,9 @@ Look for error messages that explain why the chunk is stuck.
 If logs exist, check the end of the most recent phase log:
 
 ```bash
-tail -c 20000 .ve/chunks/$ARGUMENTS/log/complete.txt 2>/dev/null || \
-tail -c 20000 .ve/chunks/$ARGUMENTS/log/implement.txt 2>/dev/null || \
-tail -c 20000 .ve/chunks/$ARGUMENTS/log/plan.txt 2>/dev/null
+tail -c 20000 .ve/chunks/{{ chunk }}/log/complete.txt 2>/dev/null || \
+tail -c 20000 .ve/chunks/{{ chunk }}/log/implement.txt 2>/dev/null || \
+tail -c 20000 .ve/chunks/{{ chunk }}/log/plan.txt 2>/dev/null
 ```
 
 Look for `ResultMessage` at the end - `subtype='success'` means the agent
@@ -141,7 +145,7 @@ or branch issue).
 
 **Symptoms:**
 - `git log` shows commits mentioning the chunk on main (creating a "merge illusion")
-- `git diff main..orch/$ARGUMENTS` shows implementation changes that aren't on main
+- `git diff main..orch/{{ chunk }}` shows implementation changes that aren't on main
 - Main has GOAL.md/PLAN.md for the chunk but not implementation code
 - Work unit may show as merged/DONE when implementation code is only on branch
 
@@ -154,13 +158,13 @@ but a later phase (REVIEW or COMPLETE) failed. This leaves implementation code o
 
 ```bash
 # Check for unmerged implementation commits on the branch
-git log --oneline orch/$ARGUMENTS ^main
+git log --oneline orch/{{ chunk }} ^main
 
 # See which files exist on branch but not main
-git diff --name-status main..orch/$ARGUMENTS
+git diff --name-status main..orch/{{ chunk }}
 
 # Verify GOAL.md exists on main but implementation doesn't
-git show main:docs/chunks/$ARGUMENTS/GOAL.md >/dev/null 2>&1 && echo "GOAL.md on main"
+git show main:docs/chunks/{{ chunk }}/GOAL.md >/dev/null 2>&1 && echo "GOAL.md on main"
 ```
 
 ### Scenario G: Systematic code bug affecting all chunks in same phase
@@ -213,7 +217,7 @@ git status
 # git stash  OR  git add . && git commit -m "..."
 
 # Attempt merge
-git merge orch/$ARGUMENTS --no-edit
+git merge orch/{{ chunk }} --no-edit
 
 # If conflicts occur, resolve them:
 # 1. Edit conflicted files to resolve
@@ -221,17 +225,17 @@ git merge orch/$ARGUMENTS --no-edit
 # 3. git commit --no-edit
 
 # Delete merged branch
-git branch -d orch/$ARGUMENTS
+git branch -d orch/{{ chunk }}
 
 # Update work unit to DONE
-ve orch work-unit status $ARGUMENTS DONE
+ve orch work-unit status {{ chunk }} DONE
 ```
 
 ### Resolution B: Resolve conflicts and merge
 
 ```bash
 # Start merge (expect conflicts)
-git merge orch/$ARGUMENTS --no-edit || echo "Conflicts expected"
+git merge orch/{{ chunk }} --no-edit || echo "Conflicts expected"
 
 # List conflicted files
 git diff --name-only --diff-filter=U
@@ -245,8 +249,8 @@ git diff --name-only --diff-filter=U
 git commit --no-edit
 
 # Cleanup
-git branch -d orch/$ARGUMENTS
-ve orch work-unit status $ARGUMENTS DONE
+git branch -d orch/{{ chunk }}
+ve orch work-unit status {{ chunk }} DONE
 ```
 
 ### Resolution C: Reset and retry
@@ -255,25 +259,25 @@ If the agent failed and you want to retry:
 
 ```bash
 # Reset work unit to allow retry
-ve orch work-unit status $ARGUMENTS READY
+ve orch work-unit status {{ chunk }} READY
 ```
 
 Or if the failure is unrecoverable, mark as needing manual intervention:
 
 ```bash
 # Delete work unit and handle manually
-ve orch work-unit delete $ARGUMENTS
+ve orch work-unit delete {{ chunk }}
 ```
 
 ### Resolution D: Recreate worktree
 
 ```bash
 # Remove corrupted worktree
-rm -rf .ve/chunks/$ARGUMENTS/worktree
+rm -rf .ve/chunks/{{ chunk }}/worktree
 git worktree prune
 
 # Reset to READY to trigger worktree recreation
-ve orch work-unit status $ARGUMENTS READY
+ve orch work-unit status {{ chunk }} READY
 ```
 
 ### Resolution E: Clean up corrupted worktree
@@ -283,10 +287,10 @@ ve orch work-unit status $ARGUMENTS READY
 git worktree prune
 
 # Remove directory if it exists
-rm -rf .ve/chunks/$ARGUMENTS/worktree
+rm -rf .ve/chunks/{{ chunk }}/worktree
 
 # Check branch state
-git branch -a | grep $ARGUMENTS
+git branch -a | grep {{ chunk }}
 
 # If branch has useful commits, merge manually (see Resolution A)
 # Otherwise, reset work unit to retry
@@ -300,11 +304,11 @@ git branch -a | grep $ARGUMENTS
 
 ```bash
 # 1. Verify the branch exists and has unmerged commits
-git branch -a | grep $ARGUMENTS
-git log --oneline orch/$ARGUMENTS ^main
+git branch -a | grep {{ chunk }}
+git log --oneline orch/{{ chunk }} ^main
 
 # 2. Merge the implementation branch to main
-git merge orch/$ARGUMENTS --no-edit
+git merge orch/{{ chunk }} --no-edit
 
 # 3. If conflicts occur, resolve them:
 #    - Edit conflicted files
@@ -312,17 +316,17 @@ git merge orch/$ARGUMENTS --no-edit
 #    - git commit --no-edit
 
 # 4. If the chunk status was wrongly set to ACTIVE, reset it
-ve chunk activate $ARGUMENTS --status IMPLEMENTING
+ve chunk activate {{ chunk }} --status IMPLEMENTING
 
 # 5. Run chunk-complete to update code_references and finalize
 # (invoke /chunk-complete skill manually)
 
 # 6. Commit the completion changes
-git add docs/chunks/$ARGUMENTS && git commit -m "Complete chunk: $ARGUMENTS"
+git add docs/chunks/{{ chunk }} && git commit -m "Complete chunk: {{ chunk }}"
 
 # 7. Clean up: delete the merged branch and mark work unit done
-git branch -d orch/$ARGUMENTS
-ve orch work-unit status $ARGUMENTS DONE
+git branch -d orch/{{ chunk }}
+ve orch work-unit status {{ chunk }} DONE
 ```
 
 ### Resolution G: Fix code bug and batch retry affected chunks
@@ -369,7 +373,7 @@ After applying resolution:
 ve orch status
 
 # Verify work unit state
-ve orch work-unit show $ARGUMENTS
+ve orch work-unit show {{ chunk }}
 
 # If merged, verify changes are on main
 git log --oneline -5
@@ -383,7 +387,7 @@ Present findings to the user:
 
 | Field | Value |
 |-------|-------|
-| **Chunk** | `$ARGUMENTS` |
+| **Chunk** | `{{ chunk }}` |
 | **Root Cause** | (describe what caused the stuck state) |
 | **Resolution** | (describe what was done to fix it) |
 | **Current Status** | (DONE / READY for retry / Deleted) |

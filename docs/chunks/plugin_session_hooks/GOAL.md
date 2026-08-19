@@ -13,7 +13,7 @@ code_references:
 - ref: hooks/hooks.json
   implements: "Registers the SessionStart hook with Claude Code, running session_start.sh via CLAUDE_PLUGIN_ROOT"
 - ref: hooks/session_start.sh
-  implements: "SessionStart hook: ve-project detection (docs/trunk/GOAL.md), one-line ve install hint, DEC-011 version-compatibility warning, current IMPLEMENTING chunk surfacing"
+  implements: "SessionStart hook: ve-project detection (docs/trunk/GOAL.md), one-line ve install hint, DEC-011 version-compatibility warning, current IMPLEMENTING chunk surfacing. Since dualplugin_lifecycle_release this script is the shared core for both editors — Cursor registers it through the JSON adapter at .cursor-plugin/hooks/session_start.sh"
 - ref: src/cli/__init__.py#cli
   implements: "ve --version flag (click version_option from installed package metadata) — the CLI-side version source for the DEC-011 compatibility check"
 - ref: tests/test_session_hook.py#TestSessionHookProjectDetection
@@ -27,7 +27,7 @@ code_references:
 - ref: tests/test_session_hook.py#TestHookRegistration
   implements: "Verifies hooks.json registers SessionStart and the hook script is executable"
 - ref: tests/test_session_hook.py#TestVersionSource
-  implements: "Verifies ve --version reports the package version and plugin.json stays co-versioned with pyproject.toml"
+  implements: "Verifies ve --version reports the package version and plugin.json stays co-versioned with pyproject.toml (DEC-011). Since dualplugin_cursor_scaffold this class also covers .cursor-plugin/plugin.json — DEC-014 extended co-versioning to all three manifests — so it is now co-owned with that chunk"
 narrative: claude_plugin_port
 investigation: null
 subsystems: []

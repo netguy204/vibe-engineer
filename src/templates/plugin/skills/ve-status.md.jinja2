@@ -9,7 +9,7 @@
 <!-- Chunk: docs/chunks/plugin_scaffold - Claude Code plugin scaffold pilot command -->
 
 ## Context
-
+{{ idioms.probe_intro() }}
 {{ idioms.probe("ve CLI", 've --help >/dev/null 2>&1 && echo "installed" || echo "(ve CLI not found)"') }}
 {{ idioms.probe("Current chunk", 've chunk list --current 2>/dev/null || ve chunk list --last-active 2>/dev/null || echo "(no active chunk)"') }}
 {{ idioms.probe("Recent chunks", 've chunk list --recent 2>/dev/null || echo "(no chunks)"') }}

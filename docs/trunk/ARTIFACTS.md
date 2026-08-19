@@ -138,7 +138,7 @@ both flag it as a warning.
 **Hooks are advisory.** They are prompt content, not enforced checks: an agent
 is instructed to satisfy them and to surface conflicts with the command's own
 instructions, but nothing verifies compliance. Use them for judgement-shaped
-requirements ("check whether X needs updating"), not for guarantees. See DEC-014.
+requirements ("check whether X needs updating"), not for guarantees. See DEC-016.
 
 **Not to be confused with Claude Code plugin hooks** (`hooks/hooks.json`,
 `hooks/session_start.sh`), which are a harness-level mechanism firing on session

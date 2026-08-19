@@ -128,6 +128,41 @@ compatible when their major.minor versions match (DEC-011). Check your CLI
 version with `ve --version`. Without uv the hook falls back to a one-line
 install hint, and outside ve projects it is silent.
 
+### Cursor Plugin
+
+The same repository is also a Cursor plugin (`.cursor-plugin/plugin.json`),
+carrying the identical workflow surface — every skill and both subagents —
+rendered in Cursor's idioms from the same template source (see DEC-014 in
+`docs/trunk/DECISIONS.md`). Ways to install it:
+
+- **Team marketplace (Import from Repo)** — the path that works for any
+  team today: on Teams/Enterprise plans, an admin opens
+  **Dashboard → Plugins → Add Marketplace** and imports
+  `https://github.com/netguy204/vibe-engineer`. Enable Auto Refresh so
+  pushes to `main` reach the team automatically; colleagues then install
+  from **Customize** in the Cursor sidebar.
+- **Cursor Marketplace**: official-marketplace listings are submitted to
+  and reviewed by the Cursor team ([cursor.com/marketplace/publish](https://cursor.com/marketplace/publish)).
+  If the plugin is listed, find it by searching under **Customize** or
+  browsing [cursor.com/marketplace](https://cursor.com/marketplace), then
+  **Install** and choose a project or user scope.
+- **Local checkout (development)**: symlink a clone into Cursor's local
+  plugins directory:
+
+  ```bash
+  ln -s /path/to/vibe-engineer ~/.cursor/plugins/local/vibe-engineer
+  ```
+
+As with Claude Code, the plugin is the workflow content and the separately
+installed `ve` CLI is the engine — install the CLI with uv/pip as described
+above. (`ve skills reify` is a Claude-Code-specific escape hatch and is not
+the Cursor path.) The plugin registers a Cursor `sessionStart` hook that is
+a thin adapter over the same session-start script Claude Code runs: same
+ve-project detection, same polite CLI bootstrap and managed-install
+boundary, same version-drift warning and current-chunk line, delivered as
+session context. Cursor does not run `sessionStart` hooks in cloud agents,
+where the plugin simply starts without the presence check.
+
 ## Usage (Building with the Vibe Engineering workflow)
 
 
@@ -239,7 +274,7 @@ A repository can attach its own requirements to a lifecycle command by writing
 saying "if this chunk changed public-facing docs, update them." The matching
 command loads that file into its context when it runs, so the instruction
 arrives exactly at the inflection point it governs. Hooks are advisory prompt
-content (see [DEC-014](docs/trunk/DECISIONS.md)), not enforced checks. See
+content (see [DEC-016](docs/trunk/DECISIONS.md)), not enforced checks. See
 `docs/trunk/ARTIFACTS.md#hooks`.
 
 #### Auditing the Chunk Corpus
@@ -422,15 +457,18 @@ For the full command reference and advanced topics (worktree retention, batch op
 ```
 vibe-engineer/
 ├── .claude-plugin/       # Plugin + marketplace manifests (Claude Code plugin)
-├── commands/             # Plugin slash-command sources (also orchestrator phase prompts)
-├── agents/               # Plugin subagents
-├── hooks/                # Plugin hooks (SessionStart)
+├── .cursor-plugin/       # Cursor plugin: manifests, rendered skills/agents, hooks
+├── skills/               # Claude-flavor skills (RENDERED — edit src/templates/plugin/)
+├── agents/               # Claude-flavor subagents (RENDERED — edit src/templates/plugin/)
+├── hooks/                # Session-start hook (shared core; Cursor adapter wraps it)
 ├── src/                  # `ve` CLI (Python)
 │   ├── ve.py             # CLI entry point
 │   ├── cli/              # Subcommands: chunk, orch, board, entity, ...
 │   ├── orchestrator/     # Parallel chunk execution across worktrees
 │   ├── board/            # Client for the leader-board worker
-│   └── templates/        # Jinja2 templates for project docs scaffolded by `ve init`
+│   └── templates/
+│       ├── plugin/       # SINGLE SOURCE for all plugin skills/agents (both flavors)
+│       └── ...           # Jinja2 templates for project docs scaffolded by `ve init`
 ├── site/                 # Marketing site (Astro) for veng.dev
 ├── workers/
 │   └── leader-board/     # Cloudflare Worker: cross-agent messaging backend
@@ -441,24 +479,95 @@ vibe-engineer/
 └── pyproject.toml        # Python project configuration
 ```
 
+### Developing the plugin
+
+The plugin content (`skills/`, `agents/`, `.cursor-plugin/skills/`,
+`.cursor-plugin/agents/`) is **rendered output**. Each skill and agent body
+exists exactly once, in `src/templates/plugin/`, with the editor-specific
+idioms factored into `partials/<flavor>/idioms.md.jinja2`. The loop:
+
+1. **Edit the template** in `src/templates/plugin/` (never the rendered
+   files — the drift test rejects hand-edits).
+2. **Render both flavors**:
+
+   ```bash
+   uv run ve plugin render --flavor claude
+   uv run ve plugin render --flavor cursor
+   ```
+
+3. **Test**, then commit the templates and the regenerated renders together:
+
+   ```bash
+   uv run pytest tests/
+   ```
+
+Testing happens at three layers; pick the cheapest one that answers your
+question:
+
+1. **CLI behavior** — `uv run ve ...` plus `uv run pytest tests/` exercises
+   the development version directly. For cross-project work, an editable
+   install (`uv tool install -e .`) puts the development `ve` on PATH.
+2. **Plugin structure and content** — the structural/behavioral plugin
+   tests (`tests/test_plugin_*.py`, `tests/test_cursor_*.py`,
+   `tests/test_session_hook.py`, `tests/test_cursor_session_hook.py`) run
+   against the repo files directly; no plugin install needed. This covers
+   drift, frontmatter validity, manifest/schema conformance, discovery
+   collisions, and hook behavior.
+3. **Live editor behavior** — needs a real harness: bump the version and
+   `/plugin update vibe-engineer` in Claude Code, or run headless
+   (`claude -p "/vibe-engineer:<command> ..."`), or open a Cursor session
+   with the plugin loaded from `~/.cursor/plugins/local/` for the Cursor
+   flavor.
+
+The session-start hook is deliberately *not* templated: `hooks/session_start.sh`
+is the shared, dependency-free core (POSIX sh), and
+`.cursor-plugin/hooks/session_start.sh` adapts it to Cursor's JSON hook
+protocol. Both editors share the managed-install state markers under
+`${XDG_STATE_HOME:-~/.local/state}/vibe-engineer`.
+
 ## Releasing
 
-Releases are published to [PyPI](https://pypi.org/project/vibe-engineer/) automatically when a version tag is pushed.
+One release ships three co-versioned artifacts from this repository: the
+PyPI package, the Claude Code plugin, and the Cursor plugin. Plugin managers
+key update detection on **manifest versions, not git commits** — a manifest
+left behind means that ecosystem's users are never offered the update, and
+nothing else will tell you (learned at 0.2.0→0.3.0; see DEC-011 and DEC-014
+in `docs/trunk/DECISIONS.md`). The checklist:
 
-1. Update the version in `pyproject.toml`
-2. Commit the version bump: `git commit -am "chore: bump version to 0.2.0"`
-3. Tag the release: `git tag releases/v0.2.0`
-4. Push the tag: `git push origin releases/v0.2.0`
+1. **Bump the version in all three manifests** — they must be equal, and
+   the equality is test-enforced
+   (`tests/test_session_hook.py::TestVersionSource`):
+   - `pyproject.toml`
+   - `.claude-plugin/plugin.json`
+   - `.cursor-plugin/plugin.json`
+2. **Sync the lockfile**: `uv lock` (picks up the new package version).
+3. **Re-render both plugin flavors** if any template changed since the last
+   release (a no-op render is cheap insurance either way):
 
-Tags follow the `releases/v*` pattern; the publish workflow triggers on tags matching that prefix.
+   ```bash
+   uv run ve plugin render --flavor claude
+   uv run ve plugin render --flavor cursor
+   ```
 
-GitHub Actions will build the package and publish it to PyPI using trusted publishing (OIDC).
+4. **Run the tests**: `uv run pytest tests/` — this gates on the version
+   coupling and on render drift.
+5. **Commit** the bump (manifests, `uv.lock`, any regenerated renders):
+   `git commit -am "chore(release): 0.7.0"`, and push `main`.
+6. **Tag and push the tag**: `git tag releases/v0.7.0 && git push origin
+   releases/v0.7.0`. Tags matching `releases/v*` trigger
+   `.github/workflows/publish.yml`, which builds the package and publishes
+   it to [PyPI](https://pypi.org/project/vibe-engineer/) via trusted
+   publishing (OIDC).
+7. **Both plugin marketplaces update from the pushed `main`**:
+   - *Claude Code*: users pull the new version with
+     `/plugin update vibe-engineer` (the marketplace is this repo).
+   - *Cursor*: team marketplaces with Auto Refresh pick up the push
+     automatically (re-indexed at most every 10 minutes); otherwise click
+     **Refresh** in **Dashboard → Plugins**. The official marketplace
+     listing re-indexes from the repository.
 
-After publishing, users can install with:
-
-```bash
-pip install vibe-engineer
-```
+After publishing, verify with `pip install vibe-engineer` /
+`uv tool upgrade vibe-engineer` and `ve --version`.
 
 ## License
 

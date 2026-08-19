@@ -1,5 +1,5 @@
 ---
-status: ACTIVE
+status: COMPLETED
 advances_trunk_goal: "Required Properties: partial-adoption — 'The tooling that supports this workflow must remain effective even if not every engineer working in the project uses the workflow.' Colleagues working in ve-initialized projects from Cursor are exactly this clause; the workflow must feel native to them, not Claude-Code-shaped."
 proposed_chunks:
   - prompt: >-

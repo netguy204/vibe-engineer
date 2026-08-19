@@ -20,7 +20,7 @@ import pathlib
 import re
 from typing import TYPE_CHECKING
 
-from models import ChunkStatus
+from models import COMPLETABLE_STATUSES, ChunkStatus
 from symbols import check_reference_target, expand_glob, is_glob_pattern
 
 if TYPE_CHECKING:
@@ -226,7 +226,7 @@ def validate_chunk_complete(
 
     Checks:
     1. Chunk exists (resolves external chunks via task context if available)
-    2. Status is IMPLEMENTING or ACTIVE
+    2. Status holds completable intent (IMPLEMENTING, ACTIVE, or COMPOSITE)
     3. code_references conforms to schema and is non-empty
     4. (For symbolic refs) Referenced symbols exist (produces warnings, not errors)
     5. Subsystem references are valid and exist
@@ -276,10 +276,11 @@ def validate_chunk_complete(
             )
 
         # Check status
-        valid_statuses = (ChunkStatus.IMPLEMENTING, ChunkStatus.ACTIVE)
-        if frontmatter.status not in valid_statuses:
+        # Chunk: docs/chunks/lifecycle_composite_ownership - Ownership predicate, not a local tuple
+        if frontmatter.status not in COMPLETABLE_STATUSES:
             errors.append(
-                f"Status is '{frontmatter.status.value}', must be 'IMPLEMENTING' or 'ACTIVE' to complete"
+                f"Status is '{frontmatter.status.value}', which does not hold "
+                f"completable intent — must be IMPLEMENTING, ACTIVE, or COMPOSITE"
             )
 
         # Check code_references non-empty
@@ -333,10 +334,11 @@ def validate_chunk_complete(
         )
 
     # Check status
-    valid_statuses = (ChunkStatus.IMPLEMENTING, ChunkStatus.ACTIVE)
-    if frontmatter.status not in valid_statuses:
+    # Chunk: docs/chunks/lifecycle_composite_ownership - Ownership predicate, not a local tuple
+    if frontmatter.status not in COMPLETABLE_STATUSES:
         errors.append(
-            f"Status is '{frontmatter.status.value}', must be 'IMPLEMENTING' or 'ACTIVE' to complete"
+            f"Status is '{frontmatter.status.value}', which does not hold "
+            f"completable intent — must be IMPLEMENTING, ACTIVE, or COMPOSITE"
         )
 
     # Validate code_references - already validated by ChunkFrontmatter model
@@ -449,9 +451,11 @@ def validate_chunk_injectable(chunks: Chunks, chunk_id: str) -> ValidationResult
                 f"Will start with PLAN phase to populate the plan."
             )
     elif frontmatter.status in (ChunkStatus.SUPERSEDED, ChunkStatus.COMPOSITE, ChunkStatus.HISTORICAL):
-        # Terminal states - shouldn't be injected
+        # Chunk: docs/chunks/lifecycle_composite_ownership - Non-injectable, not "terminal":
+        # per VALID_CHUNK_TRANSITIONS only HISTORICAL is terminal; COMPOSITE and
+        # SUPERSEDED have outgoing transitions but are not units of pending work.
         errors.append(
-            f"Chunk has terminal status '{frontmatter.status.value}' and cannot be injected. "
+            f"Chunk has non-injectable status '{frontmatter.status.value}' and cannot be injected. "
             f"Only FUTURE, IMPLEMENTING, or ACTIVE chunks can be injected."
         )
 

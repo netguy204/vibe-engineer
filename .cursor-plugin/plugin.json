@@ -1,0 +1,22 @@
+{
+  "name": "vibe-engineer",
+  "displayName": "Vibe Engineer",
+  "version": "0.8.1",
+  "description": "Documentation-driven development workflow: chunks, narratives, investigations, and orchestration backed by the ve CLI.",
+  "author": {
+    "name": "Brian Taylor"
+  },
+  "homepage": "https://veng.dev",
+  "repository": "https://github.com/netguy204/vibe-engineer",
+  "license": "MIT",
+  "keywords": [
+    "documentation",
+    "workflow",
+    "architecture",
+    "planning",
+    "agents"
+  ],
+  "skills": "./.cursor-plugin/skills/",
+  "agents": "./.cursor-plugin/agents/",
+  "hooks": "./.cursor-plugin/hooks/hooks.json"
+}

@@ -16,7 +16,7 @@ Capture a friction point quickly—something that slowed you down, confused you,
 
 ### If the operator provided an observation:
 
-$ARGUMENTS
+{{ idioms.arguments() }}
 
 1. **Extract the friction** from their observation:
    - Title: A brief summary (under 10 words)
@@ -39,7 +39,7 @@ $ARGUMENTS
 
 ---
 
-### If no observation was provided ($ARGUMENTS is empty):
+### If no observation was provided ({% if flavor == "claude" %}$ARGUMENTS is empty{% else %}the operator's request names none{% endif %}):
 
 Interview the operator with these questions:
 

@@ -201,6 +201,180 @@ class TestSandboxEnforcementHook:
         assert result["decision"] == "allow"
 
 
+# Chunk: docs/chunks/orch_sandbox_shape - Shape-aware sandbox classifier tests
+class TestSandboxShapeClassifier:
+    """Field-report-derived tests: the classifier judges command shape,
+    not content (chaoskeeper seat, coordination room #329, 2026-08-17).
+
+    HOST/WORKTREE mirror the orchestrator's real layout: the worktree is
+    nested under the host repository, so the worktree path contains the
+    host path as a prefix.
+    """
+
+    HOST = Path("/home/user/project")
+    WORKTREE = Path("/home/user/project/.ve/chunks/test/worktree")
+
+    def check(self, command):
+        return is_sandbox_violation(command, self.HOST, self.WORKTREE)
+
+    # -- False positives from the field report: content must not deny --
+
+    def test_allows_heredoc_whose_body_quotes_git_and_host_path(self):
+        """A heredoc body is data, not command; git+host inside it is content."""
+        command = (
+            "python3 <<'EOF'\n"
+            "# reproduction notes: git -C /home/user/project status\n"
+            "# and: cd /home/user/project && git push\n"
+            "print('hello')\n"
+            "EOF"
+        )
+        is_violation, reason = self.check(command)
+        assert is_violation is False, reason
+
+    def test_allows_interpreter_c_literal_quoting_git_and_host_path(self):
+        """A quoted string literal fed to an interpreter is content."""
+        command = (
+            "python3 -c 'print(\"git -C /home/user/project status; "
+            "cd /home/user/project\")'"
+        )
+        is_violation, reason = self.check(command)
+        assert is_violation is False, reason
+
+    def test_allows_env_prefixed_command(self):
+        """PATH=... npx ... executes npx; the assignment is not a command."""
+        is_violation, reason = self.check("PATH=/opt/homebrew/bin:$PATH npx tsc")
+        assert is_violation is False, reason
+
+    def test_allows_host_path_in_env_value_of_non_git_command(self):
+        """A host path inside an env value of a non-git command is content."""
+        is_violation, reason = self.check(
+            "PATH=/home/user/project/bin:$PATH npx tsc"
+        )
+        assert is_violation is False, reason
+
+    def test_allows_prose_quoting_cd_and_git(self):
+        """Prose mentioning cd/git + host path is content, not a command."""
+        is_violation, reason = self.check(
+            'echo "to reproduce: cd /home/user/project && git push"'
+        )
+        assert is_violation is False, reason
+
+    def test_allows_quoted_data_containing_cd_host(self):
+        is_violation, reason = self.check("printf 'cd /home/user/project\\n'")
+        assert is_violation is False, reason
+
+    def test_allows_comment_text_mentioning_host_path(self):
+        """Comment text is not executed; the executed git command is safe."""
+        is_violation, reason = self.check(
+            "git status  # see /home/user/project for context"
+        )
+        assert is_violation is False, reason
+
+    def test_bare_and_parenthesized_safe_compounds_agree(self):
+        """Bare and parenthesized forms of the same safe compound agree."""
+        bare = f"cd {self.WORKTREE} && git status"
+        parenthesized = f"(cd {self.WORKTREE} && git status)"
+        assert self.check(bare) == self.check(parenthesized) == (False, None)
+
+    # -- True positives: every genuinely escaping shape still denies --
+
+    def test_bare_and_parenthesized_escaping_compounds_agree(self):
+        """Bare and parenthesized forms of the same escape both deny."""
+        for command in [
+            f"cd {self.HOST} && git push",
+            f"(cd {self.HOST} && git push)",
+        ]:
+            is_violation, reason = self.check(command)
+            assert is_violation is True, command
+            assert "host repository" in reason
+
+    def test_blocks_heredoc_intro_line_that_escapes(self):
+        """The command line introducing a heredoc IS still checked."""
+        command = (
+            "git -C /home/user/project apply <<'EOF'\n"
+            "harmless patch text\n"
+            "EOF"
+        )
+        is_violation, reason = self.check(command)
+        assert is_violation is True
+        assert "git -C" in reason
+
+    def test_blocks_cd_on_second_line(self):
+        """A newline is a segment boundary; line two is a command."""
+        is_violation, reason = self.check("echo hi\ncd /home/user/project")
+        assert is_violation is True
+        assert "host repository" in reason
+
+    def test_blocks_env_wrapped_git_targeting_host(self):
+        """env/command wrappers do not hide the real command."""
+        is_violation, reason = self.check(
+            "env git -C /home/user/project status"
+        )
+        assert is_violation is True
+        assert "git -C" in reason
+
+    def test_blocks_git_dir_env_assignment_pointing_at_host(self):
+        """GIT_DIR=<host>/.git redirects git itself; the value is executed shape."""
+        is_violation, reason = self.check(
+            "GIT_DIR=/home/user/project/.git git push"
+        )
+        assert is_violation is True
+        assert "host repository" in reason
+
+    def test_blocks_cd_to_worktree_sibling(self):
+        """cd boundary-anchoring: <worktree>-evil is outside the sandbox."""
+        is_violation, reason = self.check(f"cd {self.WORKTREE}-evil")
+        assert is_violation is True
+        assert "host repository" in reason
+
+    def test_blocks_command_substitution_shapes(self):
+        """$() and backtick substitutions execute their contents."""
+        for command in [
+            "echo $(cd /home/user/project)",
+            "echo `cd /home/user/project`",
+        ]:
+            is_violation, reason = self.check(command)
+            assert is_violation is True, command
+            assert "host repository" in reason
+
+    def test_blocks_git_redirecting_to_host_path(self):
+        """A redirection target stays inside the git segment's scope."""
+        for command in [
+            "git status > /home/user/project/notes.txt",
+            "git status >& /home/user/project/notes.txt",
+        ]:
+            is_violation, reason = self.check(command)
+            assert is_violation is True, command
+            assert "host repository" in reason
+
+    def test_blocks_command_substitution_inside_double_quotes(self):
+        """Bash executes $() and backticks inside double quotes; the
+        classifier must not treat them as data. These fall back to the
+        conservative substring scan."""
+        for command in [
+            'echo "$(cd /home/user/project)"',
+            'echo "`git -C /home/user/project push`"',
+        ]:
+            is_violation, reason = self.check(command)
+            assert is_violation is True, command
+            assert "host repository" in reason
+
+    def test_allows_substitution_syntax_inside_single_quotes(self):
+        """Single quotes suppress substitution: purely data."""
+        is_violation, reason = self.check(
+            "echo '$(cd /somewhere/else) and `git log` are literal here'"
+        )
+        assert is_violation is False, reason
+
+    def test_untokenizable_input_falls_back_to_substring_denial(self):
+        """Unbalanced quotes: fall back to substring behavior, toward denial."""
+        is_violation, reason = self.check(
+            'cd /home/user/project && echo "unbalanced'
+        )
+        assert is_violation is True
+        assert "host repository" in reason
+
+
 # Chunk: docs/chunks/orch_sandbox_enforcement - Integration tests for AgentRunner sandbox
 class TestAgentRunnerSandboxIntegration:
     """Tests for sandbox integration in AgentRunner."""

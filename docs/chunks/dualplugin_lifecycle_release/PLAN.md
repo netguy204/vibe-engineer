@@ -1,179 +1,204 @@
-
-
-<!--
-This document captures HOW you'll achieve the chunk's GOAL.
-It should be specific enough that each step is a reasonable unit of work
-to hand to an agent.
--->
-
 # Implementation Plan
 
 ## Approach
 
-<!--
-How will you build this? Describe the strategy at a high level.
-What patterns or techniques will you use?
-What existing code will you build on?
+**The decision this chunk exists to make: Cursor gets a real plugin hook,
+not the skill-embedded fallback.** Verified against the live spec on
+2026-08-14 (`cursor.com/docs/reference/plugins.md`, `cursor.com/docs/hooks.md`,
+and the upstream `github.com/cursor/plugins` examples):
 
-Reference docs/trunk/DECISIONS.md entries where relevant.
-If this approach represents a new significant decision, ask the user
-if we should add it to DECISIONS.md and reference it here.
+- Cursor plugins declare hooks: the manifest `hooks` field is "path to a
+  hooks configuration file, or an inline hooks object", and upstream
+  plugins (`ralph-loop`, `continual-learning`) ship `hooks/hooks.json`
+  files referenced as `"hooks": "./hooks/hooks.json"`.
+- `sessionStart` is a supported agent hook event. It fires when a composer
+  conversation is created, is fire-and-forget (never blocks the session —
+  matching the Claude hook's exit-0-always contract by construction), and
+  its JSON output supports `additional_context`: "context to add to the
+  conversation's initial system context" — the same surfacing channel as
+  Claude Code prepending SessionStart stdout.
+- Hook scripts receive `CLAUDE_PROJECT_DIR` ("alias for project dir, Claude
+  compatibility", documented as always present) alongside
+  `CURSOR_PROJECT_DIR`. Upstream's continual-learning plugin uses
+  `${CURSOR_PLUGIN_ROOT}` in its hook command for the installed plugin
+  directory.
+- The contract difference from Claude Code: Cursor hooks speak **JSON over
+  stdio** (input on stdin, output on stdout), not plain text. Claude's
+  `hooks/session_start.sh` emits plain lines, so it cannot be registered
+  directly — its output would be discarded as unparseable.
 
-Always include tests in your implementation plan and adhere to
-docs/trunk/TESTING_PHILOSOPHY.md in your planning.
+So the shape is: **a thin Cursor adapter around the unchanged shared core.**
+`.cursor-plugin/hooks/session_start.sh` (new, static — hooks are not
+template-rendered on the Claude side either) locates the plugin root from
+its own path, exports the `CLAUDE_*` variables the core expects, runs
+`hooks/session_start.sh`, and wraps the captured stdout as
+`{"additional_context": "..."}` (or `{}` when silent). Everything
+DEC-013/DEC-011-shaped — ve-project detection, polite bootstrap,
+managed-install/bootstrap-attempt markers under
+`${XDG_STATE_HOME:-~/.local/state}/vibe-engineer`, drift warning, current
+chunk — happens in the one shared core, so both editors' hooks share the
+state markers instead of duplicating the logic. The adapter stays POSIX
+sh + sed, dependency-free, exit 0 always, like the core.
 
-Remember to update code_paths in the chunk's GOAL.md (e.g., docs/chunks/dualplugin_lifecycle_release/GOAL.md)
-with references to the files that you expect to touch.
--->
+One small core change: the core reads its version from
+`.claude-plugin/plugin.json` only. Under a Cursor-only install that file
+may be absent, so the core falls back to `.cursor-plugin/plugin.json` —
+safe because DEC-014's coupling test forces the two to carry the same
+version.
+
+The manifest's `"hooks": {}` placeholder (explicitly empty per DEC-014's
+consequence bullet, guarded by
+`tests/test_cursor_manifest.py::TestDiscoveryCollision::test_hooks_declares_no_hook_events`)
+becomes `"hooks": "./.cursor-plugin/hooks/hooks.json"`; it still overrides
+discovery of the root Claude `hooks/hooks.json`, which is the property that
+test protects. That test is replaced by tests asserting the declared config
+exists inside the Cursor tree, declares `sessionStart`, and points at an
+executable script.
+
+Docs work (README):
+- **Cursor install section** for colleagues: official Cursor Marketplace /
+  Customize panel, team-marketplace "Import from Repo", and the local-dev
+  path (`~/.cursor/plugins/local` symlink). Explicitly not `ve skills
+  reify` (DEC-015 is Claude-only).
+- **Releasing** section becomes the real checklist, matching what 0.6.0
+  actually did: bump all three co-versioned manifests (DEC-014,
+  test-enforced), `uv lock`, `ve plugin render` once per flavor, drift +
+  version tests, commit, tag `releases/vX.Y.Z` (triggers
+  `.github/workflows/publish.yml`, PyPI trusted publishing), push, then
+  update both plugin channels (`/plugin update` for Claude; Cursor
+  marketplace refresh/auto-refresh).
+- **Developing the plugin** section: the template-edit → render → test loop
+  and the three-layer testing story (CLI via `uv run ve` + pytest;
+  structural plugin tests against repo files; live behavior via version
+  bump + plugin update, headless `claude -p`, or a Cursor session).
+- Fix the stale Project Structure listing (`commands/` no longer exists;
+  `skills/`, `agents/`, `.cursor-plugin/` do).
+
+DECISIONS.md: annotate DEC-014's "explicitly empty `hooks` object until a
+Cursor hook counterpart exists" consequence, which this chunk makes stale.
+No new ADR — the hook-vs-fallback question was delegated by DEC-014/DEC-013
+and the answer (hook, because the event model supports it) is recorded here
+and in the adapter's header comment.
+
+Finally: this is the last chunk of `docs/narratives/cursor_plugin_port` —
+set the narrative status to COMPLETED at chunk completion.
 
 ## Subsystem Considerations
 
-<!--
-Before designing your implementation, check docs/subsystems/ for relevant
-cross-cutting patterns.
-
-QUESTIONS TO CONSIDER:
-- Does this chunk touch any existing subsystem's scope?
-- Will this chunk implement part of a subsystem (contribute code) or use it
-  (depend on it)?
-- Did you discover code during exploration that should be part of a subsystem
-  but doesn't follow its patterns?
-
-If no subsystems are relevant, delete this section.
-
-WHEN SUBSYSTEMS ARE RELEVANT:
-List each relevant subsystem with its status and your relationship:
-- **docs/subsystems/validation** (DOCUMENTED): This chunk USES the validation
-  subsystem to check input
-- **docs/subsystems/error_handling** (REFACTORING): This chunk IMPLEMENTS a
-  new error type following the subsystem's patterns
-
-HOW SUBSYSTEM STATUS AFFECTS YOUR WORK:
-
-DOCUMENTED subsystems: The subsystem's patterns are captured but deviations are not
-being actively fixed. If you discover code that deviates from the subsystem's
-patterns, add it to the subsystem's Known Deviations section. Do NOT prioritize
-fixing those deviations—your chunk has its own goals.
-
-REFACTORING subsystems: The subsystem is being actively consolidated. If your chunk
-work touches code that deviates from the subsystem's patterns, attempt to bring it
-into compliance as part of your work. This is "opportunistic improvement"—improve
-what you touch, but don't expand scope to fix unrelated deviations.
-
-WHEN YOU DISCOVER DEVIATING CODE:
-- Add it to the subsystem's Known Deviations section
-- Note whether you will address it (REFACTORING status + relevant to your work)
-  or leave it for future work (DOCUMENTED status or outside your chunk's scope)
-
-Example:
-- **Discovered deviation**: src/legacy/parser.py#validate_input does its own
-  validation instead of using the validation subsystem
-  - Added to docs/subsystems/validation Known Deviations
-  - Action: Will not address (subsystem is DOCUMENTED; deviation outside chunk scope)
--->
+- **docs/subsystems/template_system** (if present): NOT touched. Hooks are
+  deliberately static files on both sides; the render pipeline
+  (`src/plugin_render.py`) renders only `skills/` and `agents/` templates
+  and never writes into `.cursor-plugin/hooks/`.
 
 ## Sequence
 
-<!--
-Ordered steps to implement this chunk. Each step should be:
-- Small enough to reason about in isolation
-- Large enough to be meaningful
-- Clear about its inputs and outputs
+### Step 1: Manifest-fallback in the shared core
 
-This sequence is your contract with yourself (and with agents).
-Work through it in order. Don't skip ahead.
+`hooks/session_start.sh`: after computing `plugin_manifest` from
+`.claude-plugin/plugin.json`, fall back to
+`${CLAUDE_PLUGIN_ROOT}/.cursor-plugin/plugin.json` when the Claude manifest
+is absent. Update the header comment to note the hook is shared by both
+editors' registrations and why the fallback is version-safe (DEC-014).
 
-Example:
+### Step 2: Cursor adapter script
 
-### Step 1: Define the SegmentHeader struct
+`.cursor-plugin/hooks/session_start.sh` (mode 0755, POSIX sh):
+- Header comment documenting the contract and the spec facts it rests on
+  (JSON stdio, `additional_context`, fire-and-forget), with a
+  `# Chunk: docs/chunks/dualplugin_lifecycle_release` backreference.
+- Resolve `PLUGIN_ROOT` as `$(dirname $0)/../..` (the repo root), allow
+  `CURSOR_PLUGIN_ROOT` to override.
+- Export `CLAUDE_PROJECT_DIR` (from `CURSOR_PROJECT_DIR` when only that is
+  set) and `CLAUDE_PLUGIN_ROOT`, run the core, capture stdout.
+- Emit `{}` when the core said nothing; otherwise JSON-escape (backslash,
+  double quote, newlines) with sed + a shell loop and emit
+  `{"additional_context": "…"}`. Exit 0 unconditionally.
 
-Create the struct that represents a segment's header with fields for:
-- magic number (4 bytes)
-- version (2 bytes)
-- segment_id (8 bytes)
-- message_count (4 bytes)
-- checksum (4 bytes)
+### Step 3: Cursor hooks config
 
-Location: src/segment/format.rs
-
-### Step 2: Implement header serialization
-
-Add `to_bytes()` and `from_bytes()` methods to SegmentHeader.
-Use little-endian encoding per SPEC.md Section 3.1.
-
-### Step 3: ...
-
----
-
-**BACKREFERENCE COMMENTS**
-
-When implementing code, add backreference comments to help future agents trace
-code back to its governing documentation.
-
-**Valid backreference types:**
-- `# Subsystem: docs/subsystems/<name>` - For architectural patterns
-- `# Chunk: docs/chunks/<name>` - For implementation work
-
-Place comments at the appropriate level:
-- **Module-level**: If this code implements the subsystem/chunk's core functionality
-- **Class-level**: If this class is part of the pattern
-- **Method-level**: If this method implements a specific behavior
-
-Format (place immediately before the symbol):
+`.cursor-plugin/hooks/hooks.json`:
+```json
+{
+  "version": 1,
+  "hooks": {
+    "sessionStart": [
+      { "command": "${CURSOR_PLUGIN_ROOT}/.cursor-plugin/hooks/session_start.sh" }
+    ]
+  }
+}
 ```
-# Subsystem: docs/subsystems/workflow_artifacts - Workflow artifact manager pattern
-# Chunk: docs/chunks/auth_refactor - Authentication system redesign
-```
+`${CURSOR_PLUGIN_ROOT}` follows upstream's continual-learning precedent;
+the adapter's self-location logic makes it robust even if the variable
+resolves oddly, since the script path itself is what matters.
 
-Do NOT add narrative backreferences. Narratives decompose into chunks; reference
-the implementing chunk instead.
+Update `.cursor-plugin/plugin.json`: `"hooks": "./.cursor-plugin/hooks/hooks.json"`.
 
-**Task context note**: In multi-project tasks, always use local paths (e.g.,
-`docs/chunks/chunk_name`) for chunk backreferences, not paths to the external
-artifact repo. Each project has `external.yaml` pointers that resolve to the
-actual chunk content.
--->
+### Step 4: Tests
+
+- New `tests/test_cursor_session_hook.py`:
+  - Registration: adapter exists and is executable; hooks.json declares
+    `sessionStart` running the adapter; manifest points at hooks.json.
+  - Behavior (subprocess, mirroring `test_session_hook.py` harness): build
+    a tmp plugin root that copies the real core + adapter into the real
+    layout; assert stdout parses as JSON; `{}` outside ve projects;
+    `additional_context` carries the current-chunk line inside a ve
+    project; `CURSOR_PROJECT_DIR`-only environment works; output with
+    embedded quotes/newlines stays valid JSON; exit 0 throughout.
+  - Core fallback: plugin root with only `.cursor-plugin/plugin.json`
+    still yields a version (drift warning names it).
+- `tests/test_cursor_manifest.py`: replace
+  `test_hooks_declares_no_hook_events` with hook-declaration tests
+  (declared path exists inside `.cursor-plugin/`, valid JSON, declares
+  `sessionStart`, command script exists + executable, and the declaration
+  still overrides root discovery). Extend `test_declared_path_exists`
+  coverage to hooks.
+- `tests/test_session_hook.py`: existing suite must keep passing (the
+  fallback only adds a branch); add one test for the
+  `.cursor-plugin`-manifest-only fallback if it fits more naturally there.
+
+### Step 5: README
+
+As described in Approach: Cursor Plugin install section (marketplace /
+Import-from-Repo / local dev, plus a note that the same session hook runs
+in Cursor), rewritten Releasing checklist, new "Developing the plugin"
+section, corrected Project Structure block.
+
+### Step 6: DECISIONS.md touch-up
+
+Annotate DEC-014's hooks consequence bullet so it no longer claims the
+placeholder is current.
+
+### Step 7: Validation and completion
+
+- `uv run ve plugin render --flavor claude` and `--flavor cursor` — expect
+  zero diff (nothing template-sourced changed); confirms hooks work didn't
+  disturb renders.
+- `uv run pytest tests/` (full suite) and `uv run ve validate` clean.
+- Update GOAL.md `code_paths`/`code_references`; set narrative
+  `cursor_plugin_port` status COMPLETED; chunk complete.
 
 ## Dependencies
 
-<!--
-What must exist before this chunk can be implemented?
-- Other chunks that must be complete
-- External libraries to add
-- Infrastructure or configuration
-
-If there are no dependencies, delete this section.
--->
+- dualplugin_cursor_render (ACTIVE) — the Cursor render surface and
+  manifest declarations this chunk extends. Satisfied.
 
 ## Risks and Open Questions
 
-<!--
-What might go wrong? What are you unsure about?
-Being explicit about uncertainty helps you (and agents) know where to
-be careful and when to stop and ask questions.
-
-Example:
-- fsync behavior may differ across filesystems; need to verify on ext4 and APFS
-- Unclear whether concurrent reads during write are safe; may need mutex
-- Performance target is aggressive; may need to iterate on buffer sizes
--->
+- **Plugin-hook working directory / variable substitution is not fully
+  specified.** The hooks doc defines CWD only for enterprise/team/project/
+  user hook sources, not plugin hooks; `${CURSOR_PLUGIN_ROOT}` in commands
+  is upstream precedent, not documented contract. Mitigated by the adapter
+  resolving the root from `$0` — but live verification in a Cursor session
+  was not possible from this environment, and is flagged as the remaining
+  manual check.
+- **`sessionStart` does not run in cloud agents** (documented limitation).
+  Acceptable: fail-open, same as no hook.
+- **Whether a Cursor marketplace install materializes the full repo**
+  (including `.claude-plugin/`, `pyproject.toml`). Plugins are "distributed
+  as Git repositories," so the DEC-013 bootstrap source should be present;
+  the manifest fallback covers the manifest half, and the bootstrap already
+  degrades to a hint when `pyproject.toml` is absent.
 
 ## Deviations
 
-<!--
-POPULATE DURING IMPLEMENTATION, not at planning time.
-
-When reality diverges from the plan, document it here:
-- What changed?
-- Why?
-- What was the impact?
-
-Minor deviations (renamed a function, used a different helper) don't need
-documentation. Significant deviations (changed the approach, skipped a step,
-added steps) do.
-
-Example:
-- Step 4: Originally planned to use std::fs::rename for atomic swap.
-  Testing revealed this isn't atomic across filesystems. Changed to
-  write-fsync-rename-fsync sequence per platform best practices.
--->
+<!-- POPULATE DURING IMPLEMENTATION -->
