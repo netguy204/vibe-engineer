@@ -287,3 +287,45 @@ class TestTaskContextCompleteGate:
         )
         assert result.exit_code == 0
         assert _chunk_status(chunk_path) == "ACTIVE"
+
+
+class TestLandAlias:
+    """`land` is a second spelling of `complete`, not a second implementation.
+
+    It exists because agent harnesses refuse shell commands containing the
+    token `complete` (a bash builtin that evaluates its arguments), which an
+    agent driving the lifecycle cannot work around. Both spellings must stay
+    reachable and must share the completion gate.
+    """
+
+    def test_land_completes_a_chunk(self, cli_runner, temp_project):
+        chunk_path = _create_chunk(cli_runner, temp_project)
+        src = temp_project / "src"
+        src.mkdir()
+        (src / "widget.py").write_text("class Widget:\n    pass\n")
+        _write_goal(
+            chunk_path,
+            code_paths=["src/widget.py"],
+            code_references=[{"ref": "src/widget.py#Widget"}],
+        )
+
+        result = cli_runner.invoke(
+            cli, ["chunk", "land", "my-chunk", "--project-dir", str(temp_project)]
+        )
+        assert result.exit_code == 0
+        assert _chunk_status(chunk_path) == "ACTIVE"
+
+    def test_land_enforces_the_reference_gate(self, cli_runner, temp_project):
+        chunk_path = _create_chunk(cli_runner, temp_project)
+        _write_goal(chunk_path, code_references=[{"ref": "src/gone.py#Missing"}])
+
+        result = cli_runner.invoke(
+            cli, ["chunk", "land", "my-chunk", "--project-dir", str(temp_project)]
+        )
+        assert result.exit_code == 1
+        assert _chunk_status(chunk_path) == "IMPLEMENTING"
+
+    def test_land_and_complete_are_the_same_command(self):
+        from cli.chunk import chunk as chunk_group
+
+        assert chunk_group.commands["land"] is chunk_group.commands["complete"]

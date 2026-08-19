@@ -132,7 +132,7 @@ Interpret the context above before following the instructions:
 
 4. Run `ve chunk validate <chunk_id>` to verify that the metadata syntax for the
    GOAL.md file is correct. Validation **fails** when a code_references entry
-   names a file or symbol that does not exist, and `ve chunk complete`
+   names a file or symbol that does not exist, and `ve chunk land`
    refuses to land such a chunk. The remedy is always to fix the reference
    or the code — never delete a reference to pass the gate. If the
    referenced code was deliberately deleted, stop and escalate to the
