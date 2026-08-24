@@ -362,7 +362,10 @@ class IntegrityValidator:
         # 7. Report cross-repo pointers nobody has ever resolved
         warnings.extend(self._validate_external_ever_resolved())
 
-        # 8. Report reified local skills rendered by an older ve
+        # 8. Validate VE hook filenames against the known command vocabulary
+        warnings.extend(self._validate_hook_events())
+
+        # 9. Report reified local skills rendered by an older ve
         warnings.extend(self._validate_local_skills_stale())
 
         return IntegrityResult(
@@ -381,6 +384,50 @@ class IntegrityValidator:
             external_chunks_skipped=len(self._external_chunk_names),
         )
 
+    # Chunk: docs/chunks/hooks_lifecycle_fragments - Unrecognised hook filenames surface as warnings
+    def _validate_hook_events(self) -> list[IntegrityWarning]:
+        """Flag docs/hooks/ fragments whose filename matches no command.
+
+        Such a hook is well-formed and will simply never fire, which is this
+        mechanism's primary failure mode: without tooling, the operator's only
+        signal is the hook silently doing nothing.
+
+        Warnings, never errors. The ve CLI and the plugin version independently
+        (DEC-011), so a hook naming a command that only a newer plugin ships is
+        version skew rather than a broken repository.
+        """
+        import difflib
+
+        from hooks import KNOWN_EVENTS, Hooks
+
+        warnings: list[IntegrityWarning] = []
+
+        for fragment, known in Hooks(self.project_dir).list_fragments():
+            if known:
+                continue
+
+            message = (
+                f"Hook '{fragment.event}' matches no plugin command, so it will "
+                "never fire."
+            )
+            close = difflib.get_close_matches(
+                fragment.event, sorted(KNOWN_EVENTS), n=1, cutoff=0.7
+            )
+            if close:
+                message += f" Did you mean '{close[0]}'?"
+            else:
+                message += " Run 've hooks list' to see the fragments this project defines."
+
+            warnings.append(
+                IntegrityWarning(
+                    source=fragment.relative_path,
+                    target=fragment.event,
+                    link_type="hook→command",
+                    message=message,
+                )
+            )
+
+        return warnings
     # Chunk: docs/chunks/plugin_local_skills - Stale reified local skills
     def _validate_local_skills_stale(self) -> list[IntegrityWarning]:
         """Warn when reified local skills were rendered by an older ve.

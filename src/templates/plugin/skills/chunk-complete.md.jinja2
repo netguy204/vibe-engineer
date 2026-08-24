@@ -9,7 +9,7 @@
 <!-- Chunk: docs/chunks/plugin_core_commands - Static plugin port of chunk-complete -->
 <!-- Chunk: docs/chunks/crossref_generator_verify - References verified before landing -->
 
-{% call idioms.canonical_preamble() -%}
+{% call idioms.canonical_preamble("chunk-complete") -%}
 - **If this is a task workspace** (the Task workspace context above shows
   `.ve-task.yaml` contents): when collecting code_references, search across
   all participating projects listed under `projects` in `.ve-task.yaml`.
@@ -98,7 +98,7 @@
 
 4. Run `ve chunk validate <chunk_id>` to verify that the metadata syntax for the
    GOAL.md file is correct. Validation **fails** when a code_references entry
-   names a file or symbol that does not exist, and `ve chunk complete`
+   names a file or symbol that does not exist, and `ve chunk land`
    refuses to land such a chunk. The remedy is always to fix the reference
    or the code — never delete a reference to pass the gate. If the
    referenced code was deliberately deleted, stop and escalate to the

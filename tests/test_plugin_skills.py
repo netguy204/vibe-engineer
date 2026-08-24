@@ -76,6 +76,64 @@ class TestCommandInvariants:
             f"{command_file.name}: carries the obsolete auto-generated header"
         )
 
+    # Chunk: docs/chunks/hooks_lifecycle_fragments - Universal VE hook wiring
+    def test_context_block_loads_the_project_hook(self, command_file):
+        """Every command exposes docs/hooks/<name>.md at its inflection point.
+
+        Universal wiring is what removes the need for a hand-maintained
+        allowlist: the set of valid hook events is exactly the set of commands.
+        A new command added without this line silently has no hook support.
+        """
+        text = command_file.read_text()
+        expected = (
+            f'!`ve hooks show {command_file.parent.name} 2>/dev/null '
+            '|| echo "(no project hook)"`'
+        )
+        assert expected in text, (
+            f"{command_file.parent.name}: missing the guarded hook context line {expected!r}"
+        )
+
+    # Chunk: docs/chunks/hooks_lifecycle_fragments - Universal VE hook wiring
+    def test_hook_command_is_permitted(self, command_file):
+        """Without the allowed-tools entry the context line prompts or fails
+        rather than resolving — a silent failure of the whole mechanism."""
+        allowed = _parse_frontmatter(command_file).get("allowed-tools", "")
+        assert "Bash(ve hooks show:*)" in allowed, (
+            f"{command_file.name}: allowed-tools must permit Bash(ve hooks show:*)"
+        )
+
+    # Chunk: docs/chunks/hooks_lifecycle_fragments - Universal VE hook wiring
+    def test_runtime_context_explains_the_hook(self, command_file):
+        """The context line alone doesn't tell the agent what to do with the
+        content; the interpretation bullet carries the binding-instruction and
+        conflict-surfacing rules."""
+        text = command_file.read_text()
+        assert "**Project hook**" in text, (
+            f"{command_file.name}: missing the Project hook runtime-context bullet"
+        )
+
+
+# Chunk: docs/chunks/hooks_lifecycle_fragments - Known-event vocabulary pinned to disk
+class TestHookEventVocabulary:
+    """hooks.KNOWN_EVENTS must equal the plugin's skill names.
+
+    The constant is a literal because the ve CLI is installed separately from
+    the plugin (DEC-010) and cannot reliably read the skills directory at
+    runtime. Exact equality in both directions is what keeps that literal
+    honest — a skill added or removed without updating KNOWN_EVENTS fails here.
+    """
+
+    def test_known_events_matches_skill_dirs_exactly(self):
+        from hooks import KNOWN_EVENTS
+
+        on_disk = {path.parent.name for path in _command_files()}
+
+        assert KNOWN_EVENTS == on_disk, (
+            "hooks.KNOWN_EVENTS is out of sync with skills/*/SKILL.md. "
+            f"Missing from KNOWN_EVENTS: {sorted(on_disk - KNOWN_EVENTS)}. "
+            f"Stale entries in KNOWN_EVENTS: {sorted(KNOWN_EVENTS - on_disk)}."
+        )
+
 
 class TestChunkCreateCommand:
     """The chunk-create pilot port (plugin_runtime_context success criteria)."""
@@ -125,6 +183,81 @@ class TestChunkCreateCommand:
         assert "ve chunk create" in body
 
 
+# Chunk: docs/chunks/audit_corpus_health - Corpus health audit skill
+class TestAuditCorpusSkill:
+    """The audit-corpus skill's load-bearing properties.
+
+    The skill is a prose artifact, so these are assertions about a document.
+    That is the thing being verified: the skill's behavior *is* its text, and
+    an agent reading it must find the axes defined, the partition named as the
+    grouping source, and the no-rewrite rule stated.
+    """
+
+    SKILL = SKILLS_DIR / "audit-corpus" / "SKILL.md"
+
+    def test_exists_with_frontmatter(self):
+        frontmatter = _parse_frontmatter(self.SKILL)
+        assert frontmatter["name"] == "audit-corpus"
+        assert frontmatter["description"]
+
+    def test_defines_all_four_audit_axes(self):
+        """Two runs only mean the same thing if the axes are pinned."""
+        body = self.SKILL.read_text().lower()
+        for axis in ("validity", "freshness", "accuracy", "redundancy"):
+            assert axis in body, f"audit-corpus must define the {axis} axis"
+
+    def test_takes_its_grouping_from_the_partition_command(self):
+        body = self.SKILL.read_text()
+        assert "ve chunk partition" in body, (
+            "the relational pass must consume the deterministic CLI grouping, "
+            "not a grouping the agent invents"
+        )
+
+    def test_delegates_validity_to_the_validator(self):
+        """Re-deriving reference integrity would eventually disagree with it."""
+        body = self.SKILL.read_text()
+        assert "ve validate" in body
+
+    def test_delegates_per_chunk_audit_to_the_intent_auditor_agent(self):
+        body = self.SKILL.read_text()
+        assert "intent-auditor" in body
+
+    def test_states_the_two_pass_structure_and_why(self):
+        """The locality argument is why the passes are partitioned differently."""
+        body = self.SKILL.read_text().lower()
+        assert "relational" in body and "local" in body
+
+    def test_forbids_rewriting_chunks(self):
+        """The no-rewrite rule is what makes the skill safe on a foreign corpus."""
+        body = self.SKILL.read_text()
+        assert "REPORT ONLY" in body, (
+            "the sub-agent task message must impose read-only explicitly, "
+            "because intent-auditor rewrites by default"
+        )
+
+    def test_reports_what_it_did_not_cover(self):
+        body = self.SKILL.read_text()
+        assert "unclustered" in body and "high_fan_in_paths" in body, (
+            "the audit's blind spots must reach the report; an unnamed blind "
+            "spot reads as ground that was covered"
+        )
+
+    def test_distinguishes_itself_from_audit_intent(self):
+        body = self.SKILL.read_text()
+        assert "audit-intent" in body
+
+    def test_names_the_per_tree_route_for_workspaces(self):
+        """`ve chunk partition` has no --workspace flag, so the skill has to
+        say how a member tree's clusters are obtained."""
+        body = self.SKILL.read_text()
+        assert "--project-dir" in body
+
+    def test_gives_an_interrupted_run_a_way_to_resume(self):
+        """A corpus large enough to need this skill will be interrupted."""
+        body = self.SKILL.read_text().lower()
+        assert "resum" in body
+
+
 def _extract_context_shell_lines(path) -> list[str]:
     """Pull the !`...` shell commands out of a command's Context block."""
     return re.findall(r"!`([^`]+)`", path.read_text())
@@ -141,6 +274,66 @@ def _run_context_lines(lines: list[str], cwd) -> str:
         )
         output.append(result.stdout)
     return "\n".join(output)
+
+
+# Chunk: docs/chunks/hooks_lifecycle_fragments - Hook context line survives an older CLI
+class TestHookContextLineIsGuarded:
+    """The hook context line runs inside every command's context block, so it
+    must stay clean even when the installed CLI predates the `hooks` command
+    (DEC-011 lets the plugin and CLI version independently)."""
+
+    def _stub_old_ve(self, tmp_path):
+        """A `ve` that rejects `hooks` the way real Click does: usage error to
+        stderr, exit 2."""
+        bin_dir = tmp_path / "bin"
+        bin_dir.mkdir()
+        stub = bin_dir / "ve"
+        stub.write_text(
+            "#!/bin/sh\n"
+            'if [ "$1" = "hooks" ]; then\n'
+            '  echo "Usage: ve [OPTIONS] COMMAND [ARGS]..." >&2\n'
+            "  echo \"Error: No such command 'hooks'.\" >&2\n"
+            "  exit 2\n"
+            "fi\n"
+            "exit 0\n"
+        )
+        stub.chmod(0o755)
+        return bin_dir
+
+    def _hook_line(self, path):
+        lines = [
+            line for line in _extract_context_shell_lines(path) if "ve hooks show" in line
+        ]
+        assert len(lines) == 1, f"{path.name}: expected exactly one hook context line"
+        return lines[0]
+
+    def test_older_cli_yields_the_absent_hook_fallback_not_an_error(self, tmp_path):
+        bin_dir = self._stub_old_ve(tmp_path)
+        line = self._hook_line(CHUNK_CREATE)
+
+        result = subprocess.run(
+            ["bash", "-c", line],
+            cwd=tmp_path,
+            capture_output=True,
+            text=True,
+            env={"PATH": f"{bin_dir}:/usr/bin:/bin"},
+        )
+
+        # What the agent sees is stdout; it must be the benign fallback...
+        assert result.stdout.strip() == "(no project hook)"
+        # ...and the Click usage error must not surface anywhere.
+        assert "No such command" not in result.stdout
+        assert "No such command" not in result.stderr
+        assert result.returncode == 0
+
+    def test_every_command_hook_line_carries_the_guard(self):
+        """The behavioral check above runs one command; this pins the guard on
+        all of them so a future port cannot drop it."""
+        for path in _command_files():
+            line = self._hook_line(path)
+            assert '2>/dev/null || echo "(no project hook)"' in line, (
+                f"{path.name}: hook context line is missing the older-CLI guard"
+            )
 
 
 class TestRuntimeDetection:

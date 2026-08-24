@@ -45,6 +45,8 @@ from cli.workspace import workspace
 from cli.package import package
 # Chunk: docs/chunks/entity_config_toml - Operator-level `~/.ve-config.toml` and `ve config show`
 from cli.config import config
+# Chunk: docs/chunks/hooks_lifecycle_fragments - `ve hooks show|list` for docs/hooks/ fragments
+from cli.hooks import hooks
 # Chunk: docs/chunks/crossref_absence_evidence - `ve exists` and `ve deletion`
 from cli.exists_cmd import exists
 from cli.deletion import deletion
@@ -77,6 +79,7 @@ cli.add_command(plugin)
 cli.add_command(workspace)
 cli.add_command(package)
 cli.add_command(config)
+cli.add_command(hooks)
 cli.add_command(deletion)
 cli.add_command(refactor)
 cli.add_command(skills)

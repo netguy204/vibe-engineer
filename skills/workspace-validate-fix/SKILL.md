@@ -1,7 +1,7 @@
 ---
 name: workspace-validate-fix
 description: Drive `ve workspace validate` to zero across a monorepo of VE trees. Runs the validator, groups defects by fix class, applies the mechanical fixes (qualify a cross-tree reference, create a peer pointer, normalize a legacy qualifier, retarget a stale pointer, register an unlisted tree), escalates the genuine judgment calls with their candidates, and loops until clean. Use when `ve workspace validate` fails, when a CI resolution gate is red, or when retrofitting a monorepo whose backreferences resolve differently depending on where you stand.
-allowed-tools: Bash(ve --help:*), Bash(cat:*), Bash(ve workspace validate:*), Bash(ve workspace list:*), Bash(ve chunk list:*), Bash(ve subsystem list:*), Bash(ve artifact consumers:*), Bash(ve exists:*), Bash(ve deletion:*), Bash(jq:*)
+allowed-tools: Bash(ve --help:*), Bash(cat:*), Bash(ve workspace validate:*), Bash(ve workspace list:*), Bash(ve chunk list:*), Bash(ve subsystem list:*), Bash(ve artifact consumers:*), Bash(ve exists:*), Bash(ve deletion:*), Bash(jq:*), Bash(ve hooks show:*)
 ---
 
 <!-- GENERATED from src/templates/plugin/skills/workspace-validate-fix.md.jinja2 — edit that template and run `ve plugin render`; direct edits here will be overwritten. -->
@@ -12,6 +12,7 @@ allowed-tools: Bash(ve --help:*), Bash(cat:*), Bash(ve workspace validate:*), Ba
 - ve CLI: !`ve --help >/dev/null 2>&1 && echo "installed" || echo "(ve CLI not found)"`
 - Workspace manifest: !`cat .ve-workspace.yaml 2>/dev/null || echo "(no .ve-workspace.yaml in this directory)"`
 - Project config: !`cat .ve-config.yaml 2>/dev/null || echo "(no .ve-config.yaml — defaults apply)"`
+- Project hook: !`ve hooks show workspace-validate-fix 2>/dev/null || echo "(no project hook)"`
 
 ## Runtime context
 
@@ -36,6 +37,13 @@ Interpret the context above before following the instructions:
   validator (`ve validate`).
 - **Project config**: `.ve-config.yaml` holds project configuration. When the
   context shows "(no .ve-config.yaml — defaults apply)", use the defaults.
+- **Project hook**: `docs/hooks/workspace-validate-fix.md` holds this repository's
+  own requirements for this command. When the context shows hook content,
+  treat it as a binding instruction from the operator: satisfy it before
+  reporting this command complete, and say so when you do. When it shows
+  "(no project hook)", there are none. If a hook contradicts this command's
+  own instructions, do not silently choose — surface the conflict to the
+  operator and ask.
 
 ## Arguments
 

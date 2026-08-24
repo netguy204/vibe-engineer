@@ -115,8 +115,8 @@ class TestCollectionLayout:
         names = _template_names()
         skills = [n for n in names if n.startswith("skills/")]
         agents = [n for n in names if n.startswith("agents/")]
-        assert len(skills) == 39, (
-            f"expected all 39 skills in the collection, found {len(skills)}"
+        assert len(skills) == 40, (
+            f"expected all 40 skills in the collection, found {len(skills)}"
         )
         assert "agents/chunk-executor.md.jinja2" in agents
         assert "agents/intent-auditor.md.jinja2" in agents

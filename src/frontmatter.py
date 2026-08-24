@@ -31,6 +31,15 @@ _FRONTMATTER_WITH_BODY_PATTERN = re.compile(
     r"^---\s*\n(.*?)\n---\s*\n(.*)$", re.DOTALL
 )
 
+# Chunk: docs/chunks/hooks_lifecycle_fragments - Tolerates an empty `---\n---` block
+# and a closing marker at EOF, neither of which _FRONTMATTER_WITH_BODY_PATTERN
+# matches (it requires at least one line between the markers and a newline after
+# the closing one). Anchoring the closing marker with MULTILINE ^ keeps a `---`
+# horizontal rule mid-line from terminating the block.
+_OPTIONAL_FRONTMATTER_PATTERN = re.compile(
+    r"\A---[ \t]*\n(.*?)^---[ \t]*(?:\n(.*))?\Z", re.DOTALL | re.MULTILINE
+)
+
 
 def parse_frontmatter(
     file_path: Path,
@@ -166,6 +175,47 @@ def extract_frontmatter_dict(file_path: Path) -> dict[str, Any] | None:
         return result if isinstance(result, dict) else None
     except yaml.YAMLError:
         return None
+
+
+# Chunk: docs/chunks/hooks_lifecycle_fragments - Optional-frontmatter splitting for hook fragments
+def split_frontmatter_and_body(content: str) -> tuple[dict[str, Any], str]:
+    """Split optional YAML frontmatter from a markdown body.
+
+    Unlike the parse_frontmatter* family, absent frontmatter is not an error:
+    the result is ({}, content). VE hook fragments are commonly bare prose,
+    and requiring a --- block would be a trap for operators who have no
+    reason to know YAML is involved.
+
+    Malformed YAML, or frontmatter that parses to something other than a
+    mapping, is likewise treated as absent: the raw text is preserved as the
+    body rather than discarded. Callers embed this output in agent prompts,
+    where losing the operator's words is worse than ignoring their syntax.
+
+    Args:
+        content: Full markdown content, with or without frontmatter.
+
+    Returns:
+        Tuple of (metadata, body). Never raises.
+    """
+    match = _OPTIONAL_FRONTMATTER_PATTERN.match(content)
+    if not match:
+        return {}, content
+
+    body = match.group(2) or ""
+
+    try:
+        metadata = yaml.safe_load(match.group(1))
+    except yaml.YAMLError:
+        return {}, content
+
+    if metadata is None:
+        # An empty --- --- block: no metadata, but the body still strips.
+        return {}, body
+
+    if not isinstance(metadata, dict):
+        return {}, content
+
+    return metadata, body
 
 
 # Chunk: docs/chunks/future_chunk_creation - Reusable utility for modifying YAML frontmatter fields including status

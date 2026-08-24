@@ -109,6 +109,44 @@ When friction accumulates (3+ entries in a theme), add a proposed chunk to the f
 
 Use `/friction-log` to quickly capture a friction point.
 
+## VE Hooks {#hooks}
+
+A VE hook is a project's own requirements for one lifecycle command, written to
+`docs/hooks/<command-name>.md`. Every plugin command loads its hook into the
+context block at the top of the command, so the content arrives precisely when
+the phase it governs is running.
+
+```
+docs/hooks/chunk-complete.md    # loaded by /chunk-complete
+docs/hooks/chunk-create.md      # loaded by /chunk-create
+docs/hooks/narrative-create.md  # loaded by /narrative-create
+```
+
+**Format**: Markdown. Optional YAML frontmatter (no keys are meaningful today);
+the body is the instruction, passed to the agent verbatim.
+
+```markdown
+Did this chunk change anything in the public-facing documentation?
+If it did, update it before reporting the chunk complete.
+```
+
+**Naming**: the filename must exactly match a command name — `chunk-complete.md`,
+not `chunk-completed.md` or `complete.md`. A filename matching no command is
+well-formed and will silently never fire, so `ve hooks list` and `ve validate`
+both flag it as a warning.
+
+**Hooks are advisory.** They are prompt content, not enforced checks: an agent
+is instructed to satisfy them and to surface conflicts with the command's own
+instructions, but nothing verifies compliance. Use them for judgement-shaped
+requirements ("check whether X needs updating"), not for guarantees. See DEC-016.
+
+**Not to be confused with Claude Code plugin hooks** (`hooks/hooks.json`,
+`hooks/session_start.sh`), which are a harness-level mechanism firing on session
+events like `SessionStart`. The two are unrelated.
+
+Use `ve hooks list` to see the hooks a project defines and `ve hooks show
+<command-name>` to preview what a command will receive.
+
 ## Deletion Grants {#deletion-grants}
 
 The deletion-grant ledger (`docs/trunk/DELETIONS.md`) records operator-authorized reference deletions. Deleting a backreference or `code_references` entry is normally out of vocabulary for validation fix loops — a reference is somebody's record of governing intent. When code was deliberately deleted and the operator explicitly authorizes removing the reference to it, the grant is recorded **before** the reference is removed:

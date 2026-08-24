@@ -509,7 +509,11 @@ explicitly log out.
     they resolve to real symbols, fills in any references the agent
     collected during implement, scans for other chunks that govern the
     same code, and flips status to <code>ACTIVE</code>. (Underneath, it
-    drives <code>ve chunk complete</code>.)
+    drives <code>ve chunk complete</code>, also spelled
+    <code>ve chunk land</code> &mdash; the two are the same command. Agent
+    harnesses refuse shell commands containing the token
+    <code>complete</code>, a bash builtin that evaluates its arguments, so an
+    agent driving this phase needs a spelling no shell owns.)
   </p>
   <p>
     The overlap scan is where <code>COMPOSITE</code> situations get

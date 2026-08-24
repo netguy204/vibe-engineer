@@ -1,7 +1,7 @@
 ---
 name: chunk-plan
 description: Create a chunk PLAN.md file containing the technical breakdown for the work in that chunk's GOAL.md file. Use when the operator asks to plan the current chunk, when a chunk has a refined goal but no implementation plan, or as the PLAN phase of the chunk lifecycle.
-allowed-tools: Bash(ve --help:*), Bash(cat:*), Bash(ve chunk list:*), Bash(ve chunk suggest-prefix:*), Bash(ve chunk cluster-list:*)
+allowed-tools: Bash(ve --help:*), Bash(cat:*), Bash(ve chunk list:*), Bash(ve chunk suggest-prefix:*), Bash(ve chunk cluster-list:*), Bash(ve hooks show:*)
 ---
 
 <!-- GENERATED from src/templates/plugin/skills/chunk-plan.md.jinja2 — edit that template and run `ve plugin render`; direct edits here will be overwritten. -->
@@ -12,6 +12,7 @@ allowed-tools: Bash(ve --help:*), Bash(cat:*), Bash(ve chunk list:*), Bash(ve ch
 - ve CLI: !`ve --help >/dev/null 2>&1 && echo "installed" || echo "(ve CLI not found)"`
 - Task workspace: !`cat .ve-task.yaml 2>/dev/null || cat ../.ve-task.yaml 2>/dev/null || echo "(not a task workspace)"`
 - Project config: !`cat .ve-config.yaml 2>/dev/null || echo "(no .ve-config.yaml — defaults apply)"`
+- Project hook: !`ve hooks show chunk-plan 2>/dev/null || echo "(no project hook)"`
 
 ## Runtime context
 
@@ -36,6 +37,13 @@ Interpret the context above before following the instructions:
   Known keys: `cluster_subsystem_threshold` (default 5 — the cluster size
   at which to suggest subsystem documentation). When the context shows
   "(no .ve-config.yaml — defaults apply)", use the defaults.
+- **Project hook**: `docs/hooks/chunk-plan.md` holds this repository's
+  own requirements for this command. When the context shows hook content,
+  treat it as a binding instruction from the operator: satisfy it before
+  reporting this command complete, and say so when you do. When it shows
+  "(no project hook)", there are none. If a hook contradicts this command's
+  own instructions, do not silently choose — surface the conflict to the
+  operator and ask.
 - **If this is a task workspace** (the Task workspace context above shows
   `.ve-task.yaml` contents): the PLAN.md is created in the external
   artifact repo named by `external_artifact_repo` in `.ve-task.yaml`. When

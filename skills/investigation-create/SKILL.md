@@ -1,7 +1,7 @@
 ---
 name: investigation-create
 description: Start a new investigation for exploratory work, or redirect to a simpler chunk workflow when the task is straightforward. Use when the operator wants to explore, diagnose, or understand something with an unclear root cause, multiple hypotheses, or architectural implications.
-allowed-tools: Bash(ve --help:*), Bash(cat:*), Bash(ve investigation create:*)
+allowed-tools: Bash(ve --help:*), Bash(cat:*), Bash(ve investigation create:*), Bash(ve hooks show:*)
 ---
 
 <!-- GENERATED from src/templates/plugin/skills/investigation-create.md.jinja2 — edit that template and run `ve plugin render`; direct edits here will be overwritten. -->
@@ -12,6 +12,7 @@ allowed-tools: Bash(ve --help:*), Bash(cat:*), Bash(ve investigation create:*)
 - ve CLI: !`ve --help >/dev/null 2>&1 && echo "installed" || echo "(ve CLI not found)"`
 - Task workspace: !`cat .ve-task.yaml 2>/dev/null || cat ../.ve-task.yaml 2>/dev/null || echo "(not a task workspace)"`
 - Project config: !`cat .ve-config.yaml 2>/dev/null || echo "(no .ve-config.yaml — defaults apply)"`
+- Project hook: !`ve hooks show investigation-create 2>/dev/null || echo "(no project hook)"`
 
 ## Runtime context
 
@@ -36,6 +37,13 @@ Interpret the context above before following the instructions:
   Known keys: `cluster_subsystem_threshold` (default 5 — the cluster size
   at which to suggest subsystem documentation). When the context shows
   "(no .ve-config.yaml — defaults apply)", use the defaults.
+- **Project hook**: `docs/hooks/investigation-create.md` holds this repository's
+  own requirements for this command. When the context shows hook content,
+  treat it as a binding instruction from the operator: satisfy it before
+  reporting this command complete, and say so when you do. When it shows
+  "(no project hook)", there are none. If a hook contradicts this command's
+  own instructions, do not silently choose — surface the conflict to the
+  operator and ask.
 - **If this is a task workspace** (the Task workspace context above shows
   `.ve-task.yaml` contents): this command creates artifacts in the external
   artifact repo named by `external_artifact_repo` in `.ve-task.yaml`. The

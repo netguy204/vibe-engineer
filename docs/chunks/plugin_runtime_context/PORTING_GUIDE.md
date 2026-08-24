@@ -45,6 +45,7 @@ command-specific task-workspace guidance (see step 4 of the recipe) vary.
 - ve CLI: !`ve --help >/dev/null 2>&1 && echo "installed" || echo "(ve CLI not found)"`
 - Task workspace: !`cat .ve-task.yaml 2>/dev/null || cat ../.ve-task.yaml 2>/dev/null || echo "(not a task workspace)"`
 - Project config: !`cat .ve-config.yaml 2>/dev/null || echo "(no .ve-config.yaml — defaults apply)"`
+- Project hook: !`ve hooks show <command-name> 2>/dev/null || echo "(no project hook)"`
 
 ## Runtime context
 
@@ -69,6 +70,13 @@ Interpret the context above before following the instructions:
   Known keys: `cluster_subsystem_threshold` (default 5 — the cluster size
   at which to suggest subsystem documentation). When the context shows
   "(no .ve-config.yaml — defaults apply)", use the defaults.
+- **Project hook**: `docs/hooks/<command-name>.md` holds this repository's
+  own requirements for this command. When the context shows hook content,
+  treat it as a binding instruction from the operator: satisfy it before
+  reporting this command complete, and say so when you do. When it shows
+  "(no project hook)", there are none. If a hook contradicts this command's
+  own instructions, do not silently choose — surface the conflict to the
+  operator and ask.
 ````
 
 Notes:
@@ -84,6 +92,23 @@ Notes:
   operator statement), check parent directories before concluding you are
   not in a task.
 - `ve` has **no `--version` flag** — probe presence with `ve --help`.
+- The Project hook line substitutes this command's own name, so
+  `commands/chunk-complete.md` carries
+  `!`ve hooks show chunk-complete 2>/dev/null || echo "(no project hook)"``.
+  Wiring is universal by design (the `hooks_lifecycle_fragments` chunk): the
+  set of valid hook events is exactly the set of command files, so there is
+  no allowlist to drift. A command added without this line silently has no
+  hook support — `tests/test_plugin_commands.py` enforces it.
+- The `2>/dev/null || echo` guard is not redundant with `ve hooks show`'s own
+  exit-0-and-print-"(no project hook)" behaviour. That behaviour only holds on
+  a CLI new enough to *have* the `hooks` command. DEC-011 lets the plugin and
+  CLI version independently, so "plugin newer than the installed CLI" is a
+  normal state; on an older CLI, `ve hooks show` is an unknown subcommand that
+  prints a Click usage error to stderr and exits 2. Without the guard that
+  error lands in the context block of every command. The guard degrades it to
+  the same "(no project hook)" every other preamble line falls back to. This
+  is why the hook line, alone among the context lines, wraps a subcommand that
+  may not exist yet.
 
 ## 3. Mechanical porting steps
 

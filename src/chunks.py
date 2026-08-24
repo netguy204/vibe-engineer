@@ -409,7 +409,7 @@ class Chunks(ArtifactManager[ChunkFrontmatter, ChunkStatus]):
             if current is not None:
                 raise ValueError(
                     f"Cannot create: chunk '{current}' is already IMPLEMENTING. "
-                    f"Run 've chunk complete' first."
+                    f"Run 've chunk land' first."
                 )
 
         # Chunk: docs/chunks/artifact_index_cache - Uses cached artifact_index property
