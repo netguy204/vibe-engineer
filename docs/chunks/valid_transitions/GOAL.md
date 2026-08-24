@@ -23,18 +23,16 @@ code_references:
   implements: Get current chunk status from frontmatter
 - ref: src/chunks.py#Chunks::update_status
   implements: Update chunk status with transition validation
-- ref: src/narratives.py#Narratives::get_status
-  implements: Get current narrative status from frontmatter
-- ref: src/narratives.py#Narratives::update_status
-  implements: Update narrative status with transition validation
-- ref: src/narratives.py#Narratives::_update_overview_frontmatter
-  implements: Helper to update OVERVIEW.md frontmatter fields
-- ref: src/investigations.py#Investigations::get_status
-  implements: Get current investigation status from frontmatter
-- ref: src/investigations.py#Investigations::update_status
-  implements: Update investigation status with transition validation
-- ref: src/investigations.py#Investigations::_update_overview_frontmatter
-  implements: Helper to update OVERVIEW.md frontmatter fields
+- ref: src/artifact_manager.py#ArtifactManager::get_status
+  implements: Get current artifact status from frontmatter (hoisted from the per-type
+    Narratives/Investigations managers by artifact_manager_base)
+- ref: src/artifact_manager.py#ArtifactManager::update_status
+  implements: Update artifact status with transition validation (hoisted from the
+    per-type Narratives/Investigations managers by artifact_manager_base)
+- ref: src/artifact_manager.py#ArtifactManager::_update_frontmatter
+  implements: Helper to update main-file frontmatter fields (hoisted from the per-type
+    _update_overview_frontmatter helpers by artifact_manager_base; duplicates deleted
+    under grants D009-D011)
 - ref: tests/test_transitions.py
   implements: Tests for transition dict structure and CLI commands
 narrative: null

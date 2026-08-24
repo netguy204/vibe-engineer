@@ -67,3 +67,21 @@ typically the summary line of `ve exists <name>`.
 - **Authorized by**: brian@cloudcapital.co
 - **Reason**: Deleted by plugin_init_slimdown (402e280) with DEC-010: ve init stopped rendering skills into .agents/skills/, so the intent this reference guarded (per-project skill rendering with .claude/commands symlinks) no longer exists in code. Same migration casualty as D007, same chunk.
 - **Evidence**: grep src/project.py: class Project has no _init_skills; ve exists absent
+
+### D009: 2026-08-24 — `src/investigations.py#Investigations::get_status` deleted from `docs/chunks/valid_transitions/GOAL.md:32`
+
+- **Authorized by**: brian@cloudcapital.co
+- **Reason**: artifact_manager_base hoisted get_status from the per-type managers into ArtifactManager; Investigations no longer defines it. The sibling Narratives::get_status entry is repointed to src/artifact_manager.py#ArtifactManager::get_status in the same diff, which now carries the intent for every artifact type; a second entry on the same base symbol would be a duplicate.
+- **Evidence**: Absent: 0 matches for 'Investigations::get_status'.
+
+### D010: 2026-08-24 — `src/investigations.py#Investigations::update_status` deleted from `docs/chunks/valid_transitions/GOAL.md:34`
+
+- **Authorized by**: brian@cloudcapital.co
+- **Reason**: artifact_manager_base hoisted update_status into ArtifactManager; Investigations no longer defines it. The sibling Narratives::update_status entry is repointed to src/artifact_manager.py#ArtifactManager::update_status in the same diff, which now carries the transition-validation intent for every artifact type; a second entry on the same base symbol would be a duplicate.
+- **Evidence**: Absent: 0 matches for 'Investigations::update_status'.
+
+### D011: 2026-08-24 — `src/investigations.py#Investigations::_update_overview_frontmatter` deleted from `docs/chunks/valid_transitions/GOAL.md:36`
+
+- **Authorized by**: brian@cloudcapital.co
+- **Reason**: artifact_manager_base hoisted the frontmatter-update helper into ArtifactManager._update_frontmatter; Investigations no longer defines _update_overview_frontmatter. The sibling Narratives entry is repointed to src/artifact_manager.py#ArtifactManager::_update_frontmatter in the same diff; a second entry on the same base symbol would be a duplicate.
+- **Evidence**: Absent: 0 matches for 'Investigations::_update_overview_frontmatter'.

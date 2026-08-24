@@ -350,13 +350,19 @@ class Chunks(ArtifactManager[ChunkFrontmatter, ChunkStatus]):
             error_detail = "; ".join(errors) if errors else "unknown error"
             raise ValueError(f"Could not parse frontmatter for chunk '{chunk_id}': {error_detail}")
 
-        if frontmatter.status != ChunkStatus.FUTURE:
+        # Chunk: docs/chunks/lifecycle_status_guard - Activation legality derives from the map
+        # Activation is the FUTURE -> IMPLEMENTING transition. Rather than
+        # comparing against FUTURE by hand (a check that could drift from the
+        # map), ask the state machine whether this source can reach
+        # IMPLEMENTING; under VALID_CHUNK_TRANSITIONS only FUTURE can.
+        sm = self._get_state_machine()
+        if sm.transition_violation(frontmatter.status, ChunkStatus.IMPLEMENTING) is not None:
             raise ValueError(
                 f"Cannot activate: chunk '{chunk_name}' has status '{frontmatter.status.value}', "
                 f"expected 'FUTURE'"
             )
 
-        # Update status to IMPLEMENTING
+        # Update status to IMPLEMENTING (transition validated just above)
         goal_path = self.get_chunk_goal_path(chunk_name)
         update_frontmatter_field(goal_path, "status", "IMPLEMENTING")
 
@@ -926,32 +932,47 @@ class Chunks(ArtifactManager[ChunkFrontmatter, ChunkStatus]):
 
         return frontmatter.status
 
+    # Chunk: docs/chunks/lifecycle_status_guard - No-op allowance and operator force on the routed setter
     def update_status(
-        self, chunk_id: str, new_status: ChunkStatus
+        self, chunk_id: str, new_status: ChunkStatus, force: bool = False
     ) -> tuple[ChunkStatus, ChunkStatus]:
         """Update chunk status with transition validation.
 
         Overrides base class to support chunk ID resolution and use
         get_chunk_goal_path for file updates.
 
+        A no-op write (current == new) succeeds without touching the file:
+        idempotent re-runs are how orchestrator retries work, and X -> X is
+        not an edge the transition map needs to bless.
+
         Args:
             chunk_id: The chunk ID to update.
             new_status: The new status to transition to.
+            force: Skip transition validation (operator escape hatch; the
+                caller is responsible for warning loudly about the rule it
+                overrides — see `ve chunk status --force`). Does not bypass
+                the current-status read: an unreadable status still raises.
 
         Returns:
             Tuple of (old_status, new_status) on success.
 
         Raises:
-            ValueError: If chunk not found, invalid status, or invalid transition.
+            ValueError: If chunk not found, invalid status, or (unless
+                force) invalid transition.
         """
         from frontmatter import update_frontmatter_field
 
         # Get current status (uses resolve_chunk_id internally)
         current_status = self.get_status(chunk_id)
 
+        # Idempotent no-op: nothing to transition, nothing written
+        if current_status == new_status:
+            return (current_status, new_status)
+
         # Validate the transition using StateMachine from base class
-        sm = self._get_state_machine()
-        sm.validate_transition(current_status, new_status)
+        if not force:
+            sm = self._get_state_machine()
+            sm.validate_transition(current_status, new_status)
 
         # Update the frontmatter
         goal_path = self.get_chunk_goal_path(chunk_id)

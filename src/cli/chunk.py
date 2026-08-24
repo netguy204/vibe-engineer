@@ -539,6 +539,7 @@ def list_chunks(current, last_active, recent, status_filter, future_flag, active
 
 
 # Chunk: docs/chunks/lifecycle_composite_ownership - complete performs only the transition it means
+# Chunk: docs/chunks/lifecycle_status_guard - Residual legality consults the shared state machine
 def _guard_completion_transition(goal_path, chunk_name, force):
     """Refuse completion writes the state machine forbids or the operator didn't ask for.
 
@@ -549,8 +550,15 @@ def _guard_completion_transition(goal_path, chunk_name, force):
     (VALID_CHUNK_TRANSITIONS) and were previously written anyway. Unreadable
     state fails closed: a guard on a destructive write must not assume the
     one status that permits the write.
+
+    The explicit branches below are completion *policy* for specific legal
+    or gated edges; every remaining status is judged by the shared
+    CHUNK_STATE_MACHINE, so the illegal set derives from the map rather
+    than from a hand-copied list of statuses.
     """
     from frontmatter import extract_frontmatter_dict
+
+    from models import CHUNK_STATE_MACHINE
 
     frontmatter_data = extract_frontmatter_dict(goal_path)
     raw = (frontmatter_data or {}).get("status")
@@ -586,9 +594,17 @@ def _guard_completion_transition(goal_path, chunk_name, force):
             err=True,
         )
         raise SystemExit(1)
+    # Residual statuses (today: FUTURE, SUPERSEDED, HISTORICAL) — ask the
+    # shared state machine instead of assuming they are illegal, so a future
+    # map change cannot silently diverge from this guard.
+    violation = CHUNK_STATE_MACHINE.transition_violation(status, ChunkStatus.ACTIVE)
+    if violation is None:
+        # A status whose -> ACTIVE edge the map permits but completion has
+        # no policy branch for: a plain completion write is safe.
+        return True
     click.echo(
         f"Error: docs/chunks/{chunk_name} is {status.value}; {status.value} -> ACTIVE is "
-        f"not a valid transition (see VALID_CHUNK_TRANSITIONS). Nothing was written",
+        f"not a valid transition ({violation}). Nothing was written",
         err=True,
     )
     raise SystemExit(1)
@@ -1161,12 +1177,27 @@ def activate(chunk_id, project_dir):
 
 
 # Chunk: docs/chunks/accept_full_artifact_paths - CLI chunk status command using strip_artifact_path_prefix
+# Chunk: docs/chunks/lifecycle_status_guard - Transitions consult the map; --force is the loud operator override
 @chunk.command()
 @click.argument("chunk_id")
 @click.argument("new_status", required=False, default=None)
 @click.option("--project-dir", type=click.Path(exists=True, path_type=pathlib.Path), default=".")
-def status(chunk_id, new_status, project_dir):
-    """Show or update chunk status."""
+@click.option(
+    "--force",
+    is_flag=True,
+    help=(
+        "Perform an illegal status transition anyway (operator repair of a "
+        "broken state). Prints the rule it breaks. On a legal transition "
+        "this flag does nothing."
+    ),
+)
+def status(chunk_id, new_status, project_dir, force):
+    """Show or update chunk status.
+
+    Status transitions are validated against VALID_CHUNK_TRANSITIONS;
+    illegal edges are refused without writing. Setting the status a chunk
+    already has is an idempotent no-op.
+    """
     # Normalize chunk_id to strip path prefixes
     chunk_id = strip_artifact_path_prefix(chunk_id, ArtifactType.CHUNK)
 
@@ -1190,7 +1221,9 @@ def status(chunk_id, new_status, project_dir):
         return
 
     # Transition mode: validate and update status
-    # First validate new_status is a valid ChunkStatus value
+    # First validate new_status is a valid ChunkStatus value.
+    # --force does not relax this: it overrides which edges may be
+    # traversed, never which values exist.
     try:
         new_status_enum = ChunkStatus(new_status)
     except ValueError:
@@ -1201,13 +1234,46 @@ def status(chunk_id, new_status, project_dir):
         )
         raise SystemExit(1)
 
-    # Attempt the transition
+    # Attempt the transition (validated against VALID_CHUNK_TRANSITIONS
+    # inside update_status; X -> X is an idempotent no-op there)
     try:
         old_status, updated_status = chunks.update_status(resolved_id, new_status_enum)
         click.echo(f"{resolved_id}: {old_status.value} -> {updated_status.value}")
+        return
     except ValueError as e:
-        click.echo(f"Error: {e}", err=True)
+        if not force:
+            click.echo(f"Error: {e}", err=True)
+            click.echo(
+                "Nothing was written. If you are repairing a genuinely broken "
+                "state, --force performs the write anyway and prints the rule "
+                "it breaks.",
+                err=True,
+            )
+            raise SystemExit(1)
+        violation = str(e)
+
+    # Chunk: docs/chunks/lifecycle_status_guard - The sanctioned escape hatch.
+    # This is a deliberate unvalidated write site: operators repair genuinely
+    # broken states (typo'd status, interrupted migration) here, in the
+    # tooling, where the override is loud — the alternative is hand-editing
+    # frontmatter, which bypasses everything invisibly. Every ValueError
+    # reachable above is a case --force exists to repair: an illegal
+    # transition, or a current status that cannot be read/parsed (the chunk
+    # itself was already resolved, so not-found cannot reach this branch).
+    from frontmatter import extract_frontmatter_dict, update_frontmatter_field
+
+    click.echo(f"Warning: --force overriding chunk status rules: {violation}", err=True)
+    goal_path = chunks.get_chunk_goal_path(resolved_id)
+    try:
+        raw_before = (extract_frontmatter_dict(goal_path) or {}).get("status") or "<unreadable>"
+    except Exception:
+        raw_before = "<unreadable>"
+    try:
+        update_frontmatter_field(goal_path, "status", new_status_enum.value)
+    except (ValueError, FileNotFoundError) as write_err:
+        click.echo(f"Error: --force could not write status: {write_err}", err=True)
         raise SystemExit(1)
+    click.echo(f"{resolved_id}: {raw_before} -> {new_status_enum.value} (forced)")
 
 
 # Chunk: docs/chunks/chunk_overlap_command - CLI command for finding overlapping chunks

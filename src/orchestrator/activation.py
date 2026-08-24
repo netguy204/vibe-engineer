@@ -19,7 +19,7 @@ from typing import Optional
 
 from chunks import Chunks
 from frontmatter import update_frontmatter_field
-from models import ChunkStatus
+from models import CHUNK_STATE_MACHINE, ChunkStatus
 from models.chunk import VALID_CHUNK_TRANSITIONS
 
 logger = logging.getLogger(__name__)
@@ -137,7 +137,11 @@ def activate_chunk_in_worktree(
         logger.info(f"Chunk {target_chunk} is already IMPLEMENTING, no activation needed")
         return None
 
-    if frontmatter.status != ChunkStatus.FUTURE:
+    # Chunk: docs/chunks/lifecycle_status_guard - Routed: activation legality derives from the shared map
+    # (under VALID_CHUNK_TRANSITIONS only FUTURE can reach IMPLEMENTING)
+    if CHUNK_STATE_MACHINE.transition_violation(
+        frontmatter.status, ChunkStatus.IMPLEMENTING
+    ) is not None:
         raise ValueError(
             f"Chunk '{target_chunk}' has status '{frontmatter.status.value}', "
             f"expected 'FUTURE' for activation"
@@ -153,10 +157,19 @@ def activate_chunk_in_worktree(
             f"Displacing existing IMPLEMENTING chunk '{current_implementing}' to FUTURE"
         )
         goal_path = chunks.get_chunk_goal_path(current_implementing)
+        # Chunk: docs/chunks/lifecycle_status_guard - Recorded exemption from
+        # transition-map routing: IMPLEMENTING -> FUTURE is deliberately not
+        # an edge in VALID_CHUNK_TRANSITIONS. This write is the orchestrator's
+        # internal, reversible displacement — the chunk is parked so exactly
+        # one chunk is IMPLEMENTING in the worktree, and it is restored to
+        # IMPLEMENTING by restore_displaced_chunk() before merge. Routing it
+        # through the state machine would break displacement by design.
         update_frontmatter_field(goal_path, "status", ChunkStatus.FUTURE.value)
         displaced_chunk = current_implementing
 
-    # Now activate the target chunk
+    # Now activate the target chunk (transition validated above; this site
+    # writes directly instead of calling Chunks.activate_chunk because
+    # displacement intentionally sidesteps its single-IMPLEMENTING check)
     logger.info(f"Activating chunk '{target_chunk}' (FUTURE -> IMPLEMENTING)")
     goal_path = chunks.get_chunk_goal_path(target_chunk)
     update_frontmatter_field(goal_path, "status", ChunkStatus.IMPLEMENTING.value)
@@ -183,14 +196,18 @@ def restore_displaced_chunk(worktree_path: Path, displaced_chunk: str) -> None:
         logger.warning(f"Cannot restore displaced chunk '{displaced_chunk}': not found")
         return
 
-    if frontmatter.status != ChunkStatus.FUTURE:
+    # Chunk: docs/chunks/lifecycle_status_guard - Routed: restore legality derives from the shared map
+    # (restore is the FUTURE -> IMPLEMENTING transition; only FUTURE can make it)
+    if CHUNK_STATE_MACHINE.transition_violation(
+        frontmatter.status, ChunkStatus.IMPLEMENTING
+    ) is not None:
         logger.warning(
             f"Cannot restore displaced chunk '{displaced_chunk}': "
             f"status is '{frontmatter.status.value}', expected 'FUTURE'"
         )
         return
 
-    # Restore to IMPLEMENTING
+    # Restore to IMPLEMENTING (transition validated just above)
     logger.info(f"Restoring displaced chunk '{displaced_chunk}' to IMPLEMENTING")
     goal_path = chunks.get_chunk_goal_path(displaced_chunk)
     update_frontmatter_field(goal_path, "status", ChunkStatus.IMPLEMENTING.value)

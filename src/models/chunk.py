@@ -6,6 +6,8 @@ from enum import StrEnum
 
 from pydantic import BaseModel, ConfigDict
 
+from state_machine import StateMachine
+
 from models.friction import FrictionEntryReference
 from models.references import (
     ExternalArtifactRef,
@@ -51,6 +53,13 @@ VALID_CHUNK_TRANSITIONS: dict[ChunkStatus, set[ChunkStatus]] = {
 COMPLETABLE_STATUSES: frozenset[ChunkStatus] = frozenset(
     {ChunkStatus.IMPLEMENTING, ChunkStatus.ACTIVE, ChunkStatus.COMPOSITE}
 )
+
+# Chunk: docs/chunks/lifecycle_status_guard - One shared validator over the one map
+# Every chunk status write consults this machine (directly or via
+# ArtifactManager._get_state_machine, which wraps the same map with the same
+# class). A second validator, or a hand-rolled status comparison at a write
+# site, is how side doors reopen.
+CHUNK_STATE_MACHINE = StateMachine(VALID_CHUNK_TRANSITIONS, ChunkStatus)
 
 
 # Chunk: docs/chunks/chunk_create_task_aware - Model for chunk GOAL.md frontmatter with dependents

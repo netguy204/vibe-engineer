@@ -73,6 +73,7 @@ from models.reviewer import (
 
 # Chunk domain
 from models.chunk import (
+    CHUNK_STATE_MACHINE,
     COMPLETABLE_STATUSES,
     VALID_CHUNK_TRANSITIONS,
     ChunkDependent,
@@ -145,6 +146,7 @@ __all__ = [
     "DecisionFrontmatter",
     # Chunk domain
     "ChunkStatus",
+    "CHUNK_STATE_MACHINE",
     "COMPLETABLE_STATUSES",
     "VALID_CHUNK_TRANSITIONS",
     "ChunkDependent",

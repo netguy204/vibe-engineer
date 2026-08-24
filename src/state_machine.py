@@ -86,3 +86,18 @@ class StateMachine:
                 f"Cannot transition from {current.value} to {new.value}. "
                 f"Valid transitions: {valid_str}"
             )
+
+    # Chunk: docs/chunks/lifecycle_status_guard - Query form of the one transition predicate
+    def transition_violation(self, current: StatusT, new: StatusT) -> str | None:
+        """Return the rule a transition would break, or None when it is legal.
+
+        Query form of validate_transition for callers that need the broken
+        rule's text without control flow by exception (guards that print the
+        rule before refusing, and the --force escape hatch that prints it
+        before overriding).
+        """
+        try:
+            self.validate_transition(current, new)
+        except ValueError as e:
+            return str(e)
+        return None

@@ -8,10 +8,13 @@ code_paths:
 - tests/test_chunk_start.py
 - tests/test_chunk_list.py
 code_references:
-  - ref: src/ve.py#validate_combined_chunk_name
-    implements: "Combined chunk name length validation at creation time"
-  - ref: src/ve.py#list_chunks
-    implements: "Frontmatter parse error surfacing in chunk list command"
+  - ref: src/cli/utils.py#validate_short_name
+    implements: "Chunk name length validation at creation time (the cap now derives
+      from path legality per crossref_artifact_id_cap, superseding the original
+      31-character rule)"
+  - ref: src/cli/chunk.py#list_chunks
+    implements: "Frontmatter parse error surfacing in chunk list command (moved from
+      src/ve.py by cli_decompose)"
   - ref: src/chunks.py#Chunks::activate_chunk
     implements: "Frontmatter parse error surfacing in chunk activation"
 narrative: null

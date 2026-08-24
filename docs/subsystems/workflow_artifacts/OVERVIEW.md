@@ -79,6 +79,8 @@ chunks:
     relationship: implements
   - chunk_id: crossref_generator_verify
     relationship: implements
+  - chunk_id: lifecycle_status_guard
+    relationship: implements
 code_references:
 - ref: src/chunks.py#Chunks
   implements: Chunk workflow manager class
@@ -711,6 +713,15 @@ from within a project directory to get complete corpus coverage.
   provable absence to an error in `ve chunk validate`, gated `ve chunk complete` on
   declared references resolving (`Chunks.validate_chunk_references_exist`), and added
   `Subsystems.validate_code_references` behind `ve subsystem validate`
+
+- **lifecycle_status_guard** - Made chunk status transition rules a property of the
+  status field itself: every chunk status write consults `StateMachine` over
+  `VALID_CHUNK_TRANSITIONS` (via the `CHUNK_STATE_MACHINE` singleton or the manager's
+  `_get_state_machine()`). Added `StateMachine.transition_violation` (query form of
+  `validate_transition`), no-op allowance for X -> X writes, the loud
+  `ve chunk status --force` operator escape hatch, map-derived activation checks, and
+  recorded exemptions for the deliberate off-map writes (orchestrator displacement,
+  the force hatch)
 
 - **ordering_active_only** - Enhanced `ArtifactIndex.find_tips()` to filter by status,
   excluding "future/queued" artifacts from tip detection. Chunks only include ACTIVE or
