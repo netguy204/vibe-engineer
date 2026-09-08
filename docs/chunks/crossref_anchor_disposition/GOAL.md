@@ -3,21 +3,20 @@ status: FUTURE
 ticket: null
 parent_chunk: null
 code_paths:
-- src/backreferences.py
-- src/cluster_rename.py
-- src/integrity.py
+- src/symbols.py
+- src/chunk_validation.py
+- src/cli/chunk.py
 - src/workspace_validation.py
-- src/templates/claude/AGENTS.md.jinja2
-- tests/test_backreferences.py
-- tests/test_cluster_rename.py
-- tests/test_integrity.py
+- tests/test_symbols.py
+- tests/test_chunk_validate.py
+- tests/test_chunk_complete_gate.py
 code_references: []
 narrative: reference_language_parity
 investigation: null
 subsystems: []
 friction_entries: []
-depends_on: ["validate_backref_literals"]
-created_after: ["external_never_resolved", "hooks_lifecycle_fragments", "claudemd_marker_safety", "claudemd_symlink_notice", "template_workspace_awareness"]
+depends_on: []
+created_after: ["lifecycle_status_guard", "audit_corpus_health"]
 ---
 
 <!--
@@ -226,140 +225,61 @@ VALIDATION:
 
 ## Minor Goal
 
-VE's backreference scanner recognises a backreference comment in any language
-`enumerate_source_files` enumerates, written in that language's comment syntax.
-A `// Chunk: docs/chunks/foo` on an indented method in TypeScript is seen by
-`ve validate`, counted by `ve stats`, rewritten by `ve chunk complete`, and
-updated by `ve chunk cluster-rename` exactly as a `# Chunk:` in Python is.
+No VE command reports success over a claim it did not check. `ve chunk validate`
+states its own symbol-anchor coverage in the line that reports the outcome, so
+"ready for completion" is never printed unqualified over anchors that were
+skipped, and `--strict` turns unchecked anchors into a nonzero exit for callers
+that want the check to gate.
 
-The scanner recognises exactly one marker: `#`. `_build_backref_pattern` in
-`src/backreferences.py` emits `^(?P<indent>[ 	]*)#[ 	]+{keyword}:...`, in
-which the `#` is a literal. `SOURCE_EXTENSIONS` in `src/source_files.py`
-enumerates ~40 extensions across ~20 languages, of which only Python, Ruby,
-Elixir, Perl and shell use `#` line comments; the rest comment with `//`
-(JS/TS, Go, Rust, Java, Kotlin, Swift, C/C++, C#, PHP, Scala), `%` (Erlang),
-`;` (Clojure) or `--` (Lua). `backref_language_agnostic` made the *enumerator*
-language-agnostic and left the *parser* Python-only, so the enumerator now
-walks twenty languages to feed a parser that can read five. Their files are
-opened and scanned; none of their comments can ever match.
+Underneath that, `symbols.py#extract_symbols` answers with a three-valued
+disposition — **verified**, **contradicted**, **not-analysable** — rather than a
+bare `set()`. A bare set makes "this language has no extractor" indistinguishable
+from "this file defines nothing", and that ambiguity is what makes the silence
+total: every downstream caller reads an empty set as a fact about the file. With
+the disposition, an unanalysable file degrades loudly to *not checked* instead of
+quietly to *fine*, and the two callers that can only report — `check_reference_target`
+and `_symbol_is_absent` — get the distinction they already try to express in prose.
 
-This is not a corner case. Field measurement, vibe-engineer 0.8.1 against a
-~30k-line Rust repository with 115 chunks: `ve validate` reports
-`Chunk backrefs: 0` across 240 scanned files where `grep -c "// Chunk:" crates/`
-returns **1359**. The "Files scanned: 240" line reads as reassurance for a scan
-that matched nothing. In this repository the same gap is 102 `// Chunk:` /
-`// Subsystem:` backreferences across 18 files in `workers/leader-board/` and
-`site/`.
+This chunk adds no language support. It makes the absence of language support
+visible, and it is the contract any extractor plugs into.
 
-The failure is silent. Nothing reports a backreference it could not parse, so it
-presents as absence: `ve validate` passes, `ve stats` undercounts, and — worst —
-`ve chunk complete` and `ve chunk cluster-rename` rewrite the references they can
-see and leave the rest dangling with no error. The tool's own templates instruct
-agents to write backreferences, and several chunk PLANs in this repository
-(`gateway_cleartext_api`, `invite_list_revoke`, `websocket_zombie_cleanup`)
-instruct agents to write `// Chunk:` comments into TypeScript. VE asks for
-backreferences in forms it cannot read.
-
-`src/backreferences.py` is the only place the grammar lives. Four call sites
-consume it — `parse_backreference` from `IntegrityValidator::_validate_code_backreferences`,
-`scan_backreferences` from `workspace_validation`, and `count_backreferences` /
-`update_backreferences` from consolidation and `narrative-compact`. A fifth site,
-`src/cluster_rename.py`, carries a *second, divergent copy* of the grammar as the
-literal string `"# Chunk: docs/chunks/"` at lines 350, 426, 489 and 530; it
-consumes the shared parser instead, so a cluster rename in a curly-brace
-repository cannot silently strand every reference it was supposed to update.
-
-The marker is captured on `ParsedBackreference` and preserved through rewrites,
-for the same reason `indent` already is. `update_backreferences` and
-`consolidation` re-emit these comments in place, so a parser that matched `//`
-and a writer that emitted `#` would insert a syntax error into every Rust, Go and
-TypeScript file consolidation touched. What the grammar matched is what a rewrite
-puts back.
-
-Indentation is already handled: `backref_indented_comments` (ACTIVE) made the
-indent unbounded and captured, and the 619 indented `# Chunk:` occurrences across
-107 Python files in `src/` and `tests/` are counted today. What remains of that
-half is that the same must hold for every newly-recognised marker.
+The default exit code does not change. `crossref_unchecked_anchors` established
+that UNCHECKED never gates, and that criterion governs the default path here:
+`--strict` is opt-in, and a run without it exits exactly as it does today.
 
 ## Success Criteria
 
-- A backreference written in the host language's line-comment syntax is
-  recognised for every language in `SOURCE_EXTENSIONS`. At minimum `//`, `#`,
-  `%`, `;`, and `--` are supported, mapped by file extension rather than
-  probed for — a `#` inside a `.ts` file is not a comment and must not match.
-  Threading the file's extension to the parser is part of this chunk; the
-  single-line `parse_backreference` API changes shape, and all five call sites
-  change with it. **Breaking change** to a private API.
-- Leading whitespace before the comment marker is accepted for every marker,
-  not only for `#`. A `.ts` file with an indented `// Chunk:` is counted.
-- `ParsedBackreference` carries the marker as written, and
-  `update_backreferences` re-emits both the marker and the indentation
-  byte-identically. **Round-trip test per marker**: for each supported marker, a
-  source file whose backreference uses it survives chunk→narrative consolidation
-  with `    // Chunk: docs/chunks/old` becoming `    // Narrative: docs/narratives/new - ...`,
-  never a reindented or `#`-prefixed line. A test asserting only that the
-  reference was replaced does not satisfy this criterion.
-- All five consumers share one grammar. `_validate_code_backreferences`,
-  `scan_backreferences`, `count_backreferences`, `update_backreferences` and
-  `cluster_rename` must agree on what a backreference is; a scanner that sees
-  more than the rewriter rewrites is worse than today's, because `ve chunk
-  complete` would then report success while leaving newly-visible references
-  stale. `cluster_rename.py` contains no marker literal of its own, and its
-  dry-run preview and applied rewrite agree for every marker.
-- Newly-visible backreferences that point at nothing are reported as errors,
-  not silently tolerated. Running `ve validate` on this repository after the
-  change surfaces whatever dangling references the 102 previously-invisible
-  `//` backreferences contain; that count may be non-zero and resolving those
-  is part of this chunk.
-- On a repository whose backreferences use `//`, `ve validate` reports a
-  non-zero `Chunk backrefs:` count. The measured failure — `Chunk backrefs: 0`
-  over 240 files against 1359 real markers — does not reproduce.
-- Regression coverage includes a `.ts` file with an indented `// Chunk:`
-  backreference, a `.py` file with an indented `# Chunk:` backreference, and a
-  negative case proving a `#`-prefixed line in a `//`-language file does not
-  match.
-- The `AGENTS.md` managed block and the plugin skill templates state the
-  language-appropriate comment syntax rather than presenting `#` as the only
-  form, so an agent writing a backreference into a `.rs` file writes one the
-  tool reads. Templates are edited at their `src/templates/` source and
-  re-rendered.
+- `extract_symbols` (or its replacement) returns a value that distinguishes three
+  cases: the file was analysed and these are its symbols; the file was analysed and
+  the symbol is absent; the file could not be analysed. No caller can reach
+  "symbol absent" from "language unsupported". **Breaking change** to a private API
+  referenced by `symbolic_code_refs` (`src/symbols.py#extract_symbols`); that
+  chunk's `code_references` are updated as part of this one.
+- Every existing caller of `extract_symbols` is migrated. A caller that ignores the
+  disposition is a defect, not a default.
+- `ve chunk validate` on a chunk with N unchecked symbol anchors prints an outcome
+  line stating N. The measured failure — 33 warnings followed by an unqualified
+  "Chunk X is ready for completion" — does not reproduce.
+- `ve chunk validate --strict` exits nonzero when any anchor was unchecked, and
+  names them. Without `--strict`, the exit code is unchanged from today for every
+  input, including chunks whose anchors were all skipped. A test pins both halves.
+- `ve chunk validate --injectable --strict` behaves consistently with the completion
+  path; the flag means the same thing in both modes.
+- `check_reference_target`'s warning text distinguishes "no extractor for this
+  language" from "extractor ran and could not parse this file". Today both are
+  warnings with different strings and no structured difference.
+- The completion gate is unchanged in the default path: `crossref_unchecked_anchors`'
+  criterion "UNCHECKED never gates: no new errors, no new nonzero exits" continues
+  to hold whenever `--strict` is absent, and `tests/test_chunk_complete_gate.py`
+  still pins it.
 - Full test suite passes; `uv run ve validate` on this repository still exits 0.
-
-## Relationship to validate_backref_literals
-
-These two chunks edit the same parser and the same call sites, so they must not
-run concurrently. `depends_on` names `validate_backref_literals` to force the
-order.
-
-`validate_backref_literals` makes the Python path syntax-aware by tokenizing and
-matching only `COMMENT` tokens. This chunk should be re-scoped at planning time
-against whatever that chunk actually landed: if it introduced a per-language
-notion of "where a comment is", the marker table belongs inside that mechanism
-rather than beside it.
-
-The two chunks are opposite failure modes of the same defect — the scanner has
-no model of the host language. `validate_backref_literals` addresses the false
-positives (backreference text inside Python string literals, reported as real).
-This chunk addresses the false negatives (real comments the pattern cannot
-express). If planning finds that a single language-aware comment extractor
-subsumes both cleanly, say so rather than layering a second mechanism.
 
 ## Rejected Ideas
 
-### Match any of `#`, `//`, `%`, `;`, `--` regardless of file type
+### Make unchecked anchors gate by default
 
-A single alternation pattern applied to every file, ignoring extension.
-
-Rejected because: it trades a false-negative bug for a false-positive one. `#`
-begins a preprocessor directive in C and a shebang anywhere; `--` begins SQL
-comments but also appears in TS as decrement; `;` is a statement terminator in
-half the enumerated languages. The prefix set must be selected by extension.
-
-### Emit a warning for unparseable backreference-looking lines
-
-Detect `Chunk: docs/chunks/...` text in any form and warn when it is not in a
-recognised comment position.
-
-Rejected because: it reintroduces exactly the false-positive class that
-`validate_backref_literals` exists to remove — prose in a docstring or a
-specimen string would warn. Recognise the real forms; do not guess at the rest.
+Rejected: it contradicts an ACTIVE chunk's stated criterion
+(`crossref_unchecked_anchors`: "UNCHECKED never gates") and would fail every
+non-Python project's chunk completion on the day it shipped, before any extractor
+existed to make passing possible. Reporting first, gating opt-in, extraction next
+is the order that never leaves a user with a red gate and no way to go green.
