@@ -224,7 +224,7 @@ completely in order:
 
    If there IS an existing IMPLEMENTING chunk, inform the user:
    "Note: Chunk <existing_chunk> is currently being implemented. You can work
-   on this new chunk by completing the current one first with `ve chunk complete`,
+   on this new chunk by completing the current one first with `ve chunk land`,
    or create this one with `--future` to work on it later."
 
 10. **IMPORTANT: When committing a new chunk, commit the entire chunk directory.**
