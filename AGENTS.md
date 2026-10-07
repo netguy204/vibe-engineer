@@ -104,7 +104,7 @@ rename, not a follow-up, regardless of how narrowly the rename was requested.
 After any move, validate (works without installing `ve`):
 
 ```bash
-uvx --from vibe-engineer ve validate
+uvx --from 'vibe-engineer>=0.9.0' ve validate
 ```
 
 Fix all reported stale paths before considering the rename done. If `uvx` is
@@ -133,7 +133,7 @@ The workflow slash commands (`/chunk-create`, `/chunk-plan`, `/chunk-implement`,
 /plugin install vibe-engineer
 ```
 
-Command documentation and updates travel with the plugin (`/plugin update vibe-engineer`). The `ve` CLI is installed separately (via uv/pip) and is the workflow engine the commands shell out to. If the plugin cannot be installed in your harness, `uvx --from vibe-engineer ve skills reify` renders the same skills into this project's `.agents/skills/` (with a `.claude/skills` compatibility symlink so Claude Code finds them too) as an explicit opt-in alternative (DEC-015).
+Command documentation and updates travel with the plugin (`/plugin update vibe-engineer`). The `ve` CLI is installed separately (via uv/pip) and is the workflow engine the commands shell out to. If the plugin cannot be installed in your harness, `uvx --from 'vibe-engineer>=0.9.0' ve skills reify` renders the same skills into this project's `.agents/skills/` (with a `.claude/skills` compatibility symlink so Claude Code finds them too) as an explicit opt-in alternative (DEC-015).
 
 <!-- VE:MANAGED:END — end of the `ve init`-managed block; content below this line is preserved across regeneration. -->
 

@@ -47,10 +47,10 @@ The context above shows "(ve CLI not found)". Tell the operator that the
 vibe-engineer plugin requires the separately installed `ve` CLI, and suggest:
 
 ```
-uv tool install vibe-engineer
+uv tool install --upgrade 'vibe-engineer>={{ ve_version_floor }}'
 ```
 
-(or `pip install vibe-engineer`). Then stop.
+(or `pip install 'vibe-engineer>={{ ve_version_floor }}'`). Then stop.
 
 ### If the project is not initialized
 
