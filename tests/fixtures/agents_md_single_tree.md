@@ -125,6 +125,37 @@ Fix all reported stale paths before considering the rename done. If `uvx` is
 unavailable, grep the repository for the old path and update every hit.
 
 
+### Removing Code and Its References
+
+A `code_paths` entry, `code_references` entry, or `# Chunk:` / `# Subsystem:`
+backreference records that code carries a chunk's intent. Removing one falls
+in one of three tiers.
+
+1. **Ordinary edit: no grant, no escalation.** When your diff removes or moves
+   code, update the references to that code in the same diff while the intent
+   they recorded survives: retarget a reference to the code that now carries
+   the intent, drop it if another reference already covers that intent, or
+   drop it when the intent no longer belongs to any chunk. The PR reviewer
+   checks it in the diff.
+2. **Operator sign-off plus a ledger entry.** Removing the last reference that
+   carries a chunk's intent abandons that intent. This includes a diff that
+   deletes the code carrying a chunk's whole intent: sign-off wins over tier 1.
+   Record the grant in `docs/trunk/DELETIONS.md` in the same diff, with `--by`
+   naming the operator who signed off:
+
+   ```bash
+   ve deletion record "<reference>" --location "<file>:<line>" \
+     --by "<operator>" --reason "<why the intent no longer exists>" \
+     --evidence "<what ve exists reported>"
+   ```
+3. **Fix loops.** A reference to code deleted earlier, outside your diff, goes
+   through `/validate-fix`: `ve exists <name>` for evidence; a same-name
+   match elsewhere means the target moved, so retarget it; otherwise present
+   the case to the operator and record the grant before deleting.
+
+Never delete a reference just to make the validator pass.
+
+
 ## Creating Artifacts
 
 **CRITICAL: Never manually create artifact files.** Do not use `mkdir` or write files directly to create GOAL.md, PLAN.md, or OVERVIEW.md files. Always use the appropriate creation command:

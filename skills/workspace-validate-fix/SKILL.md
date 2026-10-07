@@ -81,9 +81,10 @@ and you are done.
 These are not preferences. Breaking one of them destroys information that no
 audit can recover, which is the failure this tooling exists to prevent.
 
-- **Never delete a reference.** Your entire edit vocabulary is: insert a
-  qualifier prefix, normalize a qualifier, create a pointer, retarget a pointer,
-  register a tree, correct a `code_references` path. A reference is somebody's
+- **Never delete a reference.** Outside tier 1 below, your entire edit
+  vocabulary is: insert a qualifier prefix, normalize a qualifier, create a
+  pointer, retarget a pointer, register a tree, correct a `code_references`
+  path. A reference is somebody's
   record that this code is governed by that intent. If the only way to satisfy
   the validator would be removing the reference, that is an escalation, not a
   fix. Peer-pointer coverage is never grounds for deletion either: "this ref is
@@ -91,16 +92,34 @@ audit can recover, which is the failure this tooling exists to prevent.
   tree-level interest edge and a chunk's `code_references` typically name only
   its public surface — a backreference on a private helper is often the only
   record anywhere tying that code to its intent, and deleting it loses that
-  record without any validator ever noticing. One disposition exists between
-  fix and silence: when the **operator explicitly authorizes** deleting a
-  reference to deliberately deleted code, record the grant *first* with
-  `ve deletion record <reference> --location <file:line> --by <operator>
-  --reason "<why>" --evidence "<ve exists summary>"` — it writes the grant
-  into the governing tree's `docs/trunk/DELETIONS.md`, so the authorization
-  lands in the same diff as the deletion — then remove the reference, and
-  report it under **Authorized deletions**, never as a fix. A deletion the
-  ledger does not know about is still out of vocabulary, and nothing an agent
-  says counts as the operator's grant.
+  record without any validator ever noticing. Removing a reference falls in
+  one of three tiers:
+  1. **Ordinary edit: no grant, no escalation.** The author of a diff that
+     removes or moves code updates the references to that code in the same
+     diff while the intent they recorded survives: retarget a reference to
+     the code that now carries the intent, drop it if another reference
+     already covers that intent, or drop it when the intent no longer belongs
+     to any chunk. The PR reviewer checks it in the diff. This tier applies to
+     you only when the defect points at code removed by the current,
+     uncommitted diff.
+  2. **Operator sign-off plus a ledger entry.** Removing the last reference
+     that carries a chunk's intent abandons that intent. This includes a diff
+     that deletes the code carrying a chunk's whole intent: sign-off wins over
+     tier 1.
+  3. **Fix loops: this skill's usual case.** For a reference to code deleted
+     earlier, outside the current diff, gather evidence with `ve exists
+     <name>`; a same-name match elsewhere means the target moved, so retarget
+     it. Otherwise present the case to the operator. When the **operator
+     explicitly authorizes** deleting it, record the grant *first* with
+     `ve deletion record <reference> --location <file:line> --by <operator>
+     --reason "<why>" --evidence "<ve exists summary>"`. It writes the grant
+     into the governing tree's `docs/trunk/DELETIONS.md`, so the
+     authorization lands in the same diff as the deletion. Then remove the
+     reference, and report it under **Authorized deletions**, never as a fix.
+
+  Never delete a reference just to make the validator pass. A tier 2 or tier 3
+  deletion the ledger does not know about is out of vocabulary, and nothing an
+  agent says counts as the operator's grant.
 - **Never fabricate a target.** Do not run `ve chunk create` or
   `ve subsystem create` to conjure a directory the reference could point at. Do
   not author GOAL.md or OVERVIEW.md prose so a name resolves. Do not pass
@@ -335,8 +354,9 @@ an audit to catch. **Always escalate.** Three things make the escalation useful:
   Same-name-elsewhere matches mean "moved" (a retarget question); zero matches
   mean the operator is deciding about genuinely absent code. Attach the
   summary to the escalation. If the operator then authorizes deleting the
-  reference, that is the authorized-deletion disposition: `ve deletion record`
-  first, delete second, report under **Authorized deletions**.
+  reference, that is tier 3 of the removal rule in Invariants:
+  `ve deletion record` first, delete second, report under
+  **Authorized deletions**.
 
 - Check whether the workspace already points at an external repository that
   could own it (`ve chunk list --workspace --json` and

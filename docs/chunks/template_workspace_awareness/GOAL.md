@@ -13,7 +13,7 @@ code_references:
 - ref: src/templates/claude/AGENTS.md.jinja2
   implements: "Workspace-aware managed block: qualified member::docs/... form, peer\
     \ pointers with the 1-reader/2+-readers rule, workspace-validate rename mandate,\
-    \ code_references guidance, deletion ledger pointer \u2014 all gated on project.in_workspace"
+    \ code_references guidance \u2014 all gated on project.in_workspace"
 - ref: src/template_system.py#TemplateContext
   implements: in_workspace flag with an inert False default so single-tree renders
     are unchanged

@@ -388,3 +388,32 @@ def test_workspace_skill_keeps_the_deletion_invariant_verbatim():
     """The grant is an exception to the invariant, not its repeal."""
     body = WORKSPACE_SKILL.read_text()
     assert "Never delete a reference" in body
+
+
+@pytest.mark.parametrize("skill", [WORKSPACE_SKILL, SINGLE_TREE_SKILL])
+def test_skills_state_the_reference_removal_tiers(skill):
+    """Fix loops mostly sit in tier 3, but each skill states all three tiers.
+
+    Tier 1 keeps an author's own dead-code cleanup out of the ledger; tier 2
+    keeps abandoned intent in it even when the same diff deleted the code.
+    """
+    body = skill.read_text()
+    assert "**Ordinary edit: no grant, no escalation.**" in body
+    assert "The author of a diff that" in body
+    assert "drop it if another reference" in body
+    assert "**Operator sign-off plus a ledger entry.**" in body
+    assert "deletes the code carrying a chunk's whole intent" in body
+    assert "sign-off wins over" in body
+    assert "**Fix loops: this skill's usual case.**" in body
+    assert "Never delete a reference just to make the validator pass." in body
+
+
+def test_ledger_header_states_the_tiers(tmp_path):
+    """A freshly created ledger tells its reader which removals need an entry."""
+    tree = make_ve_tree(tmp_path / "proj")
+    result = record(tree, "docs/chunks/retired_feature")
+    assert result.exit_code == 0, result.output
+    content = (tree / "docs" / "trunk" / "DELETIONS.md").read_text()
+    assert "1. Ordinary edit, no entry here." in content
+    assert "2. Operator sign-off plus an entry here." in content
+    assert "deletes the code that carried a chunk's whole intent" in content

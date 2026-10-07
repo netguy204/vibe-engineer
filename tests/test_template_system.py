@@ -1251,10 +1251,36 @@ class TestWorkspaceAwareAgentsTemplate:
             "Working Across VE Trees in This Workspace",
             "ve workspace validate",
             "ve external point",
-            "ve deletion record",
-            "docs/trunk/DELETIONS.md",
+            "/workspace-validate-fix",
         ):
             assert marker not in result
+
+    @pytest.mark.parametrize("in_workspace", [False, True])
+    def test_every_render_states_the_reference_removal_tiers(self, in_workspace):
+        """Every agent sees the three tiers, single-tree and workspace alike."""
+        result = self._render("AGENTS.md.jinja2", in_workspace=in_workspace)
+        assert "### Removing Code and Its References" in result
+        # Tier 1: the author's own diff updates surviving references, no grant.
+        assert "**Ordinary edit: no grant, no escalation.**" in result
+        assert "retarget a reference to the code that now carries" in result
+        assert "drop it if another reference already covers that intent" in result
+        assert "The PR reviewer\n   checks it in the diff." in result
+        # Tier 2: abandoning intent needs sign-off, even inside the same diff.
+        assert "**Operator sign-off plus a ledger entry.**" in result
+        assert "deletes the code carrying a chunk's whole intent" in result
+        assert "sign-off wins over tier 1" in result
+        assert "ve deletion record" in result
+        assert "docs/trunk/DELETIONS.md" in result
+        # Tier 3: fix loops keep their procedure.
+        assert "**Fix loops.**" in result
+        assert "Never delete a reference just to make the validator pass." in result
+
+    def test_fix_loop_tier_names_the_matching_skill(self):
+        """The single-tree render names /validate-fix; the workspace one its own loop."""
+        single = self._render("AGENTS.md.jinja2")
+        workspace = self._render("AGENTS.md.jinja2", in_workspace=True)
+        assert "through `/validate-fix`" in single
+        assert "through `/workspace-validate-fix`" in workspace
 
     # Chunk: docs/chunks/priorart_subject_search - CLAUDE.md.jinja2 deleted; AGENTS.md.jinja2
     # is the only claude template ve init renders, so the former lockstep test

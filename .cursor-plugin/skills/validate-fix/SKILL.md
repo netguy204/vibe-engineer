@@ -83,29 +83,50 @@ This command runs an iterative fix loop that:
 | Code backref to non-existent subsystem | `code→subsystem` | Subsystem may be deleted; requires human to update code |
 | Non-existent chunk in `proposed_chunks` | `narrative→chunk`, `investigation→chunk` | Chunk reference is stale; requires human judgment |
 
-### Operator-Authorized Deletions (a recorded disposition, neither fix nor silence)
+### Removing References: Three Tiers
 
-Deleting a reference is not in your fix vocabulary: a reference is somebody's
-record that this code is governed by that intent. But "reference to
-deliberately deleted code" is a decidable case when treated as evidence plus
-an operator decision:
+A reference is somebody's record that this code is governed by that intent.
+Who may remove one, and how, depends on where the removal comes from:
+
+1. **Ordinary edit: no grant, no escalation.** The author of a diff that
+   removes or moves code updates the references to that code in the same diff
+   while the intent they recorded survives: retarget a reference to the code
+   that now carries the intent, drop it if another reference already covers
+   that intent, or drop it when the intent no longer belongs to any chunk. The
+   PR reviewer checks it in the diff. This tier applies to you only when the
+   broken reference points at code removed by the current, uncommitted diff.
+2. **Operator sign-off plus a ledger entry.** Removing the last reference that
+   carries a chunk's intent abandons that intent. This includes a diff that
+   deletes the code carrying a chunk's whole intent: sign-off wins over tier 1.
+   The grant is recorded with `ve deletion record`, `--by` naming the operator.
+3. **Fix loops: this skill's usual case.** A reference to code deleted
+   earlier, outside the current diff, goes through the procedure below.
+
+Never delete a reference just to make the validator pass.
+
+### Operator-Authorized Deletions
+
+Outside tier 1, deleting a reference is not in your fix vocabulary.
+"Reference to deliberately deleted code" is a decidable case when treated as
+evidence plus an operator decision:
 
 1. **Gather evidence of absence.** `ve exists <name>` answers "does this path
    or symbol exist anywhere I can see" and states the scanned scope, so
    absence is a fact rather than a guess. Same-name-elsewhere matches mean
-   the target *moved* — fix the reference instead of deleting it.
+   the target *moved*: retarget the reference instead of deleting it.
 2. **Present the case to the operator** with the evidence. Only an explicit
    operator authorization makes deletion permissible; nothing an agent says
    counts as the grant.
 3. **Record the grant before deleting**:
    `ve deletion record <reference> --location <file:line> --by <operator>
-   --reason "<why>" --evidence "<ve exists summary>"` — this writes the grant
+   --reason "<why>" --evidence "<ve exists summary>"`. This writes the grant
    into `docs/trunk/DELETIONS.md`, so the authorization lands in the same
    diff as the deletion and a reviewer can see it.
-4. **Delete the reference**, and report it under **Authorized deletions** —
+4. **Delete the reference**, and report it under **Authorized deletions**,
    a section of its own, never counted among fixes applied.
 
-A deletion the ledger does not know about is out of vocabulary, full stop.
+A tier 2 or tier 3 deletion the ledger does not know about is out of
+vocabulary.
 
 ## Instructions
 

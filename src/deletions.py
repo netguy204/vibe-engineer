@@ -17,6 +17,11 @@ why, and optionally the absence evidence (typically a `ve exists` summary).
 The record lands in the same diff that removes the reference, so a reviewer
 sees the grant next to the deletion.
 
+A grant is needed for removals that abandon a chunk's intent and for fix-loop
+removals of references to code deleted outside the current diff. The author
+of a diff that removes or moves code updates references whose intent survives
+without a grant; the ledger header states the three tiers.
+
 Nothing here performs git operations (DEC-005), and the validators do not
 read the ledger — once the reference is gone there is nothing left to
 validate. The ledger is the audit trail.
@@ -40,12 +45,23 @@ GUIDANCE FOR AGENTS — DO NOT REMOVE THIS COMMENT
 This ledger records operator-authorized reference deletions. It is managed by
 `ve deletion record`; do not append entries by hand.
 
-Deleting a backreference or code_reference is normally out of vocabulary for
-validation fix loops: a reference is somebody's record of governing intent.
-When code was deliberately deleted and the operator explicitly authorizes
-removing the reference to it, the grant is recorded here BEFORE the reference
-is removed, so the deletion and its authorization land in the same diff and a
-reviewer can see the grant.
+A reference is somebody's record of governing intent. Removing one falls in
+one of three tiers:
+
+1. Ordinary edit, no entry here. The author of a diff that removes or moves
+   code updates the references to that code in the same diff while the intent
+   survives: retarget a reference to the code that now carries the intent,
+   drop it if another reference already covers that intent, or drop it when
+   the intent no longer belongs to any chunk. The PR reviewer checks it.
+2. Operator sign-off plus an entry here. Removing the last reference that
+   carries a chunk's intent abandons that intent, including when the same diff
+   deletes the code that carried a chunk's whole intent.
+3. Fix loops (validate-fix, workspace-validate-fix) reaching a reference to
+   code deleted earlier, outside the current diff: an entry here once the
+   operator authorizes the removal.
+
+An entry is recorded BEFORE the reference is removed, so the removal and its
+authorization land in the same diff and a reviewer can see the grant.
 
 Each entry carries: the reference as written, the location it was deleted
 from, who authorized it, why, and (when available) the absence evidence —

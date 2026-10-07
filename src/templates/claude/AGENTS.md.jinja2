@@ -181,25 +181,6 @@ Prefer `code_references`: the `#Symbol::method` anchor makes the claim
 checkable, and `implements:` records *what intent the code carries*, so a
 future reader can tell whether a refactor kept it. Add entries for code that
 still guards live intent — not for every file a chunk happened to touch.
-
-#### Removing Code Is Not a Frontmatter Edit
-
-Chunks guard **present-tense intent**; a removal is a historical action, so it
-does not get quietly dropped from frontmatter. Record it:
-
-```bash
-ve exists <name>               # gather the absence evidence first
-ve deletion record "<reference>" \
-  --location "docs/chunks/<chunk>/GOAL.md:<line>" \
-  --by "<operator who authorized it>" \
-  --reason "<why the intent no longer exists>" \
-  --evidence "<what ve exists reported>"
-```
-
-The grant lands in `docs/trunk/DELETIONS.md`, so a removal leaves a record
-instead of a silent hole. `--by` names the **operator who authorized** the
-deletion, not you — if nobody has, that is the escalation. Never delete a
-reference just to make the validator pass.
 {%- endif %}
 
 {# Chunk: docs/chunks/crossref_rename_integrity - Rename-integrity mandate #}
@@ -227,6 +208,37 @@ this repository's validator.
 
 Fix all reported stale paths before considering the rename done. If `uvx` is
 unavailable, grep the repository for the old path and update every hit.
+
+{# Chunk: docs/chunks/crossref_absence_evidence - Tiered rule for removing references #}
+### Removing Code and Its References
+
+A `code_paths` entry, `code_references` entry, or `# Chunk:` / `# Subsystem:`
+backreference records that code carries a chunk's intent. Removing one falls
+in one of three tiers.
+
+1. **Ordinary edit: no grant, no escalation.** When your diff removes or moves
+   code, update the references to that code in the same diff while the intent
+   they recorded survives: retarget a reference to the code that now carries
+   the intent, drop it if another reference already covers that intent, or
+   drop it when the intent no longer belongs to any chunk. The PR reviewer
+   checks it in the diff.
+2. **Operator sign-off plus a ledger entry.** Removing the last reference that
+   carries a chunk's intent abandons that intent. This includes a diff that
+   deletes the code carrying a chunk's whole intent: sign-off wins over tier 1.
+   Record the grant in `docs/trunk/DELETIONS.md` in the same diff, with `--by`
+   naming the operator who signed off:
+
+   ```bash
+   ve deletion record "<reference>" --location "<file>:<line>" \
+     --by "<operator>" --reason "<why the intent no longer exists>" \
+     --evidence "<what ve exists reported>"
+   ```
+3. **Fix loops.** A reference to code deleted earlier, outside your diff, goes
+   through {% if project.in_workspace %}`/workspace-validate-fix`{% else %}`/validate-fix`{% endif %}: `ve exists <name>` for evidence; a same-name
+   match elsewhere means the target moved, so retarget it; otherwise present
+   the case to the operator and record the grant before deleting.
+
+Never delete a reference just to make the validator pass.
 
 {# Chunk: docs/chunks/template_artifact_guidance - Creating Artifacts section with artifact creation guidance #}
 ## Creating Artifacts

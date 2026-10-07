@@ -149,7 +149,13 @@ Use `ve hooks list` to see the hooks a project defines and `ve hooks show
 
 ## Deletion Grants {#deletion-grants}
 
-The deletion-grant ledger (`docs/trunk/DELETIONS.md`) records operator-authorized reference deletions. Deleting a backreference or `code_references` entry is normally out of vocabulary for validation fix loops — a reference is somebody's record of governing intent. When code was deliberately deleted and the operator explicitly authorizes removing the reference to it, the grant is recorded **before** the reference is removed:
+The deletion-grant ledger (`docs/trunk/DELETIONS.md`) records operator-authorized reference removals. Removing a backreference or `code_references` entry falls in one of three tiers:
+
+1. **Ordinary edit: no grant, no escalation.** The author of a diff that removes or moves code updates the references to that code in the same diff while the intent they recorded survives: retarget a reference to the code that now carries the intent, drop it if another reference already covers that intent, or drop it when the intent no longer belongs to any chunk. The PR reviewer checks it in the diff.
+2. **Operator sign-off plus a ledger entry.** Removing the last reference that carries a chunk's intent abandons that intent. This includes a diff that deletes the code carrying a chunk's whole intent: sign-off wins over tier 1. `--by` names the operator who signed off.
+3. **Fix loops** (`/validate-fix`, `/workspace-validate-fix`) handle references to code deleted earlier, outside the current diff. A same-name match elsewhere means the target moved, so the loop retargets it; otherwise it presents the case to the operator and records the grant **before** the reference is removed.
+
+Never delete a reference just to make the validator pass.
 
 ```bash
 ve exists <name>                 # evidence of absence: does this path/symbol exist anywhere visible?
