@@ -1,15 +1,79 @@
 """Tests for `ve entity claude --entity <name>` CLI command."""
 
+import importlib
 import json
 import pathlib
 import subprocess
+import types
 from unittest.mock import MagicMock, patch
 
 import pytest
 from click.testing import CliRunner
 
+from conftest import make_ve_initialized_git_repo
 from entities import Entities
 from ve import cli
+
+
+# ---------------------------------------------------------------------------
+# Isolation from the operator's machine
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture(autouse=True)
+def isolated_operator_home(tmp_path, monkeypatch):
+    """Keep every test in this file away from the real home directory.
+
+    `ve entity claude` reads ``~/.ve-config.toml`` and, when the entity is
+    not present, clones it into ``entities_dir`` (``~/entities`` by
+    default). This fixture points HOME and ``DEFAULT_CONFIG_PATH`` at an
+    empty directory under tmp_path, and replaces the ``subprocess`` module
+    seen by ``cli.canonical_clone`` so a ``git clone`` fails the test
+    instead of reaching the network. Tests that exercise a clone failure
+    install their own fake on top of this one.
+
+    Returns the fake home directory. No config file exists there until a
+    test writes one.
+    """
+    home = tmp_path / "home"
+    home.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+    # `cli.config` on the package is the Click group, so fetch the module
+    # itself by name.
+    monkeypatch.setattr(
+        importlib.import_module("cli.config"),
+        "DEFAULT_CONFIG_PATH",
+        home / ".ve-config.toml",
+    )
+
+    def _no_clone(*args, **kwargs):
+        raise AssertionError(f"unexpected git clone in test: {args!r}")
+
+    monkeypatch.setattr(
+        importlib.import_module("cli.canonical_clone"),
+        "subprocess",
+        types.SimpleNamespace(run=_no_clone),
+    )
+    return home
+
+
+def _fake_clone_failure(monkeypatch, stderr: str) -> list:
+    """Make ``git clone`` in ``cli.canonical_clone`` fail with ``stderr``.
+
+    Returns the list that records each attempted command.
+    """
+    calls: list = []
+
+    def _run(cmd, **kwargs):
+        calls.append(cmd)
+        return subprocess.CompletedProcess(cmd, 128, stdout="", stderr=stderr)
+
+    monkeypatch.setattr(
+        importlib.import_module("cli.canonical_clone"),
+        "subprocess",
+        types.SimpleNamespace(run=_run),
+    )
+    return calls
 
 
 # ---------------------------------------------------------------------------
@@ -85,16 +149,94 @@ class TestReadSessionIdFromPidFile:
 
 
 class TestEntityValidation:
-    def test_errors_if_entity_missing(self, tmp_path):
-        """Non-zero exit with helpful message when entity doesn't exist."""
-        runner = CliRunner()
-        result = runner.invoke(cli, [
-            "entity", "claude",
-            "--entity", "nonexistent",
-            "--project-dir", str(tmp_path),
-        ])
+    """A missing entity aborts before the session launches.
+
+    The entity is absent from ``.entities/``, so the command tries to
+    auto-attach it, and the error depends on the operator config. See
+    docs/chunks/entity_claude_autoattach/GOAL.md.
+    """
+
+    def _invoke(self, project_dir: pathlib.Path):
+        """Run the command; return the result and any `claude` launches.
+
+        Only `claude` launches are intercepted. The git checks inside the
+        auto-attach step still run for real against ``project_dir``.
+        """
+        real_popen = subprocess.Popen
+        launches: list = []
+
+        def _popen(cmd, *args, **kwargs):
+            if cmd and cmd[0] == "claude":
+                launches.append(cmd)
+                raise AssertionError("claude session launched")
+            return real_popen(cmd, *args, **kwargs)
+
+        with patch("subprocess.Popen", side_effect=_popen):
+            result = CliRunner().invoke(cli, [
+                "entity", "claude",
+                "--entity", "nonexistent",
+                "--project-dir", str(project_dir),
+            ])
+        return result, launches
+
+    def test_errors_if_entity_missing(self, tmp_path, isolated_operator_home):
+        """With no ~/.ve-config.toml, the error names the missing config file."""
+        project = tmp_path / "project"
+        make_ve_initialized_git_repo(project)
+
+        result, launches = self._invoke(project)
+
         assert result.exit_code != 0
         assert "not found" in result.output.lower()
+        assert str(isolated_operator_home / ".ve-config.toml") in result.output
+        assert launches == []
+
+    def test_errors_if_git_base_not_configured(self, tmp_path, isolated_operator_home):
+        """A config without git_base aborts with a message naming git_base."""
+        project = tmp_path / "project"
+        make_ve_initialized_git_repo(project)
+        entities_dir = isolated_operator_home / "entities"
+        (isolated_operator_home / ".ve-config.toml").write_text(
+            f'entities_dir = "{entities_dir}"\n'
+        )
+
+        result, launches = self._invoke(project)
+
+        assert result.exit_code != 0
+        assert "git_base" in result.output
+        assert launches == []
+        assert not (entities_dir / "nonexistent").exists()
+
+    def test_errors_if_remote_repo_missing(
+        self, tmp_path, monkeypatch, isolated_operator_home
+    ):
+        """With git_base configured and no such repository on the host, the
+        clone failure surfaces as a missing-repository error naming the URL."""
+        project = tmp_path / "project"
+        make_ve_initialized_git_repo(project)
+        entities_dir = isolated_operator_home / "entities"
+        (isolated_operator_home / ".ve-config.toml").write_text(
+            f'entities_dir = "{entities_dir}"\n'
+            'git_base = "git@example.com:org"\n'
+        )
+        calls = _fake_clone_failure(
+            monkeypatch,
+            "ERROR: Repository not found.\n"
+            "fatal: Could not read from remote repository.\n",
+        )
+
+        result, launches = self._invoke(project)
+
+        assert result.exit_code != 0
+        assert "No repository at git@example.com:org/nonexistent.git" in result.output
+        assert "'nonexistent'" in result.output
+        assert calls == [[
+            "git", "clone",
+            "git@example.com:org/nonexistent.git",
+            str(entities_dir / "nonexistent"),
+        ]]
+        assert launches == []
+        assert not (entities_dir / "nonexistent").exists()
 
 
 # ---------------------------------------------------------------------------
