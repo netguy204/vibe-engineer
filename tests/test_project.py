@@ -867,6 +867,48 @@ class TestManagedBlockSafety:
         assert "an in-block line that will be dropped" not in content
         assert len(self._discard_warnings(result)) == 1
 
+    # Chunk: docs/chunks/template_install_version_floor - A floor change is not a hand edit
+    def _write_with_old_floor(self, agents_md, extra_line=None):
+        """Rewrite every install-line floor to 0.0.1, optionally adding a line."""
+        import re
+
+        from project import parse_markers
+
+        parsed = parse_markers(agents_md.read_text())
+        assert "vibe-engineer>=" in parsed.inside
+        inside = re.sub(
+            r"vibe-engineer>=[^\s']+", "vibe-engineer>=0.0.1", parsed.inside
+        )
+        lines = inside.splitlines()
+        if extra_line is not None:
+            lines.insert(1, extra_line)
+        agents_md.write_text(parsed.before + "\n".join(lines) + parsed.after)
+
+    def test_floor_only_change_does_not_warn(self, temp_project):
+        project = Project(temp_project)
+        project.init()
+        agents_md = temp_project / "AGENTS.md"
+        self._write_with_old_floor(agents_md)
+
+        result = project.init()
+
+        assert self._discard_warnings(result) == []
+        assert "vibe-engineer>=0.0.1" not in agents_md.read_text()
+
+    def test_floor_change_with_added_line_counts_only_added_line(
+        self, temp_project
+    ):
+        project = Project(temp_project)
+        project.init()
+        agents_md = temp_project / "AGENTS.md"
+        self._write_with_old_floor(agents_md, extra_line="An operator-added rule.")
+
+        result = project.init()
+
+        warnings = self._discard_warnings(result)
+        assert len(warnings) == 1
+        assert warnings[0].startswith("Discarded 1 line(s)")
+
 
 class TestProjectInitIdempotency:
     """Tests for Project.init() idempotency.

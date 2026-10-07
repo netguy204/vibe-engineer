@@ -12,6 +12,7 @@ code_paths:
 - src/templates/plugin/skills/workspace-validate-fix.md.jinja2
 - src/templates/plugin/skills/ve-status.md.jinja2
 - src/templates/plugin/skills/chunk-execute-all.md.jinja2
+- src/project.py
 - tests/test_install_version_floor.py
 - tests/test_project.py
 - tests/test_template_system.py
@@ -41,6 +42,8 @@ code_references:
   implements: Floored install suggestion when ve is missing
 - ref: src/templates/plugin/skills/workspace-validate-fix.md.jinja2
   implements: Floored install suggestion when ve is missing
+- ref: src/project.py#_managed_block_lines
+  implements: Install-line floors normalized before the managed-block discard check
 - ref: tests/test_install_version_floor.py
   implements: Floor function table, dev-build renders, static no-unpinned-line scan,
     per-renderer floor checks
@@ -115,6 +118,9 @@ failure is the reminder to re-render at release time.
   `pip install vibe-engineer` without a floor.
 - Tests cover the floor function for final, post, local, dev, pre-release,
   and zero-component versions.
+- `ve init` compares managed-block lines with their install-line floors
+  normalized, so a floor change alone never triggers the discarded-lines
+  warning, and a line a person added inside the block is still reported.
 - `uv run pytest tests/` passes and `uv run ve validate` exits 0.
 
 ## Rejected Ideas

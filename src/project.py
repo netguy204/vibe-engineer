@@ -267,12 +267,19 @@ def parse_markers(content: str) -> MarkerParseResult:
     )
 
 
+# Chunk: docs/chunks/template_install_version_floor - Floor-insensitive line comparison
+_VERSION_FLOOR_RE = re.compile(r"vibe-engineer>=[^\s'\"]+")
+
+
 # Chunk: docs/chunks/claudemd_marker_safety - Line inventory for discard detection
 def _managed_block_lines(block: str) -> set[str]:
     """The comparable content of a managed block: stripped, non-blank lines.
 
     Marker lines themselves are excluded, so upgrading a bare marker to the
     annotated self-documenting form is never reported as discarded content.
+    The `vibe-engineer>=X` floor in install lines is replaced with a fixed
+    placeholder, because it changes on every release and a line that differs
+    only by floor is regenerated content.
     """
     lines: set[str] = set()
     for line in block.splitlines():
@@ -281,7 +288,7 @@ def _managed_block_lines(block: str) -> set[str]:
             continue
         if _MARKER_START_RE.search(stripped) or _MARKER_END_RE.search(stripped):
             continue
-        lines.add(stripped)
+        lines.add(_VERSION_FLOOR_RE.sub("vibe-engineer>=FLOOR", stripped))
     return lines
 
 
