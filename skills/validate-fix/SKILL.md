@@ -23,8 +23,8 @@ Interpret the context above before following the instructions:
   repository. Do not search for it — run it directly via Bash. If the
   context shows "(ve CLI not found)", tell the operator that the
   vibe-engineer plugin requires the separately installed `ve` CLI, suggest
-  `uv tool install --upgrade 'vibe-engineer>=0.9.0'`
-  (or `pip install 'vibe-engineer>=0.9.0'`), and
+  `uv tool install --upgrade 'vibe-engineer>=0.10.0'`
+  (or `pip install 'vibe-engineer>=0.10.0'`), and
   stop.
 - **Uninitialized project**: If `ve` is installed but commands fail because
   there is no `docs/chunks/` structure, tell the operator to run `ve init`

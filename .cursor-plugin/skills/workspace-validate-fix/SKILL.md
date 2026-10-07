@@ -25,8 +25,8 @@ Interpret the context above before following the instructions:
   repository. Do not search for it — run it directly via Bash. If the context
   shows "(ve CLI not found)", tell the operator that the vibe-engineer plugin
   requires the separately installed `ve` CLI, suggest
-  `uv tool install --upgrade 'vibe-engineer>=0.9.0'`
-  (or `pip install 'vibe-engineer>=0.9.0'`), and stop.
+  `uv tool install --upgrade 'vibe-engineer>=0.10.0'`
+  (or `pip install 'vibe-engineer>=0.10.0'`), and stop.
 - **Workspace manifest**: `.ve-workspace.yaml` names the VE trees in this
   repository, and it is the resolution surface this whole loop depends on —
   nothing can be qualified against a tree the manifest does not name. Every
