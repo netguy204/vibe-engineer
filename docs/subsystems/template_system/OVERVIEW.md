@@ -237,6 +237,10 @@ The canonical implementation provides:
 - `render_template(collection, template_name, context, **kwargs)` - Core rendering
 - `render_to_directory(collection, dest_dir, context, **kwargs)` - Batch rendering with suffix stripping
 - `list_templates(collection)` - Template enumeration (excludes partials and hidden files)
+- `ve_version_floor` - Environment global in every collection, set by
+  `get_environment` from `install_version_floor()`: the minimum vibe-engineer
+  version rendered install and uvx lines require (docs/chunks/template_install_version_floor).
+  A global, so macro partials imported without context see it.
 
 ## Known Deviations
 

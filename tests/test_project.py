@@ -203,9 +203,12 @@ class TestProjectInit:
         """Outside a workspace, init() writes exactly the pre-chunk AGENTS.md bytes."""
         import pathlib as _pathlib
 
+        from template_system import install_version_floor
+
+        # Chunk: docs/chunks/template_install_version_floor - Floor placeholder
         golden = (
             _pathlib.Path(__file__).parent / "fixtures" / "agents_md_single_tree.md"
-        ).read_text()
+        ).read_text().replace("@VE_VERSION_FLOOR@", install_version_floor())
         project = Project(temp_project)
         project.init()
         assert (temp_project / "AGENTS.md").read_text() == golden
@@ -220,8 +223,10 @@ class TestProjectInit:
         project.init()
         content = (member_dir / "AGENTS.md").read_text()
         assert "### Working Across VE Trees in This Workspace" in content
-        assert "uvx --from vibe-engineer ve workspace validate" in content
-        assert "uvx --from vibe-engineer ve validate" not in content
+        from template_system import install_version_floor
+
+        assert f"uvx --from 'vibe-engineer>={install_version_floor()}' ve workspace validate" in content
+        assert f"uvx --from 'vibe-engineer>={install_version_floor()}' ve validate" not in content
         assert "docs/trunk/DELETIONS.md" in content
 
     # Chunk: docs/chunks/template_workspace_awareness - Workspace detection through ve init
@@ -232,7 +237,9 @@ class TestProjectInit:
         project.init()
         content = (temp_project / "AGENTS.md").read_text()
         assert "### Working Across VE Trees in This Workspace" in content
-        assert "uvx --from vibe-engineer ve workspace validate" in content
+        from template_system import install_version_floor
+
+        assert f"uvx --from 'vibe-engineer>={install_version_floor()}' ve workspace validate" in content
 
     def test_init_reports_created_files(self, temp_project):
         """init() reports all created files in result."""

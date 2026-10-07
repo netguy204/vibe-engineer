@@ -3,8 +3,11 @@
 # Subsystem: docs/subsystems/template_system - Unified template rendering
 # Chunk: docs/chunks/template_unified_module - Core template system implementation
 
+import functools
 import pathlib
+import re
 from dataclasses import dataclass, field
+from importlib.metadata import PackageNotFoundError, version as package_version
 
 import jinja2
 import yaml
@@ -339,6 +342,55 @@ def list_templates(collection: str) -> list[str]:
     ]
 
 
+# Chunk: docs/chunks/template_install_version_floor - Minimum version in rendered install lines
+_RELEASE_RE = re.compile(r"^(?:\d+!)?(\d+(?:\.\d+)*)(.*)$")
+_POST_RELEASE_RE = re.compile(r"^(?:[-_.]?(?:post|rev|r)[-_.]?\d*|-\d+)$")
+
+
+def version_floor(version: str) -> str:
+    """Return the minimum version a rendered install line may require.
+
+    A final or post release renders its own release segment. A pre-release or
+    dev build has a release segment that is not on PyPI yet, so the floor is
+    that segment with its last nonzero component decremented and later
+    components zeroed: 0.9.1.dev3 -> 0.9.0, 0.10.0rc1 -> 0.9.0. pip can
+    satisfy that from PyPI as long as releases do not skip a minor.
+    """
+    public = version.strip().lower().split("+", 1)[0]
+    match = _RELEASE_RE.match(public)
+    if match is None:
+        raise ValueError(f"Cannot derive a version floor from {version!r}")
+    release, suffix = match.group(1), match.group(2)
+    if not suffix or _POST_RELEASE_RE.match(suffix):
+        return release
+    parts = [int(p) for p in release.split(".")]
+    for i in range(len(parts) - 1, -1, -1):
+        if parts[i] > 0:
+            parts[i] -= 1
+            parts[i + 1 :] = [0] * (len(parts) - i - 1)
+            break
+    return ".".join(str(p) for p in parts)
+
+
+@functools.cache
+def install_version_floor() -> str:
+    """Return the floor for the vibe-engineer doing the rendering.
+
+    Rendered `uvx --from` / `uv tool install` / `pip install` lines name this
+    version so that following them on a machine with an older install yields
+    a ve that has the commands the instructions use.
+    """
+    try:
+        installed = package_version("vibe-engineer")
+    except PackageNotFoundError as e:
+        raise RuntimeError(
+            "vibe-engineer distribution metadata not found; install the "
+            "package (e.g. `uv sync`) so rendered install lines can name a "
+            "minimum version"
+        ) from e
+    return version_floor(installed)
+
+
 # Cache for Jinja2 environments per collection
 _environments: dict[str, jinja2.Environment] = {}
 
@@ -360,7 +412,11 @@ def get_environment(collection: str) -> jinja2.Environment:
     if collection not in _environments:
         collection_dir = template_dir / collection
         loader = jinja2.FileSystemLoader(str(collection_dir))
-        _environments[collection] = jinja2.Environment(loader=loader)
+        env = jinja2.Environment(loader=loader)
+        # Chunk: docs/chunks/template_install_version_floor - A global, so
+        # macro partials imported without context see it too.
+        env.globals["ve_version_floor"] = install_version_floor()
+        _environments[collection] = env
     return _environments[collection]
 
 

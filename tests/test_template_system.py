@@ -1174,6 +1174,14 @@ class TestWorkspaceAwareAgentsTemplate:
 
     FIXTURES = pathlib.Path(__file__).parent / "fixtures"
 
+    # Chunk: docs/chunks/template_install_version_floor - Floor placeholder
+    def _golden(self):
+        from template_system import install_version_floor
+
+        return (self.FIXTURES / "agents_md_single_tree.md").read_text().replace(
+            "@VE_VERSION_FLOOR@", install_version_floor()
+        )
+
     def _render(self, template_name, **ctx_kwargs):
         from template_system import TemplateContext, render_template
 
@@ -1189,7 +1197,7 @@ class TestWorkspaceAwareAgentsTemplate:
 
     def test_single_tree_agents_md_is_byte_identical_to_golden(self):
         """A single-tree AGENTS.md render matches the pre-chunk bytes exactly."""
-        golden = (self.FIXTURES / "agents_md_single_tree.md").read_text()
+        golden = self._golden()
         assert self._render("AGENTS.md.jinja2") == golden
         assert self._render("AGENTS.md.jinja2", in_workspace=False) == golden
 
@@ -1197,7 +1205,7 @@ class TestWorkspaceAwareAgentsTemplate:
         """Call sites that pass no context at all still get the single-tree bytes."""
         from template_system import render_template
 
-        golden = (self.FIXTURES / "agents_md_single_tree.md").read_text()
+        golden = self._golden()
         assert render_template("claude", "AGENTS.md.jinja2") == golden
 
     def test_workspace_rename_mandate_prescribes_workspace_validate(self):
@@ -1207,9 +1215,11 @@ class TestWorkspaceAwareAgentsTemplate:
         a workspace root reports phantom structural errors, so the mandate must
         never prescribe it there.
         """
+        from template_system import install_version_floor
+
         result = self._render("AGENTS.md.jinja2", in_workspace=True)
-        assert "uvx --from vibe-engineer ve workspace validate" in result
-        assert "uvx --from vibe-engineer ve validate" not in result
+        assert f"uvx --from 'vibe-engineer>={install_version_floor()}' ve workspace validate" in result
+        assert f"uvx --from 'vibe-engineer>={install_version_floor()}' ve validate" not in result
 
     def test_workspace_render_demonstrates_qualified_form(self):
         """The workspace render shows member::docs/... and points at ve workspace list."""
